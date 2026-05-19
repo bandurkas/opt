@@ -299,7 +299,11 @@ def run(
     option_horizon_h: float = 12.0,
     fade: bool = False,
     spread_pct: float = 0.0,
-    side_filter: str | None = None,  # 'C', 'P', or None
+    side_filter: str | None = None,           # 'C', 'P', or None
+    regime_filter: str | None = None,         # 'trend' / 'transition' / 'range'
+    min_atr_15m: float | None = None,         # only trade when ATR(15m) >= X
+    hour_from: int | None = None,             # UTC hour, inclusive
+    hour_to: int | None = None,               # UTC hour, exclusive
 ) -> dict:
     print(f"[backtest] symbol={symbol} days={days} sigma={sigma} expiry_h={expiry_hours}", flush=True)
     data = fetch_set(symbol, days=days, intervals=("5", "15", "60"))
@@ -333,6 +337,22 @@ def run(
         tf_1h = analyze_tf(s1h)
         mtf = consensus(tf_5m, tf_15m, tf_1h)
         regime = detect_regime(s1h)
+
+        # Regime filter
+        if regime_filter and regime.get("regime") != regime_filter:
+            continue
+
+        # ATR(15m) filter
+        atr_15m = atr(s15, 14) if len(s15) >= 16 else None
+        if min_atr_15m is not None and (atr_15m is None or atr_15m < min_atr_15m):
+            continue
+
+        # Hour-of-day filter (UTC)
+        if hour_from is not None and hour_to is not None:
+            from datetime import datetime as _dt, timezone as _tz
+            h = _dt.fromtimestamp(ts_end / 1000, tz=_tz.utc).hour
+            if not (hour_from <= h < hour_to):
+                continue
 
         # Try both sides
         for side, side_label in (("C", "Call"), ("P", "Put")):
@@ -609,6 +629,10 @@ if __name__ == "__main__":
     parser.add_argument("--tp1", type=float, default=0.30)
     parser.add_argument("--tp2", type=float, default=0.80)
     parser.add_argument("--sl", type=float, default=0.35)
+    parser.add_argument("--regime", choices=["trend", "transition", "range"], default=None)
+    parser.add_argument("--min-atr-15m", type=float, default=None)
+    parser.add_argument("--hour-from", type=int, default=None)
+    parser.add_argument("--hour-to", type=int, default=None)
     args = parser.parse_args()
 
     if args.sweep:
@@ -633,6 +657,10 @@ if __name__ == "__main__":
         fade=args.fade,
         spread_pct=args.spread_pct,
         side_filter=args.side,
+        regime_filter=args.regime,
+        min_atr_15m=args.min_atr_15m,
+        hour_from=args.hour_from,
+        hour_to=args.hour_to,
         tp1_pct=args.tp1, tp2_pct=args.tp2, sl_pct=args.sl,
     )
     with open(args.out, "w") as f:
