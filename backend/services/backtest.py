@@ -304,6 +304,7 @@ def run(
     min_atr_15m: float | None = None,         # only trade when ATR(15m) >= X
     hour_from: int | None = None,             # UTC hour, inclusive
     hour_to: int | None = None,               # UTC hour, exclusive
+    bias_24h_trend_pct: float | None = None,  # require trade side aligned with 24h trend ≥ X%
 ) -> dict:
     print(f"[backtest] symbol={symbol} days={days} sigma={sigma} expiry_h={expiry_hours}", flush=True)
     data = fetch_set(symbol, days=days, intervals=("5", "15", "60"))
@@ -368,6 +369,16 @@ def run(
 
             if side_filter and side != side_filter:
                 continue
+
+            # 24h-trend bias: only allow side aligned with dominant direction.
+            # Put pays when down → for downtrend (24h_ret < -X%) only allow P.
+            # Call pays when up → for uptrend only allow C. Flat: both.
+            if bias_24h_trend_pct is not None and len(s1h) >= 25:
+                ret_24h = (s1h[-1]["close"] - s1h[-25]["close"]) / s1h[-25]["close"] * 100
+                if ret_24h < -bias_24h_trend_pct and side != "P":
+                    continue
+                if ret_24h > bias_24h_trend_pct and side != "C":
+                    continue
 
             # Realized underlying return at horizons (no look-ahead — already past idx)
             future = klines_5m[idx + 1:]
@@ -633,6 +644,8 @@ if __name__ == "__main__":
     parser.add_argument("--min-atr-15m", type=float, default=None)
     parser.add_argument("--hour-from", type=int, default=None)
     parser.add_argument("--hour-to", type=int, default=None)
+    parser.add_argument("--bias-24h-trend-pct", type=float, default=None,
+                        help="Trade only side aligned with 24h trend >= X%")
     args = parser.parse_args()
 
     if args.sweep:
@@ -661,6 +674,7 @@ if __name__ == "__main__":
         min_atr_15m=args.min_atr_15m,
         hour_from=args.hour_from,
         hour_to=args.hour_to,
+        bias_24h_trend_pct=args.bias_24h_trend_pct,
         tp1_pct=args.tp1, tp2_pct=args.tp2, sl_pct=args.sl,
     )
     with open(args.out, "w") as f:
