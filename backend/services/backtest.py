@@ -106,6 +106,8 @@ def _simulate_option_trade(
     sl_pct: float,
     horizon_hours: float,
     spread_pct: float = 0.0,
+    tsl_trigger_pct: float = 0.0,  # activate trailing-stop when premium reaches +X%
+    tsl_offset_pct: float = 0.0,   # initial trailing stop sits at +(trigger - offset)%
 ) -> dict:
     """Walk forward bar-by-bar on the underlying path. Compute synthetic premium
     via BS at each step. Apply TP1/TP2/SL exits. Return resolution + P&L.
@@ -134,32 +136,45 @@ def _simulate_option_trade(
     pnl_first_half_pct = 0.0
     bars_to_use = min(len(bars_5m_forward), int(horizon_hours * 12))  # 12 bars per hour
 
+    # Trailing-stop: starts at SL%, ratchets UP when premium hits trigger.
+    # Effectively replaces SL once activated (one-way floor).
+    tsl_active = tsl_trigger_pct > 0
+    current_floor_pnl = -sl_pct  # current SL/TSL floor in pnl-fraction terms
+
     for bi in range(bars_to_use):
         bar = bars_5m_forward[bi]
         elapsed_h = (bi + 1) * 5 / 60
         T = max(0.0, (expiry_hours - elapsed_h) / (24 * 365))
-        # Use high/low for intrabar resolution
         hi_spot = bar["high"]
         lo_spot = bar["low"]
 
         if side == "C":
-            # premium tracks spot upward (high triggers TP, low triggers SL)
             high_premium = bs.price(side, hi_spot, strike, T, sigma)
             low_premium = bs.price(side, lo_spot, strike, T, sigma)
         else:
-            # for Put — low spot triggers TP, high spot triggers SL
             high_premium = bs.price(side, lo_spot, strike, T, sigma)
             low_premium = bs.price(side, hi_spot, strike, T, sigma)
 
-        # SL check first (worst case)
-        if low_premium <= sl_premium:
-            sl_pnl = (sl_premium - entry_premium) / entry_premium
+        # Convert to pnl-fractions for TSL logic
+        # net pnl_pct(premium) = (premium*(1-hs) - entry_premium) / entry_premium
+        hi_pnl_frac = (high_premium * (1 - half_spread) - entry_premium) / entry_premium
+        lo_pnl_frac = (low_premium * (1 - half_spread) - entry_premium) / entry_premium
+
+        # Update trailing floor if premium reached/exceeded trigger
+        if tsl_active and hi_pnl_frac >= tsl_trigger_pct:
+            candidate = hi_pnl_frac - tsl_offset_pct
+            if candidate > current_floor_pnl:
+                current_floor_pnl = candidate
+
+        # Floor (TSL or original SL) check
+        if lo_pnl_frac <= current_floor_pnl:
+            exit_pnl = current_floor_pnl
             if closed_first_half:
-                # half got TP1, half hits SL
-                total = (pnl_first_half_pct + sl_pnl) / 2
+                total = (pnl_first_half_pct + exit_pnl) / 2
             else:
-                total = sl_pnl
-            return {"resolution": "sl", "pnl_pct": round(total * 100, 2), "bars_held": bi + 1}
+                total = exit_pnl
+            resolution = "tsl" if current_floor_pnl > -sl_pct else "sl"
+            return {"resolution": resolution, "pnl_pct": round(total * 100, 2), "bars_held": bi + 1}
 
         # TP2 (all remaining size)
         if high_premium >= tp2_premium:
@@ -259,11 +274,29 @@ def simulate_signal_set(
     option_horizon_h: float,
     horizons_h: tuple[int, ...] = (1, 4, 12),
     spread_pct: float = 0.0,
+    tsl_trigger_pct: float = 0.0,
+    tsl_offset_pct: float = 0.0,
+    adaptive_side_lookback_bars_5m: int | None = None,  # if set, 7d=2016 etc.
+    adaptive_side_threshold_pct: float = 1.5,           # only Put if past return < -X%, etc.
 ) -> list[dict]:
     out = []
+    skipped_adaptive = 0
     for sig in signals:
         idx = sig["idx_5m"]
         future = klines_5m[idx + 1:]
+
+        # Adaptive side filter: only trade in direction of recent underlying trend
+        if adaptive_side_lookback_bars_5m and idx >= adaptive_side_lookback_bars_5m:
+            past_close = klines_5m[idx - adaptive_side_lookback_bars_5m]["close"]
+            current_close = sig["close"]
+            ret_pct = (current_close - past_close) / past_close * 100
+            # Trend down → only allow Put (P). Trend up → only allow Call (C). Flat → both.
+            if ret_pct < -adaptive_side_threshold_pct and sig["side"] != "P":
+                skipped_adaptive += 1
+                continue
+            if ret_pct > adaptive_side_threshold_pct and sig["side"] != "C":
+                skipped_adaptive += 1
+                continue
         urets: dict[str, float] = {}
         for h in horizons_h:
             bars_needed = h * 12
@@ -279,9 +312,12 @@ def simulate_signal_set(
             expiry_hours=expiry_hours, bars_5m_forward=future,
             tp1_pct=tp1_pct, tp2_pct=tp2_pct, sl_pct=sl_pct,
             horizon_hours=option_horizon_h, spread_pct=spread_pct,
+            tsl_trigger_pct=tsl_trigger_pct, tsl_offset_pct=tsl_offset_pct,
         )
         out.append({**sig, "underlying_returns": urets, "option": option,
                     "side": sig["side"], "ts_iso": datetime.fromtimestamp(sig["ts_ms"] / 1000, tz=timezone.utc).isoformat()})
+    if skipped_adaptive:
+        print(f"[simulate] adaptive_side skipped {skipped_adaptive} signals", flush=True)
     return out
 
 
