@@ -1,17 +1,41 @@
 import time
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
+from db.engine import apply_schema
+from db.repository import (
+    latest_snapshot_age_seconds,
+    persist_signal,
+    recent_klines,
+    recent_signals,
+)
+from services.analysis import (
+    build_mtf_context,
+    distance,
+    scan_top_opportunities,
+    time_to_expiry,
+)
 from services.bybit_client import bybit_client
 from services.market_data import build_market_snapshot
-from services.analysis import scan_top_opportunities, time_to_expiry, distance
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    try:
+        apply_schema()
+        print("[main] DB schema applied", flush=True)
+    except Exception as e:  # noqa: BLE001
+        print(f"[main] WARN: could not apply schema: {e!r}", flush=True)
+    yield
 
 
 app = FastAPI(
     title="ETH Options Assistant API",
-    description="Real-time ETH options scanner with entry signals",
-    version="2.0.0",
+    description="Real-time ETH options scanner with MTF momentum and ranked entry signals",
+    version="3.0.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -25,7 +49,7 @@ app.add_middleware(
 
 @app.get("/")
 def read_root():
-    return {"status": "ok", "version": "2.0.0"}
+    return {"status": "ok", "version": "3.0.0"}
 
 
 @app.get("/api/v1/market/eth-price")
@@ -39,9 +63,21 @@ def get_market_snapshot(symbol: str = "ETHUSDT"):
     spot = bybit_client.get_spot_price(symbol)
     if spot <= 0:
         raise HTTPException(status_code=502, detail="Bybit spot price unavailable")
-    candles = bybit_client.get_klines(symbol=symbol, interval="60", limit=50)
-    snap = build_market_snapshot(spot, candles, int(time.time() * 1000))
-    return snap.__dict__
+
+    candles_1h = recent_klines(symbol, "1h", limit=50) or bybit_client.get_klines(symbol, "60", 50)
+    snap = build_market_snapshot(spot, candles_1h, int(time.time() * 1000))
+
+    mtf_ctx = build_mtf_context(symbol)
+    return {
+        **snap.__dict__,
+        "mtf": mtf_ctx["mtf"],
+        "regime": mtf_ctx["regime"],
+        "atr_15m": mtf_ctx["atr_15m"],
+        "data_freshness": {
+            **mtf_ctx["data_freshness"],
+            "last_snapshot_age_s": latest_snapshot_age_seconds(),
+        },
+    }
 
 
 @app.get("/api/v1/analysis/top")
@@ -51,15 +87,21 @@ def get_top_opportunities(
     side: str | None = Query(None, description="Filter: 'call', 'put', or None for both"),
     max_distance_pct: float = Query(8.0, ge=0.5, le=30.0),
     max_hours: float = Query(30 * 24.0, ge=1, le=120 * 24.0),
+    min_score: float = Query(4.0, ge=0.0, le=10.0),
+    risk_budget_usd: float = Query(100.0, ge=10.0, le=10000.0),
+    include_pullback: bool = Query(True),
+    include_continuation: bool = Query(True),
+    persist: bool = Query(True),
 ):
     symbol = f"{base_coin}USDT"
     spot = bybit_client.get_spot_price(symbol)
     if spot <= 0:
         raise HTTPException(status_code=502, detail="Bybit spot price unavailable")
 
-    candles = bybit_client.get_klines(symbol=symbol, interval="60", limit=50)
     now_ms = int(time.time() * 1000)
-    market = build_market_snapshot(spot, candles, now_ms)
+    candles_1h = recent_klines(symbol, "1h", limit=50) or bybit_client.get_klines(symbol, "60", 50)
+    market = build_market_snapshot(spot, candles_1h, now_ms)
+    mtf_ctx = build_mtf_context(symbol)
 
     options = bybit_client.get_options_tickers(base_coin=base_coin)
     if side:
@@ -70,18 +112,53 @@ def get_top_opportunities(
         options=options,
         market=market,
         now_ms=now_ms,
+        mtf_ctx=mtf_ctx,
         top_n=top_n,
         max_distance_pct=max_distance_pct,
         max_hours=max_hours,
+        min_score=min_score,
+        risk_budget_usd=risk_budget_usd,
+        include_pullback=include_pullback,
+        include_continuation=include_continuation,
     )
+
+    if persist:
+        for op in top:
+            try:
+                persist_signal(
+                    generated_at_ms=now_ms,
+                    symbol=op["symbol"],
+                    side=op["side"][0],
+                    strike=float(op["strike"]),
+                    expiry_ms=None,
+                    score=float(op["scoring"]["score"]),
+                    signal_type=op["scoring"]["signal_type"],
+                    payload=op,
+                )
+            except Exception as e:  # noqa: BLE001
+                print(f"[main] persist_signal failed for {op['symbol']}: {e!r}", flush=True)
 
     return {
         "generated_at_ms": now_ms,
-        "market": market.__dict__,
+        "market": {
+            **market.__dict__,
+            "mtf": mtf_ctx["mtf"],
+            "regime": mtf_ctx["regime"],
+            "atr_15m": mtf_ctx["atr_15m"],
+        },
+        "data_freshness": {
+            **mtf_ctx["data_freshness"],
+            "last_snapshot_age_s": latest_snapshot_age_seconds(),
+        },
         "scanned_options": len(options),
         "top_opportunities": top,
         "disclaimer": "Образовательный сигнал, не финансовая рекомендация. Управляй риском.",
     }
+
+
+@app.get("/api/v1/signals/recent")
+def get_recent_signals(limit: int = Query(50, ge=1, le=500)):
+    return {"signals": recent_signals(limit=limit)}
 
 
 @app.get("/api/v1/analysis/test")

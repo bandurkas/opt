@@ -4,6 +4,79 @@ export const API_BASE =
 
 export type Side = "call" | "put" | "both";
 
+export type TFAnalysis = {
+  direction: "up" | "down" | "neutral" | "unknown";
+  strength: number;
+  momentum: "accelerating" | "decelerating" | "divergent" | "flat" | "unknown";
+  ema20: number | null;
+  ema50: number | null;
+  rsi: number | null;
+  volume_zscore: number | null;
+  change_pct: number;
+  last_close: number;
+};
+
+export type MTF = {
+  direction: "up" | "down" | "neutral";
+  agreement: number;
+  tfs_aligned: number;
+  tfs_total: number;
+  accelerating: boolean;
+  tf_5m: TFAnalysis;
+  tf_15m: TFAnalysis;
+  tf_1h: TFAnalysis;
+};
+
+export type Regime = {
+  regime: "trend" | "range" | "transition" | "unknown";
+  adx: number | null;
+  trend_strength: number;
+};
+
+export type IVMetrics = {
+  current_iv: number | null;
+  iv_change_1h_pct: number | null;
+  iv_change_24h_pct: number | null;
+  iv_rank_7d: number | null;
+  history_points_7d: number;
+  trend_1h: "rising" | "falling" | "stable" | "unknown";
+};
+
+export type ExitLeg = {
+  premium: number;
+  spot: number;
+  contracts_to_close: number;
+  profit_usd?: number;
+  loss_usd?: number;
+};
+
+export type ExitPlan = {
+  valid: boolean;
+  regime_used?: string;
+  tp1?: ExitLeg;
+  tp2?: ExitLeg;
+  sl?: ExitLeg;
+  trail_rule?: string;
+  trail_atr_15m?: number | null;
+  time_stop_hours?: number;
+  summary?: {
+    best_case_profit_usd: number;
+    worst_case_loss_usd: number;
+    risk_reward: number | null;
+  };
+};
+
+export type Scoring = {
+  signal_type: "continuation" | "pullback";
+  score: number;
+  signal: string;
+  recommendation: string;
+  breakdown: { factor: string; points: number }[];
+  theta_decay_probability: number;
+  theta_decay_class: "low" | "medium" | "high" | "critical";
+  setup_reason?: string;
+};
+
 export type Opportunity = {
   symbol: string;
   side: "Call" | "Put";
@@ -28,11 +101,8 @@ export type Opportunity = {
     iv: number;
   };
   liquidity: { open_interest: number; volume_24h: number };
-  scoring: {
-    score: number;
-    signal: string;
-    breakdown: { factor: string; points: number }[];
-  };
+  iv_metrics: IVMetrics;
+  scoring: Scoring;
   entry_plan: {
     action: string;
     position_summary: string;
@@ -42,19 +112,13 @@ export type Opportunity = {
     total_cost_usd: number;
     max_risk_usd: number;
     max_risk_note: string;
-    take_profit_premium: number;
-    stop_loss_premium: number;
-    target_spot: number;
-    stop_spot: number;
-    profit_at_tp_usd: number;
-    loss_at_sl_usd: number;
-    time_horizon_h: number;
+    exits: ExitPlan;
     bybit_steps: string[];
     limit_price_hint: string;
   };
 };
 
-export type MarketSnapshot = {
+export type MarketBlock = {
   spot: number;
   direction: "bullish" | "bearish" | "neutral";
   momentum_strong: boolean;
@@ -67,11 +131,20 @@ export type MarketSnapshot = {
   nearest_resistance: number;
   nearest_support: number;
   fetched_at_ms: number;
+  mtf: MTF;
+  regime: Regime;
+  atr_15m: number | null;
 };
 
 export type TopResponse = {
   generated_at_ms: number;
-  market: MarketSnapshot;
+  market: MarketBlock;
+  data_freshness: {
+    candles_5m: number;
+    candles_15m: number;
+    candles_1h: number;
+    last_snapshot_age_s: number | null;
+  };
   scanned_options: number;
   top_opportunities: Opportunity[];
   disclaimer: string;
@@ -82,6 +155,10 @@ export async function fetchTop(params: {
   side: Side;
   maxDistancePct: number;
   maxHours: number;
+  minScore?: number;
+  riskBudgetUsd?: number;
+  includePullback?: boolean;
+  includeContinuation?: boolean;
 }): Promise<TopResponse> {
   const qs = new URLSearchParams({
     base_coin: params.baseCoin,
@@ -90,6 +167,10 @@ export async function fetchTop(params: {
     max_hours: String(params.maxHours),
   });
   if (params.side !== "both") qs.set("side", params.side);
+  if (params.minScore !== undefined) qs.set("min_score", String(params.minScore));
+  if (params.riskBudgetUsd !== undefined) qs.set("risk_budget_usd", String(params.riskBudgetUsd));
+  if (params.includePullback === false) qs.set("include_pullback", "false");
+  if (params.includeContinuation === false) qs.set("include_continuation", "false");
 
   const res = await fetch(`${API_BASE}/analysis/top?${qs.toString()}`, {
     cache: "no-store",

@@ -53,6 +53,18 @@ class BybitClient:
             print(f"[bybit] orderbook error ({symbol}): {e}")
             return {"bids": [], "asks": []}
 
+    def get_option_orderbook(self, symbol: str, depth: int = 25) -> dict:
+        try:
+            response = self.session.get_orderbook(category="option", symbol=symbol, limit=depth)
+            r = response["result"]
+            return {
+                "bids": [(float(p), float(q)) for p, q in r.get("b", [])],
+                "asks": [(float(p), float(q)) for p, q in r.get("a", [])],
+            }
+        except Exception as e:
+            print(f"[bybit] option orderbook error ({symbol}): {e}")
+            return {"bids": [], "asks": []}
+
     def get_options_tickers(self, base_coin: str = "ETH") -> list[dict]:
         """Live options chain with bid/ask, IV, Greeks, OI, 24h volume."""
         try:

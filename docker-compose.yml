@@ -26,6 +26,19 @@ services:
       - REDIS_URL=redis://redis:6379/0
     restart: unless-stopped
 
+  poller:
+    build:
+      context: ./backend
+    command: python services/poller.py
+    depends_on:
+      - postgres
+    environment:
+      - DATABASE_URL=postgresql://user:password@postgres:5432/options_assistant
+      - POLL_INTERVAL=${POLL_INTERVAL:-30}
+      - ATM_PCT=${ATM_PCT:-8}
+      - POLLER_BASE_COIN=${POLLER_BASE_COIN:-ETH}
+    restart: unless-stopped
+
   frontend:
     build:
       context: ./frontend

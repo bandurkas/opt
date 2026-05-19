@@ -8,15 +8,18 @@ export function OpportunityCard({ op, rank }: { op: Opportunity; rank: number })
   const sideColor = isCall ? "text-emerald-400" : "text-rose-400";
   const sideBg = isCall ? "bg-emerald-500/15" : "bg-rose-500/15";
   const borderColor =
-    op.scoring.score >= 7
-      ? "border-emerald-500/50"
-      : op.scoring.score >= 5
-        ? "border-amber-500/40"
-        : "border-rose-500/40";
+    op.scoring.score >= 9
+      ? "border-emerald-400/60"
+      : op.scoring.score >= 7
+        ? "border-emerald-500/50"
+        : op.scoring.score >= 5
+          ? "border-amber-500/40"
+          : "border-rose-500/40";
   const signalColor =
     op.scoring.score >= 7 ? "neon-green-text" : op.scoring.score >= 5 ? "neon-yellow-text" : "neon-red-text";
 
   const plan = op.entry_plan;
+  const exits = plan.exits;
   const [copied, setCopied] = useState<string | null>(null);
 
   const copy = async (text: string, key: string) => {
@@ -29,12 +32,27 @@ export function OpportunityCard({ op, rank }: { op: Opportunity; rank: number })
     }
   };
 
+  const sigType = op.scoring.signal_type;
+  const sigTypeLabel = sigType === "pullback" ? "🔄 Pullback" : "🎯 Continuation";
+  const sigTypeColor = sigType === "pullback" ? "bg-blue-500/15 text-blue-300" : "bg-emerald-500/15 text-emerald-300";
+
+  const thetaP = op.scoring.theta_decay_probability * 100;
+  const thetaCls = op.scoring.theta_decay_class;
+  const thetaColor =
+    thetaCls === "critical"
+      ? "text-rose-400"
+      : thetaCls === "high"
+        ? "text-rose-300"
+        : thetaCls === "medium"
+          ? "text-amber-300"
+          : "text-emerald-300";
+
   return (
     <article className={`glass-panel border ${borderColor} p-6 flex flex-col gap-5`}>
       {/* ── Header ───────────────────────────────────────── */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex items-center flex-wrap gap-2 mb-1">
             <span className="text-[11px] uppercase tracking-widest text-slate-500 font-bold">#{rank}</span>
             <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${sideBg} ${sideColor}`}>
               {op.side.toUpperCase()}
@@ -42,10 +60,14 @@ export function OpportunityCard({ op, rank }: { op: Opportunity; rank: number })
             <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-slate-800/70 text-slate-300">
               {op.expiry}
             </span>
+            <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${sigTypeColor}`}>{sigTypeLabel}</span>
           </div>
           <div className="text-2xl font-black tracking-tight text-white">
             {op.side} ${op.strike.toFixed(0)}
           </div>
+          {op.scoring.setup_reason && (
+            <div className="text-xs text-blue-300/80 mt-1 italic">↳ {op.scoring.setup_reason}</div>
+          )}
         </div>
 
         <div className="text-right">
@@ -53,90 +75,123 @@ export function OpportunityCard({ op, rank }: { op: Opportunity; rank: number })
           <div className="text-[11px] uppercase tracking-widest text-slate-400 font-bold mt-1">
             {op.scoring.signal}
           </div>
+          <div className="text-[10px] uppercase tracking-widest text-slate-500 mt-0.5">
+            {op.scoring.recommendation}
+          </div>
         </div>
       </div>
 
-      {/* ── Что это вообще? ──────────────────────────────── */}
+      {/* ── Position summary ─────────────────────────────── */}
       <div className="bg-slate-900/60 rounded-xl p-4 border border-slate-700/40 text-sm leading-relaxed text-slate-200">
         {plan.position_summary}
       </div>
 
-      {/* ── ЧТО ДЕЛАТЬ — main action ─────────────────────── */}
+      {/* ── Action banner ────────────────────────────────── */}
       <div className="rounded-xl p-5 bg-gradient-to-br from-emerald-500/15 to-blue-500/10 border border-emerald-500/30">
         <div className="text-[11px] uppercase tracking-widest text-emerald-300 font-bold mb-3">
           🎯 Что делать
         </div>
-
         <div className="text-2xl font-black text-white leading-tight">
           Купи <span className="text-emerald-300">{plan.contracts}</span>{" "}
           {plan.contracts === 1 ? "контракт" : "контракта"}
           <br />
           по цене <span className="text-emerald-300">{plan.limit_price.toFixed(2)} USDT</span>
         </div>
-
         <div className="mt-3 text-sm text-slate-300 leading-relaxed">
-          Заплатишь всего:{" "}
-          <span className="font-bold text-white text-base">${plan.total_cost_usd.toFixed(2)}</span>
+          Заплатишь: <span className="font-bold text-white text-base">${plan.total_cost_usd.toFixed(2)}</span>
           <span className="text-slate-400"> · max риск (всё что можешь потерять)</span>
         </div>
-
         <p className="mt-3 text-xs text-amber-300/90 leading-relaxed border-t border-emerald-500/20 pt-3">
           ⚠️ <strong>{plan.limit_price.toFixed(2)}</strong> — это <strong>премия за один контракт</strong>{" "}
           (сколько ты платишь). Это <strong>не</strong> цена ETH.
         </p>
       </div>
 
-      {/* ── ВЫХОД ─────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div className="rounded-xl p-4 bg-emerald-500/10 border border-emerald-500/30">
-          <div className="text-[11px] uppercase tracking-widest text-emerald-300 font-bold mb-2">
-            ✅ Закрой с прибылью
+      {/* ── Exit plan: TP1 / TP2 / SL ────────────────────── */}
+      {exits.valid && exits.tp1 && exits.tp2 && exits.sl && (
+        <div className="space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <ExitLeg
+              kind="tp1"
+              title="✅ TP1 (50%)"
+              premium={exits.tp1.premium}
+              spot={exits.tp1.spot}
+              contracts={exits.tp1.contracts_to_close}
+              pnl={exits.tp1.profit_usd ?? 0}
+            />
+            <ExitLeg
+              kind="tp2"
+              title="🏆 TP2 (остаток)"
+              premium={exits.tp2.premium}
+              spot={exits.tp2.spot}
+              contracts={exits.tp2.contracts_to_close}
+              pnl={exits.tp2.profit_usd ?? 0}
+            />
+            <ExitLeg
+              kind="sl"
+              title="🛑 Stop loss"
+              premium={exits.sl.premium}
+              spot={exits.sl.spot}
+              contracts={plan.contracts}
+              pnl={-(exits.sl.loss_usd ?? 0)}
+            />
           </div>
-          <ul className="text-sm space-y-1 text-slate-200">
-            <li>
-              когда ETH дойдёт до <strong className="text-white">${plan.target_spot.toFixed(2)}</strong>
-            </li>
-            <li>
-              или премия вырастет до{" "}
-              <strong className="text-white">{plan.take_profit_premium.toFixed(2)}</strong>
-            </li>
-          </ul>
-          <div className="mt-3 text-sm font-bold text-emerald-300">
-            прибыль ≈ +${plan.profit_at_tp_usd.toFixed(2)}
+
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-400">
+            <span>⏱ Закрой если не сработало за {exits.time_stop_hours}ч</span>
+            {exits.trail_rule && <span>📈 {exits.trail_rule}</span>}
+            {exits.summary?.risk_reward !== null && exits.summary?.risk_reward !== undefined && (
+              <span className="ml-auto font-bold text-slate-300">
+                R/R = {exits.summary.risk_reward}:1
+              </span>
+            )}
           </div>
         </div>
+      )}
 
-        <div className="rounded-xl p-4 bg-rose-500/10 border border-rose-500/30">
-          <div className="text-[11px] uppercase tracking-widest text-rose-300 font-bold mb-2">
-            🛑 Режь убыток
+      {/* ── Theta gauge ──────────────────────────────────── */}
+      <div className="flex items-center gap-3 bg-slate-900/40 rounded-xl p-3 border border-slate-700/40">
+        <div className="flex-1">
+          <div className="text-[11px] uppercase tracking-widest text-slate-400 font-bold mb-1">
+            Шанс жертвы Theta
           </div>
-          <ul className="text-sm space-y-1 text-slate-200">
-            <li>
-              если ETH дойдёт до <strong className="text-white">${plan.stop_spot.toFixed(2)}</strong>
-            </li>
-            <li>
-              или премия упадёт до{" "}
-              <strong className="text-white">{plan.stop_loss_premium.toFixed(2)}</strong>
-            </li>
-          </ul>
-          <div className="mt-3 text-sm font-bold text-rose-300">
-            потеря ≈ −${plan.loss_at_sl_usd.toFixed(2)}
+          <div className="flex items-center gap-2">
+            <div className="flex-1 h-2 bg-slate-800 rounded overflow-hidden">
+              <div
+                className={
+                  thetaCls === "critical"
+                    ? "h-full bg-rose-400"
+                    : thetaCls === "high"
+                      ? "h-full bg-rose-300"
+                      : thetaCls === "medium"
+                        ? "h-full bg-amber-300"
+                        : "h-full bg-emerald-400"
+                }
+                style={{ width: `${Math.min(100, thetaP)}%` }}
+              />
+            </div>
+            <span className={`font-mono font-bold text-sm ${thetaColor}`}>{thetaP.toFixed(0)}%</span>
+          </div>
+          <div className="text-[10px] text-slate-500 mt-1">
+            {thetaCls === "critical"
+              ? "Очень рискованно — Theta съест премию"
+              : thetaCls === "high"
+                ? "Серьёзный распад, бери только сильный импульс"
+                : thetaCls === "medium"
+                  ? "Умеренный распад — управляемо"
+                  : "Низкий распад"}
           </div>
         </div>
       </div>
 
-      <div className="text-xs text-slate-400 -mt-2 text-center">
-        Горизонт сделки ~{plan.time_horizon_h}ч. Если за это время ничего не сработало — закрывай вручную.
-      </div>
-
-      {/* ── Bybit walkthrough — beginner ─────────────────── */}
+      {/* ── Bybit walkthrough ────────────────────────────── */}
       <details className="bg-slate-900/40 rounded-xl border border-slate-700/40">
         <summary className="cursor-pointer px-4 py-3 text-sm font-bold text-blue-300 hover:text-blue-200">
           📖 Как купить на Bybit (пошагово)
         </summary>
         <div className="px-4 pb-4">
-          <div className="flex items-center gap-2 my-3 text-xs">
-            <span className="text-slate-400">Символ для поиска:</span>
+          <div className="flex items-center gap-2 my-3 text-xs flex-wrap">
+            <span className="text-slate-400">Символ:</span>
             <code className="font-mono bg-slate-800/80 px-2 py-1 rounded text-emerald-300">
               {plan.symbol_to_search}
             </code>
@@ -161,7 +216,7 @@ export function OpportunityCard({ op, rank }: { op: Opportunity; rank: number })
         </div>
       </details>
 
-      {/* ── Технические детали (для продвинутых) ─────────── */}
+      {/* ── Technical details ────────────────────────────── */}
       <details className="bg-slate-900/30 rounded-xl border border-slate-700/30">
         <summary className="cursor-pointer px-4 py-3 text-[11px] uppercase tracking-widest text-slate-400 font-bold hover:text-white">
           🤓 Технические детали и разбор оценки
@@ -169,21 +224,14 @@ export function OpportunityCard({ op, rank }: { op: Opportunity; rank: number })
         <div className="px-4 pb-4 space-y-3">
           <div className="grid grid-cols-3 gap-2 text-xs">
             <Mini label="До страйка" value={`${op.distance.distance_percent.toFixed(2)}%`} sub={`$${op.distance.distance_usd}`} />
-            <Mini
-              label="Theta риск"
-              value={op.time.theta_risk}
-              sub={`${op.time.hours_to_expiry}ч`}
-              accent={
-                op.time.theta_risk === "низкий"
-                  ? "text-emerald-300"
-                  : op.time.theta_risk === "средний"
-                    ? "text-amber-300"
-                    : "text-rose-300"
-              }
-            />
+            <Mini label="До экспирации" value={`${op.time.hours_to_expiry}ч`} sub={op.time.theta_risk} />
             <Mini label="Спред" value={`${op.quotes.spread_pct.toFixed(1)}%`} sub={`${op.quotes.bid}/${op.quotes.ask}`} />
-            <Mini label="IV (волатильность)" value={`${(op.greeks.iv * 100).toFixed(0)}%`} />
-            <Mini label="Delta" value={op.greeks.delta.toFixed(2)} sub="чувств. к ETH" />
+            <Mini label="IV (%)" value={`${(op.greeks.iv * 100).toFixed(1)}%`} sub={
+              op.iv_metrics?.iv_change_1h_pct !== null
+                ? `1h ${op.iv_metrics.iv_change_1h_pct! > 0 ? "+" : ""}${op.iv_metrics.iv_change_1h_pct}%`
+                : "история собирается"
+            } />
+            <Mini label="Delta" value={op.greeks.delta.toFixed(2)} sub={`θ ${op.greeks.theta}`} />
             <Mini label="OI / V24h" value={`${op.liquidity.open_interest}`} sub={`v ${op.liquidity.volume_24h}`} />
           </div>
 
@@ -195,7 +243,7 @@ export function OpportunityCard({ op, rank }: { op: Opportunity; rank: number })
               {op.scoring.breakdown.map((b, i) => (
                 <li key={i} className="flex justify-between gap-3">
                   <span className="text-slate-400">{b.factor}</span>
-                  <span className={`font-mono font-bold ${b.points > 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                  <span className={`font-mono font-bold ${b.points > 0 ? "text-emerald-400" : b.points < 0 ? "text-rose-400" : "text-slate-500"}`}>
                     {b.points > 0 ? "+" : ""}
                     {b.points}
                   </span>
@@ -206,6 +254,40 @@ export function OpportunityCard({ op, rank }: { op: Opportunity; rank: number })
         </div>
       </details>
     </article>
+  );
+}
+
+function ExitLeg({
+  kind,
+  title,
+  premium,
+  spot,
+  contracts,
+  pnl,
+}: {
+  kind: "tp1" | "tp2" | "sl";
+  title: string;
+  premium: number;
+  spot: number;
+  contracts: number;
+  pnl: number;
+}) {
+  const isLoss = kind === "sl";
+  const bg = isLoss ? "bg-rose-500/10 border-rose-500/30" : "bg-emerald-500/10 border-emerald-500/30";
+  const pnlColor = isLoss ? "text-rose-300" : "text-emerald-300";
+  return (
+    <div className={`rounded-xl p-3 border ${bg} flex flex-col gap-1.5`}>
+      <div className="text-[11px] uppercase tracking-widest font-bold text-slate-300">{title}</div>
+      <div className="text-xs text-slate-200 leading-snug">
+        ETH → <strong className="text-white">${spot.toFixed(2)}</strong>
+        <br />
+        премия → <strong className="text-white">{premium.toFixed(2)}</strong>
+      </div>
+      <div className="text-[11px] text-slate-400">закрыть {contracts} контракт(ов)</div>
+      <div className={`text-sm font-bold ${pnlColor}`}>
+        {pnl >= 0 ? "+" : ""}${pnl.toFixed(2)}
+      </div>
+    </div>
   );
 }
 
