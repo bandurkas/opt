@@ -130,10 +130,9 @@ export function OpportunityCard({ op, rank }: { op: Opportunity; rank: number })
       </div>
 
       {/* ── Bybit walkthrough — beginner ─────────────────── */}
-      <details open className="bg-slate-900/40 rounded-xl border border-slate-700/40">
-        <summary className="cursor-pointer px-4 py-3 text-sm font-bold text-blue-300 hover:text-blue-200 flex items-center justify-between">
-          <span>📖 Как купить на Bybit (пошагово)</span>
-          <span className="text-[11px] text-slate-500 font-mono">click to toggle</span>
+      <details className="bg-slate-900/40 rounded-xl border border-slate-700/40">
+        <summary className="cursor-pointer px-4 py-3 text-sm font-bold text-blue-300 hover:text-blue-200">
+          📖 Как купить на Bybit (пошагово)
         </summary>
         <div className="px-4 pb-4">
           <div className="flex items-center gap-2 my-3 text-xs">
