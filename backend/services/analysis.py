@@ -187,6 +187,75 @@ def build_entry_plan(
 
 # ───────────────────────── public API ─────────────────────────
 
+def build_watchlist(
+    options: list[dict],
+    market: MarketSnapshot,
+    now_ms: int,
+    top_n: int = 5,
+    max_distance_pct: float = 5.0,
+    min_hours: float = 24.0,
+    max_hours: float = 14 * 24.0,
+) -> list[dict]:
+    """Rank ATM options by STATIC quality (no MTF/direction gating).
+    Used when no active signal fires — shows the user what's worth monitoring.
+    """
+    spot = market.spot
+    if spot <= 0:
+        return []
+
+    scored: list[tuple[float, dict]] = []
+    for opt in options:
+        hours = (opt["expiry_ms"] - now_ms) / 3_600_000
+        if hours < min_hours or hours > max_hours:
+            continue
+        dist_pct = abs(opt["strike"] - spot) / spot * 100
+        if dist_pct > max_distance_pct:
+            continue
+        if opt["bid"] <= 0 or opt["ask"] <= 0:
+            continue
+
+        # Quality factors, each ~ 0..2.5
+        liq = min(2.5, (opt["open_interest"] / 500 + opt["volume_24h"] / 50))
+        mid = (opt["bid"] + opt["ask"]) / 2
+        spread_pct = (opt["ask"] - opt["bid"]) / mid * 100 if mid > 0 else 100
+        spread_q = max(0.0, 2.5 - spread_pct / 4)
+        abs_delta = abs(opt["delta"])
+        delta_q = 2.0 if 0.3 <= abs_delta <= 0.55 else 1.0 if 0.2 <= abs_delta <= 0.7 else 0.3
+        atm_q = max(0.0, 2.5 - dist_pct / 2)
+        quality = round(liq + spread_q + delta_q + atm_q, 2)
+
+        scored.append((quality, opt))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+
+    out: list[dict] = []
+    for quality, opt in scored[:top_n]:
+        out.append({
+            "symbol": opt["symbol"],
+            "side": "Call" if opt["side"] == "C" else "Put",
+            "strike": opt["strike"],
+            "expiry": opt["expiry_label"],
+            "spot": spot,
+            "distance": distance(spot, opt["strike"]),
+            "time": time_to_expiry(opt["expiry_ms"], now_ms),
+            "quotes": {
+                "bid": opt["bid"], "ask": opt["ask"], "mark": opt["mark_price"],
+                "spread_pct": round((opt["ask"] - opt["bid"]) / ((opt["bid"] + opt["ask"]) / 2) * 100, 2),
+            },
+            "greeks": {
+                "delta": round(opt["delta"], 3),
+                "iv": round(opt["mark_iv"], 4),
+                "theta": round(opt["theta"], 3),
+            },
+            "liquidity": {
+                "open_interest": int(opt["open_interest"]),
+                "volume_24h": round(opt["volume_24h"], 2),
+            },
+            "quality_score": quality,
+        })
+    return out
+
+
 def scan_top_opportunities(
     options: list[dict],
     market: MarketSnapshot,

@@ -14,6 +14,7 @@ from db.repository import (
 from services.analysis import (
     STRATEGIES,
     build_mtf_context,
+    build_watchlist,
     distance,
     scan_top_opportunities,
     time_to_expiry,
@@ -154,6 +155,9 @@ def get_top_opportunities(
             except Exception as e:  # noqa: BLE001
                 print(f"[main] persist_signal failed for {op['symbol']}: {e!r}", flush=True)
 
+    # When no active signal, build a passive watchlist for monitoring
+    watchlist = build_watchlist(options, market, now_ms) if not top else []
+
     return {
         "generated_at_ms": now_ms,
         "market": {
@@ -168,6 +172,7 @@ def get_top_opportunities(
         },
         "scanned_options": len(options),
         "top_opportunities": top,
+        "watchlist": watchlist,
         "disclaimer": "Образовательный сигнал, не финансовая рекомендация. Управляй риском.",
     }
 

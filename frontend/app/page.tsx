@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { fetchTop, type Side, type TopResponse } from "./lib/api";
+import { EmptyState } from "./components/EmptyState";
 import { MarketBar } from "./components/MarketBar";
 import { OpportunityCard } from "./components/OpportunityCard";
 
@@ -140,20 +141,16 @@ export default function Home() {
       {loading && !data && <Loader />}
 
       {data && data.top_opportunities.length === 0 && !loading && (
-        <div className="glass-panel p-10 text-center text-slate-400">
-          <p className="text-xl font-bold mb-2">Сейчас нет хороших точек входа</p>
-          <p className="text-sm">
-            Ни один контракт не набрал минимум 4 балла. Попробуй расширить радиус страйка или
-            подожди — обновление каждые 30 секунд.
-          </p>
-        </div>
+        <EmptyState market={data.market} watchlist={data.watchlist ?? []} />
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        {data?.top_opportunities.map((op, i) => (
-          <OpportunityCard key={op.symbol} op={op} rank={i + 1} />
-        ))}
-      </div>
+      {data && data.top_opportunities.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          {data.top_opportunities.map((op, i) => (
+            <OpportunityCard key={op.symbol} op={op} rank={i + 1} />
+          ))}
+        </div>
+      )}
 
       {data && (
         <footer className="text-[11px] text-slate-500 text-center mt-4 leading-relaxed">

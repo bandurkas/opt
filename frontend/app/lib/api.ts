@@ -139,6 +139,20 @@ export type MarketBlock = {
   atr_15m: number | null;
 };
 
+export type WatchItem = {
+  symbol: string;
+  side: "Call" | "Put";
+  strike: number;
+  expiry: string;
+  spot: number;
+  distance: { distance_usd: number; distance_percent: number };
+  time: { hours_to_expiry: number; theta_risk: string; expiry_iso: string };
+  quotes: { bid: number; ask: number; mark: number; spread_pct: number };
+  greeks: { delta: number; iv: number; theta: number };
+  liquidity: { open_interest: number; volume_24h: number };
+  quality_score: number;
+};
+
 export type TopResponse = {
   generated_at_ms: number;
   market: MarketBlock;
@@ -150,6 +164,7 @@ export type TopResponse = {
   };
   scanned_options: number;
   top_opportunities: Opportunity[];
+  watchlist?: WatchItem[];
   disclaimer: string;
 };
 
