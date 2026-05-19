@@ -1,0 +1,444 @@
+"""Walk-forward backtest of the directional signal engine.
+
+What's modeled:
+  - MTF momentum (5m+15m+1h) + ADX regime, EXACTLY the same code as live
+  - Underlying realized return at multiple horizons (no look-ahead)
+  - Synthetic option premium via Black-Scholes (constant IV per run)
+  - Exit rules from exits.py applied to the synthetic premium path
+
+What's NOT modeled:
+  - Real Bybit historical option prices (chain not available without paid feed)
+  - Real bid-ask spread / fill quality
+  - IV change over time (constant IV assumption)
+  - Theta acceleration on the gamma curve as expiry approaches
+  - Walls / liquidity in real options book
+
+Treat results as a SANITY CHECK on signal direction & exit logic, NOT a P&L
+guarantee. Real edge will come from live calibration.
+"""
+from __future__ import annotations
+
+import json
+import math
+import os
+import sys
+import time
+from collections import defaultdict
+from datetime import datetime, timezone
+from statistics import mean, median
+
+# Ensure backend/ is on sys.path when running as a script.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from services import backtest_bs as bs  # noqa: E402
+from services.backtest_data import fetch_set  # noqa: E402
+from services.exits import build_exit_plan  # noqa: E402
+from services.indicators import atr  # noqa: E402
+from services.momentum_mtf import analyze_tf, consensus  # noqa: E402
+from services.regime import detect_regime  # noqa: E402
+
+
+# ───────────────────────── walk-forward iterator ─────────────────────────
+
+def _walk(klines_5m, klines_15m, klines_1h, history_window: int = 120):
+    """Yield (ts_close_ms, c5_slice, c15_slice, c1h_slice) bar-by-bar on 5m."""
+    i15 = 0
+    i1h = 0
+    for i, c5 in enumerate(klines_5m):
+        ts_end = c5["start_ms"] + 5 * 60 * 1000  # close time of this 5m bar
+        # advance 15m index while the 15m candle has closed by ts_end
+        while i15 < len(klines_15m) and klines_15m[i15]["start_ms"] + 15 * 60 * 1000 <= ts_end:
+            i15 += 1
+        while i1h < len(klines_1h) and klines_1h[i1h]["start_ms"] + 60 * 60 * 1000 <= ts_end:
+            i1h += 1
+        s5 = klines_5m[max(0, i + 1 - history_window):i + 1]
+        s15 = klines_15m[max(0, i15 - history_window):i15]
+        s1h = klines_1h[max(0, i1h - history_window):i1h]
+        yield ts_end, c5["close"], s5, s15, s1h
+
+
+# ───────────────────────── signal detection ─────────────────────────
+
+def _is_signal(side: str, mtf: dict, regime: dict, min_alignment: int) -> bool:
+    direction_needed = "up" if side == "C" else "down"
+    if mtf["direction"] != direction_needed:
+        return False
+    if mtf["tfs_aligned"] < min_alignment:
+        return False
+    # Skip flat regime for trend-continuation entries
+    if regime.get("regime") == "range":
+        return False
+    return True
+
+
+def _score_signal(mtf: dict, regime: dict) -> float:
+    """Simplified composite score used for bucketing in the report (0..10).
+    Mirrors the direction/momentum/regime portion of signal_scoring.
+    """
+    s = 0.0
+    if mtf["tfs_aligned"] == 3:
+        s += 2.0
+    elif mtf["tfs_aligned"] == 2:
+        s += 1.0
+    if mtf.get("accelerating"):
+        s += 1.5
+    vz = mtf.get("tf_1h", {}).get("volume_zscore") or 0
+    if vz >= 2:
+        s += 1.0
+    elif vz <= -1:
+        s -= 0.5
+    if regime.get("regime") == "trend":
+        s += 1.0
+    return max(0.0, min(10.0, round(s + 4.5, 1)))  # offset so neutral baseline ≈ 4.5
+
+
+# ───────────────────────── option simulation ─────────────────────────
+
+def _simulate_option_trade(
+    *,
+    side: str,
+    entry_spot: float,
+    sigma: float,
+    expiry_hours: float,
+    bars_5m_forward: list[dict],
+    tp1_pct: float,
+    tp2_pct: float,
+    sl_pct: float,
+    horizon_hours: float,
+) -> dict:
+    """Walk forward bar-by-bar on the underlying path. Compute synthetic premium
+    via BS at each step. Apply TP1/TP2/SL exits. Return resolution + P&L.
+
+    ATM strike (rounded to $25). T shrinks by 5m each step (theta decay baked in).
+    """
+    # Round strike to nearest $25 (Bybit ETH options usually $25/$50 spacing)
+    strike = round(entry_spot / 25) * 25
+
+    T0 = expiry_hours / (24 * 365)
+    entry_premium = bs.price(side, entry_spot, strike, T0, sigma)
+    if entry_premium <= 0.01:
+        return {"resolution": "no_entry", "pnl_pct": 0.0}
+
+    tp1_premium = entry_premium * (1 + tp1_pct)
+    tp2_premium = entry_premium * (1 + tp2_pct)
+    sl_premium = entry_premium * (1 - sl_pct)
+
+    closed_first_half = False
+    pnl_first_half_pct = 0.0
+    bars_to_use = min(len(bars_5m_forward), int(horizon_hours * 12))  # 12 bars per hour
+
+    for bi in range(bars_to_use):
+        bar = bars_5m_forward[bi]
+        elapsed_h = (bi + 1) * 5 / 60
+        T = max(0.0, (expiry_hours - elapsed_h) / (24 * 365))
+        # Use high/low for intrabar resolution
+        hi_spot = bar["high"]
+        lo_spot = bar["low"]
+
+        if side == "C":
+            # premium tracks spot upward (high triggers TP, low triggers SL)
+            high_premium = bs.price(side, hi_spot, strike, T, sigma)
+            low_premium = bs.price(side, lo_spot, strike, T, sigma)
+        else:
+            # for Put — low spot triggers TP, high spot triggers SL
+            high_premium = bs.price(side, lo_spot, strike, T, sigma)
+            low_premium = bs.price(side, hi_spot, strike, T, sigma)
+
+        # SL check first (worst case)
+        if low_premium <= sl_premium:
+            sl_pnl = (sl_premium - entry_premium) / entry_premium
+            if closed_first_half:
+                # half got TP1, half hits SL
+                total = (pnl_first_half_pct + sl_pnl) / 2
+            else:
+                total = sl_pnl
+            return {"resolution": "sl", "pnl_pct": round(total * 100, 2), "bars_held": bi + 1}
+
+        # TP2 (all remaining size)
+        if high_premium >= tp2_premium:
+            tp2_pnl = (tp2_premium - entry_premium) / entry_premium
+            if closed_first_half:
+                total = (pnl_first_half_pct + tp2_pnl) / 2
+            else:
+                total = tp2_pnl
+            return {"resolution": "tp2", "pnl_pct": round(total * 100, 2), "bars_held": bi + 1}
+
+        # TP1 (half size)
+        if not closed_first_half and high_premium >= tp1_premium:
+            closed_first_half = True
+            pnl_first_half_pct = (tp1_premium - entry_premium) / entry_premium
+
+    # Time stop — close at last available premium
+    last_bar = bars_5m_forward[bars_to_use - 1] if bars_to_use > 0 else None
+    if last_bar is None:
+        return {"resolution": "no_data", "pnl_pct": 0.0}
+    elapsed_h = bars_to_use * 5 / 60
+    T = max(0.0, (expiry_hours - elapsed_h) / (24 * 365))
+    final_spot = last_bar["close"]
+    final_premium = bs.price(side, final_spot, strike, T, sigma)
+    final_pnl = (final_premium - entry_premium) / entry_premium
+    if closed_first_half:
+        total = (pnl_first_half_pct + final_pnl) / 2
+        resolution = "time_stop_partial" if final_pnl < 0 else "tp1_only"
+    else:
+        total = final_pnl
+        resolution = "time_stop"
+    return {"resolution": resolution, "pnl_pct": round(total * 100, 2), "bars_held": bars_to_use}
+
+
+# ───────────────────────── main runner ─────────────────────────
+
+def run(
+    symbol: str = "ETHUSDT",
+    days: int = 60,
+    horizons_h: tuple[int, ...] = (1, 4, 12),
+    sigma: float = 0.60,
+    expiry_hours: float = 24.0,
+    min_alignment: int = 2,
+    cooldown_bars: int = 24,
+    tp1_pct: float = 0.30,
+    tp2_pct: float = 0.80,
+    sl_pct: float = 0.35,
+    option_horizon_h: float = 12.0,
+) -> dict:
+    print(f"[backtest] symbol={symbol} days={days} sigma={sigma} expiry_h={expiry_hours}", flush=True)
+    data = fetch_set(symbol, days=days, intervals=("5", "15", "60"))
+    klines_5m = data["5"]
+    klines_15m = data["15"]
+    klines_1h = data["60"]
+    if not klines_5m:
+        return {"error": "no klines fetched"}
+
+    # Total iteration count: skip initial warmup (need ~60+ candles for 1h EMA)
+    warmup = 60
+    total = max(0, len(klines_5m) - warmup)
+    print(f"[backtest] walking forward over {total} 5m bars (after {warmup}-bar warmup)...", flush=True)
+
+    signals: list[dict] = []
+    last_signal_idx = -10_000
+    t_start = time.time()
+
+    for idx, (ts_end, close, s5, s15, s1h) in enumerate(_walk(klines_5m, klines_15m, klines_1h)):
+        if idx < warmup:
+            continue
+        if idx % 2000 == 0 and idx > warmup:
+            print(f"[backtest]   {idx}/{len(klines_5m)} bars ({len(signals)} signals so far)...", flush=True)
+        if len(s5) < 50 or len(s15) < 50 or len(s1h) < 50:
+            continue
+        if idx - last_signal_idx < cooldown_bars:
+            continue
+
+        tf_5m = analyze_tf(s5)
+        tf_15m = analyze_tf(s15)
+        tf_1h = analyze_tf(s1h)
+        mtf = consensus(tf_5m, tf_15m, tf_1h)
+        regime = detect_regime(s1h)
+
+        # Try both sides
+        for side, side_label in (("C", "Call"), ("P", "Put")):
+            if not _is_signal(side, mtf, regime, min_alignment):
+                continue
+
+            score = _score_signal(mtf, regime)
+
+            # Realized underlying return at horizons (no look-ahead — already past idx)
+            future = klines_5m[idx + 1:]
+            returns_h: dict[str, float] = {}
+            for h in horizons_h:
+                bars_needed = h * 12  # 12 × 5m bars per hour
+                if len(future) < bars_needed:
+                    continue
+                end_close = future[bars_needed - 1]["close"]
+                ret_pct = (end_close - close) / close * 100
+                if side == "P":
+                    ret_pct = -ret_pct  # for Put, gain = downside move
+                returns_h[f"{h}h"] = round(ret_pct, 3)
+
+            # Synthetic option simulation
+            option = _simulate_option_trade(
+                side=side,
+                entry_spot=close,
+                sigma=sigma,
+                expiry_hours=expiry_hours,
+                bars_5m_forward=future,
+                tp1_pct=tp1_pct, tp2_pct=tp2_pct, sl_pct=sl_pct,
+                horizon_hours=option_horizon_h,
+            )
+
+            signals.append({
+                "ts_ms": ts_end,
+                "ts_iso": datetime.fromtimestamp(ts_end / 1000, tz=timezone.utc).isoformat(),
+                "side": side_label,
+                "score": score,
+                "regime": regime.get("regime"),
+                "adx": regime.get("adx"),
+                "mtf_aligned": mtf["tfs_aligned"],
+                "accelerating": mtf.get("accelerating"),
+                "underlying_returns": returns_h,
+                "option": option,
+            })
+            last_signal_idx = idx
+            break  # don't generate both sides on same bar
+
+    elapsed = round(time.time() - t_start, 1)
+    print(f"[backtest] done in {elapsed}s, {len(signals)} signals", flush=True)
+
+    return {
+        "params": {
+            "symbol": symbol, "days": days, "sigma": sigma,
+            "expiry_hours": expiry_hours, "min_alignment": min_alignment,
+            "cooldown_bars": cooldown_bars,
+            "tp1_pct": tp1_pct, "tp2_pct": tp2_pct, "sl_pct": sl_pct,
+            "option_horizon_h": option_horizon_h, "horizons_h": list(horizons_h),
+        },
+        "period": {
+            "from_ms": klines_5m[0]["start_ms"] if klines_5m else None,
+            "to_ms": klines_5m[-1]["start_ms"] if klines_5m else None,
+            "from_iso": datetime.fromtimestamp(klines_5m[0]["start_ms"] / 1000, tz=timezone.utc).isoformat() if klines_5m else None,
+            "to_iso": datetime.fromtimestamp(klines_5m[-1]["start_ms"] / 1000, tz=timezone.utc).isoformat() if klines_5m else None,
+        },
+        "total_bars": len(klines_5m),
+        "signals_count": len(signals),
+        "elapsed_s": elapsed,
+        "summary": _summarize(signals, horizons_h),
+        "signals": signals,
+    }
+
+
+def _summarize(signals: list[dict], horizons_h: tuple[int, ...]) -> dict:
+    if not signals:
+        return {"empty": True}
+
+    def _bucket_stats(items: list[dict]) -> dict:
+        if not items:
+            return {"count": 0}
+        s: dict = {"count": len(items)}
+        # Underlying win rates by horizon
+        for h in horizons_h:
+            key = f"{h}h"
+            rets = [it["underlying_returns"].get(key) for it in items if key in it["underlying_returns"]]
+            rets = [r for r in rets if r is not None]
+            if rets:
+                s[f"underlying_{key}_win_rate"] = round(sum(1 for r in rets if r > 0) / len(rets), 3)
+                s[f"underlying_{key}_avg_pct"] = round(mean(rets), 3)
+                s[f"underlying_{key}_median_pct"] = round(median(rets), 3)
+        # Option resolution mix
+        res_counter: dict[str, int] = defaultdict(int)
+        opt_pnls: list[float] = []
+        for it in items:
+            opt = it.get("option", {})
+            res_counter[opt.get("resolution", "?")] += 1
+            if "pnl_pct" in opt:
+                opt_pnls.append(opt["pnl_pct"])
+        s["option_resolution_pct"] = {k: round(v / len(items) * 100, 1) for k, v in res_counter.items()}
+        if opt_pnls:
+            s["option_avg_pnl_pct"] = round(mean(opt_pnls), 2)
+            s["option_median_pnl_pct"] = round(median(opt_pnls), 2)
+            s["option_win_rate"] = round(sum(1 for p in opt_pnls if p > 0) / len(opt_pnls), 3)
+        return s
+
+    # Overall + by score bucket + by side + by regime
+    summary: dict = {"overall": _bucket_stats(signals)}
+
+    buckets = [("score_4-6", lambda x: 4 <= x["score"] < 7),
+               ("score_7-8", lambda x: 7 <= x["score"] < 9),
+               ("score_9-10", lambda x: x["score"] >= 9)]
+    summary["by_score"] = {name: _bucket_stats([s for s in signals if pred(s)]) for name, pred in buckets}
+    summary["by_side"] = {
+        "Call": _bucket_stats([s for s in signals if s["side"] == "Call"]),
+        "Put":  _bucket_stats([s for s in signals if s["side"] == "Put"]),
+    }
+    summary["by_regime"] = {
+        r: _bucket_stats([s for s in signals if s.get("regime") == r])
+        for r in ("trend", "transition", "range", "unknown")
+    }
+    summary["by_mtf_alignment"] = {
+        str(a): _bucket_stats([s for s in signals if s.get("mtf_aligned") == a])
+        for a in (2, 3)
+    }
+    return summary
+
+
+def print_report(result: dict) -> None:
+    """Console-friendly summary."""
+    if "error" in result:
+        print(f"ERROR: {result['error']}")
+        return
+    print("=" * 80)
+    print("BACKTEST REPORT")
+    print("=" * 80)
+    p = result["params"]
+    print(f"Symbol: {p['symbol']} | Period: {result['period']['from_iso']} → {result['period']['to_iso']}")
+    print(f"Days: {p['days']} | sigma={p['sigma']} | expiry={p['expiry_hours']}h | bars={result['total_bars']}")
+    print(f"Signals: {result['signals_count']} | Walk time: {result['elapsed_s']}s")
+    print()
+
+    s = result["summary"]
+    if s.get("empty"):
+        print("No signals generated.")
+        return
+
+    def _row(name: str, stats: dict, horizons):
+        if not stats or stats.get("count", 0) == 0:
+            return
+        parts = [f"{name:<20}", f"n={stats['count']:>5}"]
+        for h in horizons:
+            wr = stats.get(f"underlying_{h}h_win_rate")
+            avg = stats.get(f"underlying_{h}h_avg_pct")
+            if wr is not None:
+                parts.append(f"{h}h WR {wr*100:>5.1f}% avg{avg:+6.2f}%")
+        opt_wr = stats.get("option_win_rate")
+        opt_avg = stats.get("option_avg_pnl_pct")
+        if opt_wr is not None:
+            parts.append(f"OPT WR {opt_wr*100:>5.1f}% avg{opt_avg:+7.2f}%")
+        print(" | ".join(parts))
+
+    horizons = p["horizons_h"]
+    print(f"-- Overall --")
+    _row("ALL", s["overall"], horizons)
+    print(f"-- By score --")
+    for k, v in s["by_score"].items():
+        _row(k, v, horizons)
+    print(f"-- By side --")
+    for k, v in s["by_side"].items():
+        _row(k, v, horizons)
+    print(f"-- By regime --")
+    for k, v in s["by_regime"].items():
+        _row(k, v, horizons)
+    print(f"-- By MTF alignment --")
+    for k, v in s["by_mtf_alignment"].items():
+        _row(f"aligned={k}/3", v, horizons)
+    print()
+    print("Option resolution mix (overall):")
+    for k, v in s["overall"].get("option_resolution_pct", {}).items():
+        print(f"  {k:<20} {v}%")
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--symbol", default="ETHUSDT")
+    parser.add_argument("--days", type=int, default=60)
+    parser.add_argument("--sigma", type=float, default=0.60, help="Constant annualized IV")
+    parser.add_argument("--expiry-hours", type=float, default=24.0)
+    parser.add_argument("--min-alignment", type=int, default=2)
+    parser.add_argument("--cooldown-bars", type=int, default=24, help="Min 5m bars between signals")
+    parser.add_argument("--out", default="/tmp/backtest_result.json")
+    args = parser.parse_args()
+
+    result = run(
+        symbol=args.symbol,
+        days=args.days,
+        sigma=args.sigma,
+        expiry_hours=args.expiry_hours,
+        min_alignment=args.min_alignment,
+        cooldown_bars=args.cooldown_bars,
+    )
+    with open(args.out, "w") as f:
+        # signals[] can be huge — write trimmed copy
+        trimmed = {**result, "signals": result["signals"][:200]}
+        json.dump(trimmed, f, indent=2)
+    print(f"\nFull result trimmed-saved to {args.out} (first 200 signals)")
+    print()
+    print_report(result)
