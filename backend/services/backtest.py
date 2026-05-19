@@ -200,6 +200,7 @@ def run(
     tp2_pct: float = 0.80,
     sl_pct: float = 0.35,
     option_horizon_h: float = 12.0,
+    fade: bool = False,
 ) -> dict:
     print(f"[backtest] symbol={symbol} days={days} sigma={sigma} expiry_h={expiry_hours}", flush=True)
     data = fetch_set(symbol, days=days, intervals=("5", "15", "60"))
@@ -240,6 +241,11 @@ def run(
                 continue
 
             score = _score_signal(mtf, regime)
+
+            # Fade mode: invert the trade direction (signal says up → buy Put).
+            if fade:
+                side = "P" if side == "C" else "C"
+                side_label = "Put" if side_label == "Call" else "Call"
 
             # Realized underlying return at horizons (no look-ahead — already past idx)
             future = klines_5m[idx + 1:]
@@ -425,6 +431,7 @@ if __name__ == "__main__":
     parser.add_argument("--min-alignment", type=int, default=2)
     parser.add_argument("--cooldown-bars", type=int, default=24, help="Min 5m bars between signals")
     parser.add_argument("--out", default="/tmp/backtest_result.json")
+    parser.add_argument("--fade", action="store_true", help="Invert direction (mean-reversion test)")
     args = parser.parse_args()
 
     result = run(
@@ -434,6 +441,7 @@ if __name__ == "__main__":
         expiry_hours=args.expiry_hours,
         min_alignment=args.min_alignment,
         cooldown_bars=args.cooldown_bars,
+        fade=args.fade,
     )
     with open(args.out, "w") as f:
         # signals[] can be huge — write trimmed copy
