@@ -12,6 +12,7 @@ from db.repository import (
     recent_signals,
 )
 from services.analysis import (
+    STRATEGIES,
     build_mtf_context,
     distance,
     scan_top_opportunities,
@@ -80,17 +81,30 @@ def get_market_snapshot(symbol: str = "ETHUSDT"):
     }
 
 
+@app.get("/api/v1/strategies")
+def list_strategies():
+    return {
+        "default": "fade_long_dated",
+        "strategies": [
+            {"id": sid, **{k: v for k, v in cfg.items() if k != "generators"}}
+            for sid, cfg in STRATEGIES.items()
+        ],
+    }
+
+
 @app.get("/api/v1/analysis/top")
 def get_top_opportunities(
     base_coin: str = Query("ETH", description="Underlying coin (ETH/BTC)"),
     top_n: int = Query(3, ge=1, le=10),
     side: str | None = Query(None, description="Filter: 'call', 'put', or None for both"),
     max_distance_pct: float = Query(8.0, ge=0.5, le=30.0),
-    max_hours: float = Query(30 * 24.0, ge=1, le=120 * 24.0),
+    max_hours: float | None = Query(None, description="Override strategy default"),
+    min_hours: float | None = Query(None, description="Override strategy default"),
     min_score: float = Query(4.0, ge=0.0, le=10.0),
     risk_budget_usd: float = Query(100.0, ge=10.0, le=10000.0),
-    include_pullback: bool = Query(True),
-    include_continuation: bool = Query(True),
+    strategy: str = Query("fade_long_dated", description="fade_long_dated | trend_continuation_legacy"),
+    include_pullback: bool | None = Query(None),
+    include_continuation: bool | None = Query(None),
     persist: bool = Query(True),
 ):
     symbol = f"{base_coin}USDT"
@@ -114,10 +128,12 @@ def get_top_opportunities(
         now_ms=now_ms,
         mtf_ctx=mtf_ctx,
         top_n=top_n,
-        max_distance_pct=max_distance_pct,
+        min_hours=min_hours,
         max_hours=max_hours,
+        max_distance_pct=max_distance_pct,
         min_score=min_score,
         risk_budget_usd=risk_budget_usd,
+        strategy=strategy,
         include_pullback=include_pullback,
         include_continuation=include_continuation,
     )

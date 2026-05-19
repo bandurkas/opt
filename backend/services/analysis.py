@@ -6,13 +6,34 @@ from datetime import datetime, timezone
 
 from db.repository import recent_klines
 
-from . import continuation, pullback
+from . import continuation, fade, pullback
 from .exits import build_exit_plan
 from .indicators import atr
 from .iv_analytics import iv_metrics
 from .market_data import MarketSnapshot
 from .momentum_mtf import analyze_tf, consensus
 from .regime import detect_regime
+
+
+# Strategy names exposed to API/frontend
+STRATEGIES = {
+    "fade_long_dated": {
+        "label": "Fade / Mean Reversion (рекомендуется)",
+        "default_min_hours": 96.0,           # ≥4 days
+        "default_max_hours": 14 * 24.0,      # ≤14 days
+        "bands_profile": "fade_long",
+        "generators": ["fade"],
+        "description": "Бэктест-обоснованная: фейд MTF-консенсуса, expiry 4-14 дней, TP1+20/TP2+70/SL-35.",
+    },
+    "trend_continuation_legacy": {
+        "label": "Trend Continuation (legacy)",
+        "default_min_hours": 6.0,
+        "default_max_hours": 30 * 24.0,
+        "bands_profile": None,                # regime-default bands
+        "generators": ["continuation", "pullback"],
+        "description": "Старая стратегия trend-following. В бэктесте 60d показывала отрицательный edge.",
+    },
+}
 
 
 # ───────────────────────── helpers ─────────────────────────
@@ -94,6 +115,7 @@ def build_entry_plan(
     mtf_ctx: dict,
     hours: float,
     risk_budget_usd: float,
+    bands_profile: str | None = None,
 ) -> dict:
     bid, ask, mark = option["bid"], option["ask"], option["mark_price"]
     mid = _mid(bid, ask)
@@ -132,6 +154,7 @@ def build_entry_plan(
         nearest_resistance=market.nearest_resistance,
         nearest_support=market.nearest_support,
         atr_15m=mtf_ctx.get("atr_15m"),
+        bands_profile=bands_profile,
     )
 
     bybit_steps = [
@@ -171,17 +194,36 @@ def scan_top_opportunities(
     *,
     mtf_ctx: dict,
     top_n: int = 3,
-    min_hours: float = 6.0,
-    max_hours: float = 30 * 24.0,
+    min_hours: float | None = None,
+    max_hours: float | None = None,
     max_distance_pct: float = 8.0,
     min_score: float = 4.0,
     risk_budget_usd: float = 100.0,
-    include_pullback: bool = True,
-    include_continuation: bool = True,
+    strategy: str = "fade_long_dated",
+    include_pullback: bool | None = None,
+    include_continuation: bool | None = None,
 ) -> list[dict]:
     spot = market.spot
     if spot <= 0:
         return []
+
+    strat = STRATEGIES.get(strategy, STRATEGIES["fade_long_dated"])
+    bands_profile = strat["bands_profile"]
+    if min_hours is None:
+        min_hours = strat["default_min_hours"]
+    if max_hours is None:
+        max_hours = strat["default_max_hours"]
+
+    # Allow override; otherwise use strategy defaults
+    gens = list(strat["generators"])
+    if include_continuation is True and "continuation" not in gens:
+        gens.append("continuation")
+    if include_pullback is True and "pullback" not in gens:
+        gens.append("pullback")
+    if include_continuation is False and "continuation" in gens:
+        gens.remove("continuation")
+    if include_pullback is False and "pullback" in gens:
+        gens.remove("pullback")
 
     mtf = mtf_ctx["mtf"]
     regime = mtf_ctx["regime"]
@@ -200,12 +242,17 @@ def scan_top_opportunities(
         holding_horizon = min(24.0, hours / 2)
 
         signals: list[dict] = []
-        if include_continuation:
+        if "fade" in gens:
+            fd = fade.evaluate(option=opt, spot=spot, mtf=mtf, regime=regime,
+                               iv_metrics=ivm, hours=hours, holding_horizon_h=holding_horizon)
+            if fd is not None:
+                signals.append(fd)
+        if "continuation" in gens:
             signals.append(continuation.evaluate(
                 option=opt, spot=spot, mtf=mtf, regime=regime,
                 iv_metrics=ivm, hours=hours, holding_horizon_h=holding_horizon,
             ))
-        if include_pullback:
+        if "pullback" in gens:
             pb = pullback.evaluate(
                 option=opt, spot=spot, mtf=mtf, regime=regime,
                 iv_metrics=ivm, hours=hours, holding_horizon_h=holding_horizon,
@@ -216,7 +263,7 @@ def scan_top_opportunities(
         for sig in signals:
             if sig["score"] < min_score:
                 continue
-            plan = build_entry_plan(opt, market, mtf_ctx, hours, risk_budget_usd)
+            plan = build_entry_plan(opt, market, mtf_ctx, hours, risk_budget_usd, bands_profile=bands_profile)
 
             candidates.append({
                 "symbol": opt["symbol"],

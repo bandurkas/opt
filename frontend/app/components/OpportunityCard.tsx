@@ -33,8 +33,14 @@ export function OpportunityCard({ op, rank }: { op: Opportunity; rank: number })
   };
 
   const sigType = op.scoring.signal_type;
-  const sigTypeLabel = sigType === "pullback" ? "🔄 Pullback" : "🎯 Continuation";
-  const sigTypeColor = sigType === "pullback" ? "bg-blue-500/15 text-blue-300" : "bg-emerald-500/15 text-emerald-300";
+  const sigTypeLabel =
+    sigType === "fade" ? "🪞 Fade" : sigType === "pullback" ? "🔄 Pullback" : "🎯 Continuation";
+  const sigTypeColor =
+    sigType === "fade"
+      ? "bg-violet-500/15 text-violet-300"
+      : sigType === "pullback"
+        ? "bg-blue-500/15 text-blue-300"
+        : "bg-emerald-500/15 text-emerald-300";
 
   const thetaP = op.scoring.theta_decay_probability * 100;
   const thetaCls = op.scoring.theta_decay_class;

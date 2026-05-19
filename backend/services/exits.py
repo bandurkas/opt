@@ -10,7 +10,10 @@ ATR(15m) used for trailing size when available.
 from __future__ import annotations
 
 
-def _bands_for_regime(regime: str) -> dict:
+def _bands_for_regime(regime: str, profile: str | None = None) -> dict:
+    # Backtest-tuned for fade strategy (60d sweep): WR 52.7%, avg +2.47%, median +2.34%
+    if profile == "fade_long":
+        return {"tp1_pct": 0.20, "tp2_pct": 0.70, "sl_pct": 0.35}
     if regime == "trend":
         return {"tp1_pct": 0.35, "tp2_pct": 1.0, "sl_pct": 0.40}
     if regime == "range":
@@ -29,12 +32,13 @@ def build_exit_plan(
     nearest_resistance: float,
     nearest_support: float,
     atr_15m: float | None,
+    bands_profile: str | None = None,
 ) -> dict:
     """Return a structured exit plan with concrete dollar P&L."""
     if limit_price <= 0 or contracts <= 0:
         return {"valid": False}
 
-    b = _bands_for_regime(regime)
+    b = _bands_for_regime(regime, profile=bands_profile)
 
     tp1_premium = round(limit_price * (1 + b["tp1_pct"]), 4)
     tp2_premium = round(limit_price * (1 + b["tp2_pct"]), 4)

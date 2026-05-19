@@ -66,8 +66,11 @@ export type ExitPlan = {
   };
 };
 
+export type SignalType = "continuation" | "pullback" | "fade";
+export type Strategy = "fade_long_dated" | "trend_continuation_legacy";
+
 export type Scoring = {
-  signal_type: "continuation" | "pullback";
+  signal_type: SignalType;
   score: number;
   signal: string;
   recommendation: string;
@@ -154,9 +157,11 @@ export async function fetchTop(params: {
   baseCoin: string;
   side: Side;
   maxDistancePct: number;
-  maxHours: number;
+  maxHours?: number;
+  minHours?: number;
   minScore?: number;
   riskBudgetUsd?: number;
+  strategy?: Strategy;
   includePullback?: boolean;
   includeContinuation?: boolean;
 }): Promise<TopResponse> {
@@ -164,13 +169,15 @@ export async function fetchTop(params: {
     base_coin: params.baseCoin,
     top_n: "3",
     max_distance_pct: String(params.maxDistancePct),
-    max_hours: String(params.maxHours),
   });
   if (params.side !== "both") qs.set("side", params.side);
+  if (params.maxHours !== undefined) qs.set("max_hours", String(params.maxHours));
+  if (params.minHours !== undefined) qs.set("min_hours", String(params.minHours));
   if (params.minScore !== undefined) qs.set("min_score", String(params.minScore));
   if (params.riskBudgetUsd !== undefined) qs.set("risk_budget_usd", String(params.riskBudgetUsd));
-  if (params.includePullback === false) qs.set("include_pullback", "false");
-  if (params.includeContinuation === false) qs.set("include_continuation", "false");
+  if (params.strategy) qs.set("strategy", params.strategy);
+  if (params.includePullback !== undefined) qs.set("include_pullback", String(params.includePullback));
+  if (params.includeContinuation !== undefined) qs.set("include_continuation", String(params.includeContinuation));
 
   const res = await fetch(`${API_BASE}/analysis/top?${qs.toString()}`, {
     cache: "no-store",

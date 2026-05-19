@@ -10,7 +10,7 @@ const REFRESH_MS = 30_000;
 export default function Home() {
   const [side, setSide] = useState<Side>("both");
   const [maxDistance, setMaxDistance] = useState(8);
-  const [maxHours, setMaxHours] = useState(7 * 24);
+  const [maxHours, setMaxHours] = useState(14 * 24);
   const [data, setData] = useState<TopResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -23,6 +23,7 @@ export default function Home() {
         side,
         maxDistancePct: maxDistance,
         maxHours,
+        strategy: "fade_long_dated",
       });
       setData(r);
       setError(null);
@@ -61,6 +62,17 @@ export default function Home() {
           {updatedAt ? `обновлено ${updatedAt.toLocaleTimeString("ru-RU")}` : "ожидание данных…"}
         </div>
       </header>
+
+      {/* Strategy info banner */}
+      <section className="glass-panel p-3 flex items-center gap-3 text-xs">
+        <span className="px-2 py-1 rounded bg-violet-500/15 text-violet-300 font-bold">🪞 Fade / Mean Reversion</span>
+        <span className="text-slate-400">
+          Expiry 4–14д · TP1 +20% / TP2 +70% / SL −35%
+        </span>
+        <span className="ml-auto text-emerald-300 font-mono">
+          Бэктест 60д: WR 52.7% · avg +2.47% · median +2.34%
+        </span>
+      </section>
 
       {/* Filters */}
       <section className="glass-panel p-4 flex flex-wrap gap-4 items-end">
