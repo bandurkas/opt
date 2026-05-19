@@ -105,6 +105,7 @@ def _simulate_option_trade(
     tp2_pct: float,
     sl_pct: float,
     horizon_hours: float,
+    spread_pct: float = 0.0,
 ) -> dict:
     """Walk forward bar-by-bar on the underlying path. Compute synthetic premium
     via BS at each step. Apply TP1/TP2/SL exits. Return resolution + P&L.
@@ -115,13 +116,19 @@ def _simulate_option_trade(
     strike = round(entry_spot / 25) * 25
 
     T0 = expiry_hours / (24 * 365)
-    entry_premium = bs.price(side, entry_spot, strike, T0, sigma)
-    if entry_premium <= 0.01:
+    bs_mid = bs.price(side, entry_spot, strike, T0, sigma)
+    if bs_mid <= 0.01:
         return {"resolution": "no_entry", "pnl_pct": 0.0}
 
-    tp1_premium = entry_premium * (1 + tp1_pct)
-    tp2_premium = entry_premium * (1 + tp2_pct)
-    sl_premium = entry_premium * (1 - sl_pct)
+    half_spread = spread_pct / 200.0  # one-way slippage
+    # Buyer pays ask = mid * (1 + half_spread)
+    entry_premium = bs_mid * (1 + half_spread)
+
+    # TP/SL targets are net premiums the buyer can SELL (i.e. receive on bid).
+    # We need mid * (1 - half_spread) >= entry_premium * (1 + tp1_pct)  → mid threshold.
+    tp1_premium = entry_premium * (1 + tp1_pct) / (1 - half_spread) if half_spread < 1 else entry_premium * (1 + tp1_pct)
+    tp2_premium = entry_premium * (1 + tp2_pct) / (1 - half_spread) if half_spread < 1 else entry_premium * (1 + tp2_pct)
+    sl_premium = entry_premium * (1 - sl_pct) / (1 - half_spread) if half_spread < 1 else entry_premium * (1 - sl_pct)
 
     closed_first_half = False
     pnl_first_half_pct = 0.0
@@ -168,15 +175,16 @@ def _simulate_option_trade(
             closed_first_half = True
             pnl_first_half_pct = (tp1_premium - entry_premium) / entry_premium
 
-    # Time stop — close at last available premium
+    # Time stop — close at last available premium (selling at bid)
     last_bar = bars_5m_forward[bars_to_use - 1] if bars_to_use > 0 else None
     if last_bar is None:
         return {"resolution": "no_data", "pnl_pct": 0.0}
     elapsed_h = bars_to_use * 5 / 60
     T = max(0.0, (expiry_hours - elapsed_h) / (24 * 365))
     final_spot = last_bar["close"]
-    final_premium = bs.price(side, final_spot, strike, T, sigma)
-    final_pnl = (final_premium - entry_premium) / entry_premium
+    final_mid = bs.price(side, final_spot, strike, T, sigma)
+    final_received = final_mid * (1 - half_spread)
+    final_pnl = (final_received - entry_premium) / entry_premium
     if closed_first_half:
         total = (pnl_first_half_pct + final_pnl) / 2
         resolution = "time_stop_partial" if final_pnl < 0 else "tp1_only"
@@ -250,12 +258,12 @@ def simulate_signal_set(
     sl_pct: float,
     option_horizon_h: float,
     horizons_h: tuple[int, ...] = (1, 4, 12),
+    spread_pct: float = 0.0,
 ) -> list[dict]:
     out = []
     for sig in signals:
         idx = sig["idx_5m"]
         future = klines_5m[idx + 1:]
-        # Underlying realized returns
         urets: dict[str, float] = {}
         for h in horizons_h:
             bars_needed = h * 12
@@ -270,7 +278,7 @@ def simulate_signal_set(
             side=sig["side"], entry_spot=sig["close"], sigma=sigma,
             expiry_hours=expiry_hours, bars_5m_forward=future,
             tp1_pct=tp1_pct, tp2_pct=tp2_pct, sl_pct=sl_pct,
-            horizon_hours=option_horizon_h,
+            horizon_hours=option_horizon_h, spread_pct=spread_pct,
         )
         out.append({**sig, "underlying_returns": urets, "option": option,
                     "side": sig["side"], "ts_iso": datetime.fromtimestamp(sig["ts_ms"] / 1000, tz=timezone.utc).isoformat()})
@@ -290,6 +298,8 @@ def run(
     sl_pct: float = 0.35,
     option_horizon_h: float = 12.0,
     fade: bool = False,
+    spread_pct: float = 0.0,
+    side_filter: str | None = None,  # 'C', 'P', or None
 ) -> dict:
     print(f"[backtest] symbol={symbol} days={days} sigma={sigma} expiry_h={expiry_hours}", flush=True)
     data = fetch_set(symbol, days=days, intervals=("5", "15", "60"))
@@ -336,6 +346,9 @@ def run(
                 side = "P" if side == "C" else "C"
                 side_label = "Put" if side_label == "Call" else "Call"
 
+            if side_filter and side != side_filter:
+                continue
+
             # Realized underlying return at horizons (no look-ahead — already past idx)
             future = klines_5m[idx + 1:]
             returns_h: dict[str, float] = {}
@@ -358,6 +371,7 @@ def run(
                 bars_5m_forward=future,
                 tp1_pct=tp1_pct, tp2_pct=tp2_pct, sl_pct=sl_pct,
                 horizon_hours=option_horizon_h,
+                spread_pct=spread_pct,
             )
 
             signals.append({
@@ -590,6 +604,11 @@ if __name__ == "__main__":
     parser.add_argument("--fade", action="store_true", help="Invert direction (mean-reversion test)")
     parser.add_argument("--sweep", action="store_true", help="Run TP/SL parameter sweep instead of single backtest")
     parser.add_argument("--option-horizon-h", type=float, default=12.0)
+    parser.add_argument("--spread-pct", type=float, default=0.0, help="Round-trip spread % (realistic friction)")
+    parser.add_argument("--side", choices=["C", "P"], default=None, help="Only trade this side")
+    parser.add_argument("--tp1", type=float, default=0.30)
+    parser.add_argument("--tp2", type=float, default=0.80)
+    parser.add_argument("--sl", type=float, default=0.35)
     args = parser.parse_args()
 
     if args.sweep:
@@ -612,6 +631,9 @@ if __name__ == "__main__":
         min_alignment=args.min_alignment,
         cooldown_bars=args.cooldown_bars,
         fade=args.fade,
+        spread_pct=args.spread_pct,
+        side_filter=args.side,
+        tp1_pct=args.tp1, tp2_pct=args.tp2, sl_pct=args.sl,
     )
     with open(args.out, "w") as f:
         # signals[] can be huge — write trimmed copy
