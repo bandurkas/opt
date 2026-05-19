@@ -40,18 +40,21 @@ def evaluate(
     breakdown: list[dict] = []
     total = 0.0
 
-    # MTF strength of the trend we're fading — stronger trend = stronger fade signal
+    # MTF strength of the trend we're fading
     if aligned == 3:
-        total += 2.0
-        breakdown.append({"factor": "MTF 3/3 против сделки — fade силы", "points": 2.0})
+        total -= 2.0
+        breakdown.append({"factor": "MTF 3/3 — тренд слишком сильный (монолит), опасно для fade", "points": -2.0})
     else:
-        total += 1.0
-        breakdown.append({"factor": "MTF 2/3 против сделки — fade умеренный", "points": 1.0})
+        total += 2.0
+        breakdown.append({"factor": "MTF 2/3 — умеренный импульс, идеальная точка для отката", "points": 2.0})
 
-    # Accelerating momentum to fade = better setup (stretched rubber-band)
+    # Accelerating momentum to fade
     if mtf.get("accelerating"):
-        total += 1.0
-        breakdown.append({"factor": "Тренд ускоряется (растянут) — пружина дальше отскочит", "points": 1.0})
+        total -= 1.0
+        breakdown.append({"factor": "Тренд всё ещё ускоряется — ловить нож рано", "points": -1.0})
+    else:
+        total += 1.5
+        breakdown.append({"factor": "Импульс замедляется (accel=False) — идеальный тайминг", "points": 1.5})
 
     # Volume z-score: spike on the move being faded is GOOD (climactic)
     vz = mtf.get("tf_1h", {}).get("volume_zscore") or 0
@@ -72,17 +75,17 @@ def evaluate(
         total += pts
         breakdown.append(item)
 
-    # Regime: best in transition, ok in trend, bad in range
+    # Regime: best in trend, bad in transition/range
     r = regime.get("regime", "unknown")
-    if r == "transition":
+    if r == "trend":
         total += 1.5
-        breakdown.append({"factor": f"Transition регим (ADX={regime.get('adx')}) — оптимум для fade", "points": 1.5})
-    elif r == "trend":
-        total += 0.5
-        breakdown.append({"factor": f"Trend регим (ADX={regime.get('adx')}) — fade приемлем", "points": 0.5})
+        breakdown.append({"factor": f"Trend режим (ADX={regime.get('adx')}) — лучший для отката", "points": 1.5})
+    elif r == "transition":
+        total -= 2.0
+        breakdown.append({"factor": f"Transition режим (ADX={regime.get('adx')}) — убыточен для fade", "points": -2.0})
     elif r == "range":
         total -= 1.5
-        breakdown.append({"factor": "Range регим — плох для fade", "points": -1.5})
+        breakdown.append({"factor": "Range режим — плох для fade", "points": -1.5})
 
     # Theta
     mid = (option["bid"] + option["ask"]) / 2 if option["bid"] > 0 and option["ask"] > 0 else option["mark_price"]

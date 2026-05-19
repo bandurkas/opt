@@ -19,11 +19,11 @@ from .regime import detect_regime
 STRATEGIES = {
     "fade_long_dated": {
         "label": "Fade / Mean Reversion (рекомендуется)",
-        "default_min_hours": 96.0,           # ≥4 days
-        "default_max_hours": 14 * 24.0,      # ≤14 days
+        "default_min_hours": 72.0,           # ≥3 days
+        "default_max_hours": 120.0,          # ≤5 days (target is 96h)
         "bands_profile": "fade_long",
         "generators": ["fade"],
-        "description": "Бэктест-обоснованная: фейд MTF-консенсуса, expiry 4-14 дней, TP1+20/TP2+70/SL-35.",
+        "description": "Numpy-Оптимизация: фейд MTF-консенсуса (только trend). Expiry 96h, TP1+30/TP2+40/SL-45, TSL 35/20.",
     },
     "trend_continuation_legacy": {
         "label": "Trend Continuation (legacy)",
