@@ -119,3 +119,40 @@ def zscore(values: Sequence[float], lookback: int = 20) -> float | None:
     if std == 0:
         return 0.0
     return (values[-1] - mean) / std
+
+
+def bollinger(closes: Sequence[float], period: int = 20, k: float = 2.0) -> tuple[float | None, float | None, float | None]:
+    """Returns (lower, mid, upper) Bollinger Bands using SMA + std."""
+    if len(closes) < period:
+        return None, None, None
+    window = list(closes[-period:])
+    mid = sum(window) / period
+    var = sum((v - mid) ** 2 for v in window) / period
+    std = math.sqrt(var)
+    return mid - k * std, mid, mid + k * std
+
+
+def donchian(candles: list[dict], period: int = 20) -> tuple[float | None, float | None]:
+    """Donchian channel — (lowest low, highest high) over period bars."""
+    if len(candles) < period:
+        return None, None
+    window = candles[-period:]
+    return min(c["low"] for c in window), max(c["high"] for c in window)
+
+
+def realized_vol(closes: Sequence[float], lookback: int = 24) -> float | None:
+    """Annualized realized vol from log returns. Lookback in bars; assumes hourly bars by default."""
+    if len(closes) < lookback + 1:
+        return None
+    rets = []
+    for i in range(1, lookback + 1):
+        if closes[-i - 1] <= 0:
+            continue
+        rets.append(math.log(closes[-i] / closes[-i - 1]))
+    if len(rets) < 2:
+        return None
+    mean = sum(rets) / len(rets)
+    var = sum((r - mean) ** 2 for r in rets) / (len(rets) - 1)
+    std = math.sqrt(var)
+    # annualize: hourly → sqrt(24*365)
+    return std * math.sqrt(24 * 365)

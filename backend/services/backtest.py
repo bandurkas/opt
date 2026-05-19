@@ -106,8 +106,9 @@ def _simulate_option_trade(
     sl_pct: float,
     horizon_hours: float,
     spread_pct: float = 0.0,
-    tsl_trigger_pct: float = 0.0,  # activate trailing-stop when premium reaches +X%
-    tsl_offset_pct: float = 0.0,   # initial trailing stop sits at +(trigger - offset)%
+    tsl_trigger_pct: float = 0.0,
+    tsl_offset_pct: float = 0.0,
+    position: str = "long_premium",  # 'long_premium' or 'short_premium'
 ) -> dict:
     """Walk forward bar-by-bar on the underlying path. Compute synthetic premium
     via BS at each step. Apply TP1/TP2/SL exits. Return resolution + P&L.
@@ -123,11 +124,28 @@ def _simulate_option_trade(
         return {"resolution": "no_entry", "pnl_pct": 0.0}
 
     half_spread = spread_pct / 200.0  # one-way slippage
+
+    if position == "short_premium":
+        # Sell at bid → receive credit, want premium to DECAY
+        entry_credit = bs_mid * (1 - half_spread)
+        # TP fires when we can buy back at ask cheap: ask <= entry_credit * (1 - tp_pct)
+        # ask = mid * (1 + hs) → threshold mid: mid <= entry_credit * (1 - tp_pct) / (1 + hs)
+        tp1_mid_threshold = entry_credit * (1 - tp1_pct) / (1 + half_spread) if (1 + half_spread) > 0 else 0
+        tp2_mid_threshold = entry_credit * (1 - tp2_pct) / (1 + half_spread) if (1 + half_spread) > 0 else 0
+        sl_mid_threshold = entry_credit * (1 + sl_pct) / (1 + half_spread)  # mid at which loss triggers
+        return _simulate_short_premium(
+            side=side, strike=strike, sigma=sigma, expiry_hours=expiry_hours,
+            bars_5m_forward=bars_5m_forward, bars_to_use_limit=int(horizon_hours * 12),
+            entry_credit=entry_credit, half_spread=half_spread,
+            tp1_mid=tp1_mid_threshold, tp2_mid=tp2_mid_threshold, sl_mid=sl_mid_threshold,
+            tp1_pct=tp1_pct, tp2_pct=tp2_pct, sl_pct=sl_pct,
+        )
+
+    # === LONG PREMIUM path (existing logic) ===
     # Buyer pays ask = mid * (1 + half_spread)
     entry_premium = bs_mid * (1 + half_spread)
 
     # TP/SL targets are net premiums the buyer can SELL (i.e. receive on bid).
-    # We need mid * (1 - half_spread) >= entry_premium * (1 + tp1_pct)  → mid threshold.
     tp1_premium = entry_premium * (1 + tp1_pct) / (1 - half_spread) if half_spread < 1 else entry_premium * (1 + tp1_pct)
     tp2_premium = entry_premium * (1 + tp2_pct) / (1 - half_spread) if half_spread < 1 else entry_premium * (1 + tp2_pct)
     sl_premium = entry_premium * (1 - sl_pct) / (1 - half_spread) if half_spread < 1 else entry_premium * (1 - sl_pct)
@@ -207,6 +225,50 @@ def _simulate_option_trade(
         total = final_pnl
         resolution = "time_stop"
     return {"resolution": resolution, "pnl_pct": round(total * 100, 2), "bars_held": bars_to_use}
+
+
+def _simulate_short_premium(
+    *, side: str, strike: float, sigma: float, expiry_hours: float,
+    bars_5m_forward: list[dict], bars_to_use_limit: int,
+    entry_credit: float, half_spread: float,
+    tp1_mid: float, tp2_mid: float, sl_mid: float,
+    tp1_pct: float, tp2_pct: float, sl_pct: float,
+) -> dict:
+    """Short-premium path. Premium decay = profit. We exit when buyback price
+    crosses thresholds. Simpler than long path since we don't split positions."""
+    bars_to_use = min(len(bars_5m_forward), bars_to_use_limit)
+    for bi in range(bars_to_use):
+        bar = bars_5m_forward[bi]
+        elapsed_h = (bi + 1) * 5 / 60
+        T = max(0.0, (expiry_hours - elapsed_h) / (24 * 365))
+        hi_spot = bar["high"]
+        lo_spot = bar["low"]
+
+        if side == "C":
+            premium_high = bs.price(side, hi_spot, strike, T, sigma)  # WORST for short Call
+            premium_low = bs.price(side, lo_spot, strike, T, sigma)   # BEST for short Call
+        else:
+            premium_high = bs.price(side, lo_spot, strike, T, sigma)  # WORST for short Put
+            premium_low = bs.price(side, hi_spot, strike, T, sigma)   # BEST for short Put
+
+        # SL: premium went too high
+        if premium_high >= sl_mid:
+            return {"resolution": "sl", "pnl_pct": round(-sl_pct * 100, 2), "bars_held": bi + 1}
+        # TP2: premium decayed a lot
+        if premium_low <= tp2_mid:
+            return {"resolution": "tp2", "pnl_pct": round(tp2_pct * 100, 2), "bars_held": bi + 1}
+        # TP1 not implemented for short (treat as TP2 only for simplicity)
+
+    # Time stop: close at current ask
+    last_bar = bars_5m_forward[bars_to_use - 1] if bars_to_use > 0 else None
+    if last_bar is None:
+        return {"resolution": "no_data", "pnl_pct": 0.0}
+    elapsed_h = bars_to_use * 5 / 60
+    T = max(0.0, (expiry_hours - elapsed_h) / (24 * 365))
+    final_mid = bs.price(side, last_bar["close"], strike, T, sigma)
+    buyback_ask = final_mid * (1 + half_spread)
+    pnl = (entry_credit - buyback_ask) / entry_credit
+    return {"resolution": "time_stop", "pnl_pct": round(pnl * 100, 2), "bars_held": bars_to_use}
 
 
 # ───────────────────────── main runner ─────────────────────────
@@ -313,6 +375,7 @@ def simulate_signal_set(
             tp1_pct=tp1_pct, tp2_pct=tp2_pct, sl_pct=sl_pct,
             horizon_hours=option_horizon_h, spread_pct=spread_pct,
             tsl_trigger_pct=tsl_trigger_pct, tsl_offset_pct=tsl_offset_pct,
+            position=sig.get("position", "long_premium"),
         )
         out.append({**sig, "underlying_returns": urets, "option": option,
                     "side": sig["side"], "ts_iso": datetime.fromtimestamp(sig["ts_ms"] / 1000, tz=timezone.utc).isoformat()})
