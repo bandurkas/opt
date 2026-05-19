@@ -188,6 +188,95 @@ def _simulate_option_trade(
 
 # ───────────────────────── main runner ─────────────────────────
 
+def generate_raw_signals(
+    klines_5m: list[dict],
+    klines_15m: list[dict],
+    klines_1h: list[dict],
+    min_alignment: int = 2,
+    cooldown_bars: int = 24,
+    fade: bool = False,
+) -> list[dict]:
+    """Walk forward once and emit signal metadata only (no option simulation).
+
+    Returns each signal as {idx_5m, ts_ms, close, side, side_label, score,
+    regime, adx, mtf_aligned, accelerating}. Caller does the option simulation
+    separately so we can sweep TP/SL cheaply over the same signal set.
+    """
+    signals: list[dict] = []
+    last_signal_idx = -10_000
+    warmup = 60
+    for idx, (ts_end, close, s5, s15, s1h) in enumerate(_walk(klines_5m, klines_15m, klines_1h)):
+        if idx < warmup or len(s5) < 50 or len(s15) < 50 or len(s1h) < 50:
+            continue
+        if idx - last_signal_idx < cooldown_bars:
+            continue
+        tf_5m = analyze_tf(s5)
+        tf_15m = analyze_tf(s15)
+        tf_1h = analyze_tf(s1h)
+        mtf = consensus(tf_5m, tf_15m, tf_1h)
+        regime = detect_regime(s1h)
+
+        for side, side_label in (("C", "Call"), ("P", "Put")):
+            if not _is_signal(side, mtf, regime, min_alignment):
+                continue
+            score = _score_signal(mtf, regime)
+            if fade:
+                side = "P" if side == "C" else "C"
+                side_label = "Put" if side_label == "Call" else "Call"
+            signals.append({
+                "idx_5m": idx,
+                "ts_ms": ts_end,
+                "close": close,
+                "side": side,
+                "side_label": side_label,
+                "score": score,
+                "regime": regime.get("regime"),
+                "adx": regime.get("adx"),
+                "mtf_aligned": mtf["tfs_aligned"],
+                "accelerating": mtf.get("accelerating"),
+            })
+            last_signal_idx = idx
+            break
+    return signals
+
+
+def simulate_signal_set(
+    signals: list[dict],
+    klines_5m: list[dict],
+    sigma: float,
+    expiry_hours: float,
+    tp1_pct: float,
+    tp2_pct: float,
+    sl_pct: float,
+    option_horizon_h: float,
+    horizons_h: tuple[int, ...] = (1, 4, 12),
+) -> list[dict]:
+    out = []
+    for sig in signals:
+        idx = sig["idx_5m"]
+        future = klines_5m[idx + 1:]
+        # Underlying realized returns
+        urets: dict[str, float] = {}
+        for h in horizons_h:
+            bars_needed = h * 12
+            if len(future) < bars_needed:
+                continue
+            end_close = future[bars_needed - 1]["close"]
+            ret_pct = (end_close - sig["close"]) / sig["close"] * 100
+            if sig["side"] == "P":
+                ret_pct = -ret_pct
+            urets[f"{h}h"] = round(ret_pct, 3)
+        option = _simulate_option_trade(
+            side=sig["side"], entry_spot=sig["close"], sigma=sigma,
+            expiry_hours=expiry_hours, bars_5m_forward=future,
+            tp1_pct=tp1_pct, tp2_pct=tp2_pct, sl_pct=sl_pct,
+            horizon_hours=option_horizon_h,
+        )
+        out.append({**sig, "underlying_returns": urets, "option": option,
+                    "side": sig["side"], "ts_iso": datetime.fromtimestamp(sig["ts_ms"] / 1000, tz=timezone.utc).isoformat()})
+    return out
+
+
 def run(
     symbol: str = "ETHUSDT",
     days: int = 60,
@@ -420,6 +509,73 @@ def print_report(result: dict) -> None:
         print(f"  {k:<20} {v}%")
 
 
+def sweep_params(
+    symbol: str = "ETHUSDT",
+    days: int = 60,
+    sigma: float = 0.60,
+    expiry_hours: float = 168.0,
+    fade: bool = True,
+    option_horizon_h: float = 12.0,
+    min_alignment: int = 2,
+    cooldown_bars: int = 24,
+    tp1_grid: tuple[float, ...] = (0.15, 0.20, 0.25, 0.30),
+    tp2_grid: tuple[float, ...] = (0.40, 0.55, 0.70, 0.90),
+    sl_grid: tuple[float, ...] = (0.15, 0.20, 0.25, 0.30, 0.35),
+) -> dict:
+    """Parameter sweep on TP1/TP2/SL. Walks the kline data once, then re-simulates."""
+    from itertools import product
+
+    print(f"[sweep] fetching klines for {symbol} {days}d...", flush=True)
+    data = fetch_set(symbol, days=days, intervals=("5", "15", "60"))
+    klines_5m, klines_15m, klines_1h = data["5"], data["15"], data["60"]
+    if not klines_5m:
+        return {"error": "no klines"}
+
+    print(f"[sweep] generating raw signals (fade={fade})...", flush=True)
+    signals = generate_raw_signals(klines_5m, klines_15m, klines_1h, min_alignment, cooldown_bars, fade)
+    print(f"[sweep] {len(signals)} raw signals. running {len(tp1_grid)*len(tp2_grid)*len(sl_grid)} combos...", flush=True)
+
+    results: list[dict] = []
+    for tp1, tp2, sl in product(tp1_grid, tp2_grid, sl_grid):
+        if tp2 <= tp1:
+            continue
+        sims = simulate_signal_set(signals, klines_5m, sigma, expiry_hours, tp1, tp2, sl, option_horizon_h)
+        pnls = [s["option"]["pnl_pct"] for s in sims if "pnl_pct" in s["option"]]
+        if not pnls:
+            continue
+        wr = sum(1 for p in pnls if p > 0) / len(pnls)
+        results.append({
+            "tp1": tp1, "tp2": tp2, "sl": sl,
+            "n": len(pnls),
+            "wr": round(wr, 3),
+            "avg_pnl": round(mean(pnls), 2),
+            "median_pnl": round(median(pnls), 2),
+            "total_pnl": round(sum(pnls), 1),
+        })
+
+    results.sort(key=lambda r: r["avg_pnl"], reverse=True)
+    return {
+        "fade": fade,
+        "sigma": sigma,
+        "expiry_hours": expiry_hours,
+        "option_horizon_h": option_horizon_h,
+        "signals_count": len(signals),
+        "results": results,
+    }
+
+
+def print_sweep_report(sweep: dict) -> None:
+    if "error" in sweep:
+        print(f"ERROR: {sweep['error']}")
+        return
+    print("=" * 80)
+    print(f"TP/SL SWEEP (fade={sweep['fade']}, sigma={sweep['sigma']}, expiry={sweep['expiry_hours']}h, signals={sweep['signals_count']})")
+    print("=" * 80)
+    print(f"{'TP1':>6} {'TP2':>6} {'SL':>6} {'WR':>7} {'avg %':>8} {'med %':>8} {'total %':>9}")
+    for r in sweep["results"][:25]:
+        print(f"{r['tp1']:>6.2f} {r['tp2']:>6.2f} {r['sl']:>6.2f} {r['wr']*100:>6.1f}% {r['avg_pnl']:>8.2f} {r['median_pnl']:>8.2f} {r['total_pnl']:>9.1f}")
+
+
 if __name__ == "__main__":
     import argparse
 
@@ -429,10 +585,24 @@ if __name__ == "__main__":
     parser.add_argument("--sigma", type=float, default=0.60, help="Constant annualized IV")
     parser.add_argument("--expiry-hours", type=float, default=24.0)
     parser.add_argument("--min-alignment", type=int, default=2)
-    parser.add_argument("--cooldown-bars", type=int, default=24, help="Min 5m bars between signals")
+    parser.add_argument("--cooldown-bars", type=int, default=24)
     parser.add_argument("--out", default="/tmp/backtest_result.json")
     parser.add_argument("--fade", action="store_true", help="Invert direction (mean-reversion test)")
+    parser.add_argument("--sweep", action="store_true", help="Run TP/SL parameter sweep instead of single backtest")
+    parser.add_argument("--option-horizon-h", type=float, default=12.0)
     args = parser.parse_args()
+
+    if args.sweep:
+        sw = sweep_params(
+            symbol=args.symbol, days=args.days, sigma=args.sigma,
+            expiry_hours=args.expiry_hours, fade=args.fade,
+            option_horizon_h=args.option_horizon_h,
+            min_alignment=args.min_alignment, cooldown_bars=args.cooldown_bars,
+        )
+        with open(args.out, "w") as f:
+            json.dump(sw, f, indent=2)
+        print_sweep_report(sw)
+        sys.exit(0)
 
     result = run(
         symbol=args.symbol,
