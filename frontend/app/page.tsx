@@ -64,15 +64,21 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Strategy info banner */}
-      <section className="glass-panel p-3 flex items-center gap-3 text-xs">
-        <span className="px-2 py-1 rounded bg-violet-500/15 text-violet-300 font-bold">🪞 Fade / Mean Reversion</span>
-        <span className="text-slate-400">
-          Expiry 4–14д · TP1 +20% / TP2 +70% / SL −35%
-        </span>
-        <span className="ml-auto text-emerald-300 font-mono">
-          Бэктест 60д: WR 52.7% · avg +2.47% · median +2.34%
-        </span>
+      {/* Strategy warning banner */}
+      <section className="glass-panel p-4 border border-rose-500/40 bg-rose-500/5 flex flex-col gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="px-2 py-1 rounded bg-rose-500/20 text-rose-200 font-bold text-xs">
+            ⚠️ СТРАТЕГИЯ НЕ ВАЛИДИРОВАНА
+          </span>
+          <span className="text-slate-300 text-sm">
+            12-месячный бэктест: <strong>WR 43%, avg −3.3% за сделку</strong>
+          </span>
+        </div>
+        <p className="text-xs text-slate-400 leading-relaxed">
+          Текущая fade-стратегия показала отрицательный edge на всех 7 протестированных вариантах за 365 дней.
+          <strong className="text-rose-300"> Не торгуйте реальными деньгами.</strong> Дашборд используется для разработки
+          и поиска работающей стратегии — параллельно идёт массовый перебор альтернатив (sell premium, RSI extremes, BB breakouts).
+        </p>
       </section>
 
       {/* Filters */}

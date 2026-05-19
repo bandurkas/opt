@@ -18,12 +18,12 @@ from .regime import detect_regime
 # Strategy names exposed to API/frontend
 STRATEGIES = {
     "fade_long_dated": {
-        "label": "Fade / Mean Reversion (рекомендуется)",
-        "default_min_hours": 72.0,           # ≥3 days
-        "default_max_hours": 120.0,          # ≤5 days (target is 96h)
+        "label": "Fade (DEPRECATED — 12mo backtest shows −3.3%/trade)",
+        "default_min_hours": 96.0,           # ≥4 days
+        "default_max_hours": 14 * 24.0,      # ≤14 days
         "bands_profile": "fade_long",
         "generators": ["fade"],
-        "description": "Numpy-Оптимизация: фейд MTF-консенсуса (только trend). Expiry 96h, TP1+30/TP2+40/SL-45, TSL 35/20.",
+        "description": "ВНИМАНИЕ: 12-мес бэктест: WR 43%, avg −3.3%/trade. Стратегия НЕ валидирована. Используйте только для исследования.",
     },
     "trend_continuation_legacy": {
         "label": "Trend Continuation (legacy)",
