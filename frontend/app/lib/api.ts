@@ -34,15 +34,23 @@ export type Opportunity = {
     breakdown: { factor: string; points: number }[];
   };
   entry_plan: {
+    action: string;
+    position_summary: string;
+    symbol_to_search: string;
     limit_price: number;
-    limit_price_hint: string;
     contracts: number;
+    total_cost_usd: number;
     max_risk_usd: number;
+    max_risk_note: string;
     take_profit_premium: number;
     stop_loss_premium: number;
     target_spot: number;
     stop_spot: number;
+    profit_at_tp_usd: number;
+    loss_at_sl_usd: number;
     time_horizon_h: number;
+    bybit_steps: string[];
+    limit_price_hint: string;
   };
 };
 

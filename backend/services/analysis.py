@@ -166,12 +166,11 @@ def _score_option(option: dict, market: MarketSnapshot, hours: float) -> dict:
 # ───────────────────────── entry plan ─────────────────────────
 
 def _entry_plan(option: dict, market: MarketSnapshot, hours: float, risk_budget_usd: float = 100.0) -> dict:
-    """Concrete trading parameters: limit price, size, TP/SL."""
+    """Concrete trading parameters with P&L and beginner-friendly instructions."""
     bid = option["bid"]
     ask = option["ask"]
     mid = _mid(bid, ask)
     mark = option["mark_price"]
-    # Target limit price = mid (or slightly below mid to wait for fill).
     if mid:
         limit = round(mid * 0.995, 4)
     elif mark > 0:
@@ -179,35 +178,70 @@ def _entry_plan(option: dict, market: MarketSnapshot, hours: float, risk_budget_
     else:
         limit = round(ask, 4) if ask > 0 else 0.0
 
-    # Position size: how many contracts to keep total risk near risk_budget_usd
-    contracts = 0
-    if limit > 0:
-        contracts = max(1, int(risk_budget_usd // limit))
+    contracts = max(1, int(risk_budget_usd // limit)) if limit > 0 else 0
+    total_cost = round(limit * contracts, 2)
 
-    # Target spot move = halfway to nearest level in our direction
     spot = market.spot
-    if option["side"] == "C":
-        target_spot = round((spot + max(market.nearest_resistance, option["strike"])) / 2, 2)
+    side = option["side"]
+    strike = option["strike"]
+    if side == "C":
+        target_spot = round((spot + max(market.nearest_resistance, strike)) / 2, 2)
         stop_spot = round(market.nearest_support, 2) if market.nearest_support else round(spot * 0.99, 2)
+        position_summary = (
+            f"CALL — право купить ETH по ${int(strike)} до {option['expiry_label']}. "
+            f"Зарабатываешь, если ETH ВЫРАСТЕТ выше ${int(strike)}."
+        )
     else:
-        target_spot = round((spot + min(market.nearest_support, option["strike"])) / 2, 2)
+        target_spot = round((spot + min(market.nearest_support, strike)) / 2, 2)
         stop_spot = round(market.nearest_resistance, 2) if market.nearest_resistance else round(spot * 1.01, 2)
+        position_summary = (
+            f"PUT — право продать ETH по ${int(strike)} до {option['expiry_label']}. "
+            f"Зарабатываешь, если ETH УПАДЁТ ниже ${int(strike)}."
+        )
 
-    # Premium TP/SL — rough heuristic on premium move:
-    # +60% premium → take profit, -40% premium → stop.
     tp_premium = round(limit * 1.6, 4) if limit > 0 else 0.0
     sl_premium = round(limit * 0.6, 4) if limit > 0 else 0.0
+    profit_at_tp = round((tp_premium - limit) * contracts, 2)
+    loss_at_sl = round((limit - sl_premium) * contracts, 2)
+
+    bybit_steps = [
+        "Открой Bybit → раздел Derivatives → Options.",
+        "В шапке выбери валюту: ETH.",
+        f"Выбери дату экспирации: {option['expiry_label']}.",
+        f"Найди строку Strike = {int(strike)}, столбец {'CALL' if side == 'C' else 'PUT'}.",
+        "Нажми Buy / Long (зелёная кнопка).",
+        "Order Type → Limit (не Market!).",
+        f"Price: {limit}",
+        f"Quantity: {contracts}",
+        "Проверь и нажми Confirm Order.",
+        "Жди исполнения 2-3 минуты. Если не исполнилось — подними цену на 0.05-0.10 и переотправь.",
+    ]
 
     return {
+        # Core action
+        "action": f"Купить {contracts} контракта по лимиту {limit} USDT",
+        "position_summary": position_summary,
+        "symbol_to_search": option["symbol"],
+
+        # Numbers
         "limit_price": limit,
-        "limit_price_hint": "Лимит около середины bid/ask. Если не закрылось за 2-3 мин — догоняй на 1 тик.",
         "contracts": contracts,
-        "max_risk_usd": round(limit * contracts, 2),
+        "total_cost_usd": total_cost,
+        "max_risk_usd": total_cost,
+        "max_risk_note": "Это всё, что можешь потерять. Опцион может обнулиться.",
+
+        # Exits
         "take_profit_premium": tp_premium,
         "stop_loss_premium": sl_premium,
         "target_spot": target_spot,
         "stop_spot": stop_spot,
+        "profit_at_tp_usd": profit_at_tp,
+        "loss_at_sl_usd": loss_at_sl,
         "time_horizon_h": min(round(hours / 2, 1), 24),
+
+        # Instructions
+        "bybit_steps": bybit_steps,
+        "limit_price_hint": "Лимит-цена — это премия (стоимость) одного контракта в USDT. Не путать с ценой ETH!",
     }
 
 
