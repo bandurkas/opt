@@ -149,6 +149,19 @@ def grid_for_strategy(name: str) -> list[dict]:
     return out
 
 
+def _checkpoint(path: str, args, results: list, t0: float) -> None:
+    """Atomically write partial JSON so we never lose all progress on a crash."""
+    tmp = path + ".tmp"
+    payload = {
+        "days": args.days, "sigma": args.sigma, "spread_pct": args.spread_pct,
+        "results": results, "elapsed_s": round(time.time() - t0, 1),
+        "complete": False,
+    }
+    with open(tmp, "w") as f:
+        json.dump(payload, f, indent=2)
+    os.replace(tmp, path)
+
+
 # ───────────────────────── main ─────────────────────────
 
 def main():
@@ -201,6 +214,8 @@ def main():
             test_avg = res["test"]["avg"] if res["test"] else None
             test_n = res["test"]["n"] if res["test"] else 0
             print(f"   {combo['label']:<60} n={len(signals):>4}  train_avg={train_avg}  test_avg={test_avg}  test_n={test_n}", flush=True)
+            # Checkpoint after every combo so a killed sweep is not a total loss
+            _checkpoint(args.out, args, all_results, t0)
 
     elapsed = round(time.time() - t0, 1)
     print(f"\nTotal: {len(all_results)} param combos in {elapsed}s", flush=True)
@@ -232,7 +247,8 @@ def main():
 
     with open(args.out, "w") as f:
         json.dump({"days": args.days, "sigma": args.sigma, "spread_pct": args.spread_pct,
-                   "results": all_results, "elapsed_s": elapsed}, f, indent=2)
+                   "results": all_results, "elapsed_s": elapsed,
+                   "complete": True}, f, indent=2)
     print(f"\nSaved {len(all_results)} combos → {args.out}")
 
 
