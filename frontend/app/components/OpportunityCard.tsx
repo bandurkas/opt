@@ -114,46 +114,61 @@ export function OpportunityCard({ op, rank }: { op: Opportunity; rank: number })
       </div>
 
       {/* ── Exit plan: TP1 / TP2 / SL ────────────────────── */}
-      {exits.valid && exits.tp1 && exits.tp2 && exits.sl && (
-        <div className="space-y-3">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <ExitLeg
-              kind="tp1"
-              title="✅ TP1 (50%)"
-              premium={exits.tp1.premium}
-              spot={exits.tp1.spot}
-              contracts={exits.tp1.contracts_to_close}
-              pnl={exits.tp1.profit_usd ?? 0}
-            />
-            <ExitLeg
-              kind="tp2"
-              title="🏆 TP2 (остаток)"
-              premium={exits.tp2.premium}
-              spot={exits.tp2.spot}
-              contracts={exits.tp2.contracts_to_close}
-              pnl={exits.tp2.profit_usd ?? 0}
-            />
-            <ExitLeg
-              kind="sl"
-              title="🛑 Stop loss"
-              premium={exits.sl.premium}
-              spot={exits.sl.spot}
-              contracts={plan.contracts}
-              pnl={-(exits.sl.loss_usd ?? 0)}
-            />
-          </div>
+      {exits.valid && exits.tp1 && exits.tp2 && exits.sl && (() => {
+        const singleLot = (exits.tp2?.contracts_to_close ?? 0) === 0;
+        // With 1 contract we close everything at TP1; recompute TP1 P&L for the full position.
+        const tp1FullPnl = singleLot
+          ? Math.round((exits.tp1.premium - plan.limit_price) * plan.contracts * 100) / 100
+          : (exits.tp1.profit_usd ?? 0);
 
-          <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-400">
-            <span>⏱ Закрой если не сработало за {exits.time_stop_hours}ч</span>
-            {exits.trail_rule && <span>📈 {exits.trail_rule}</span>}
-            {exits.summary?.risk_reward !== null && exits.summary?.risk_reward !== undefined && (
-              <span className="ml-auto font-bold text-slate-300">
-                R/R = {exits.summary.risk_reward}:1
-              </span>
-            )}
+        return (
+          <div className="space-y-3">
+            <div className={`grid grid-cols-1 gap-3 ${singleLot ? "md:grid-cols-2" : "md:grid-cols-3"}`}>
+              <ExitLeg
+                kind="tp1"
+                title={singleLot ? "✅ Take Profit (вся позиция)" : "✅ TP1 (50%)"}
+                premium={exits.tp1.premium}
+                spot={exits.tp1.spot}
+                contracts={singleLot ? plan.contracts : exits.tp1.contracts_to_close}
+                pnl={tp1FullPnl}
+              />
+              {!singleLot && (
+                <ExitLeg
+                  kind="tp2"
+                  title="🏆 TP2 (остаток)"
+                  premium={exits.tp2.premium}
+                  spot={exits.tp2.spot}
+                  contracts={exits.tp2.contracts_to_close}
+                  pnl={exits.tp2.profit_usd ?? 0}
+                />
+              )}
+              <ExitLeg
+                kind="sl"
+                title="🛑 Stop loss"
+                premium={exits.sl.premium}
+                spot={exits.sl.spot}
+                contracts={plan.contracts}
+                pnl={-(exits.sl.loss_usd ?? 0)}
+              />
+            </div>
+
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-400">
+              <span>⏱ Закрой если не сработало за {exits.time_stop_hours}ч</span>
+              {exits.trail_rule && <span>📈 {exits.trail_rule}</span>}
+              {!singleLot && exits.summary?.risk_reward !== null && exits.summary?.risk_reward !== undefined && (
+                <span className="ml-auto font-bold text-slate-300">
+                  R/R = {exits.summary.risk_reward}:1
+                </span>
+              )}
+              {singleLot && (
+                <span className="ml-auto font-bold text-slate-300">
+                  R/R = {(tp1FullPnl / (exits.sl?.loss_usd ?? 1)).toFixed(2)}:1
+                </span>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ── Theta gauge ──────────────────────────────────── */}
       <div className="flex items-center gap-3 bg-slate-900/40 rounded-xl p-3 border border-slate-700/40">
