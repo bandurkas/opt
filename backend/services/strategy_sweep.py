@@ -128,19 +128,24 @@ def grid_for_strategy(name: str) -> list[dict]:
                     out.append({"gen": {"period": period, "tf": tf}, "exit": e,
                                 "label": f"donchian_breakout.{period}.{tf}.{e['lbl']}"})
     elif name == "sell_premium_high_vol":
-        # Iter 2: expanded grid — sides, thresholds, regimes, adx caps, exits
-        for side in ["P", "C", "both"]:
-            for vol_thresh in [0.50, 0.70, 0.85]:
+        # Iter 3: directional sell_premium — sell puts only when MTF says up,
+        # sell calls only when MTF says down. Tests whether iter 2 P-side edge
+        # was real "with the trend" signal vs OOS regime drift.
+        # Pair side with mtf_filter: (P,up) and (C,down) only.
+        side_mtf_pairs = [("P", "up"), ("C", "down")]
+        for side, mtf in side_mtf_pairs:
+            for vol_thresh in [0.50, 0.70]:
                 for regimes in [("range",), ("range", "transition")]:
                     for adx_max in [None, 20]:
-                        for e in exits_short:
+                        for e in exits_short[:2]:  # decay_24h, decay_48h_wide_sl only
                             adx_tag = "any" if adx_max is None else f"adx{adx_max}"
                             out.append({
                                 "gen": {"vol_threshold": vol_thresh,
                                         "regime_filter": list(regimes),
-                                        "side": side, "adx_max": adx_max},
+                                        "side": side, "adx_max": adx_max,
+                                        "mtf_direction_filter": mtf},
                                 "exit": e,
-                                "label": f"sp.{side}.t{vol_thresh}.{'+'.join(regimes)}.{adx_tag}.{e['lbl']}",
+                                "label": f"sp.{side}_mtf{mtf}.t{vol_thresh}.{'+'.join(regimes)}.{adx_tag}.{e['lbl']}",
                             })
     elif name == "volume_spike_continuation":
         for z in [2.0, 2.5, 3.0]:

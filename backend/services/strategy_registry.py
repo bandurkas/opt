@@ -173,6 +173,7 @@ def gen_sell_premium_iv_high(k5, k15, k1h, *, vol_lookback_h: int = 168, vol_thr
                               regime_filter: list[str] | None = ("range", "transition"),
                               side: str = "P",
                               adx_max: float | None = None,
+                              mtf_direction_filter: str | None = None,
                               cooldown_bars: int = 24) -> list[dict]:
     """When realized vol is in TOP (1-vol_threshold) of recent week AND we're in
     non-trend regime, sell ATM option(s). Returns short_premium signals.
@@ -183,6 +184,10 @@ def gen_sell_premium_iv_high(k5, k15, k1h, *, vol_lookback_h: int = 168, vol_thr
       'both' — strangle: emit BOTH P and C at same idx (delta-neutral, double theta)
 
     `adx_max`: optional hard cap on ADX to enforce a true range regime (e.g. 15).
+    `mtf_direction_filter`: 'up' | 'down' | None. When 'up', only emit when MTF
+        consensus is bullish (≥2 of 3 TFs aligned up) — pair with side='P' to sell
+        puts in uptrend. When 'down', only emit when MTF is bearish — pair with
+        side='C' to sell calls in downtrend. None = no directional filter.
     """
     out: list[dict] = []
     last_idx = -10_000
@@ -212,6 +217,13 @@ def gen_sell_premium_iv_high(k5, k15, k1h, *, vol_lookback_h: int = 168, vol_thr
             continue
         if adx_max is not None and (reg.get("adx") or 999) > adx_max:
             continue
+
+        if mtf_direction_filter is not None:
+            if len(s5) < 50 or len(s15) < 50 or len(s1h) < 50:
+                continue
+            mtf = consensus(analyze_tf(s5), analyze_tf(s15), analyze_tf(s1h))
+            if mtf["direction"] != mtf_direction_filter or mtf["tfs_aligned"] < 2:
+                continue
 
         sides = ["P", "C"] if side == "both" else [side]
         sig_type = "sell_premium_strangle" if side == "both" else "sell_premium_high_vol"
