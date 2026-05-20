@@ -87,6 +87,7 @@ def grid_for_strategy(name: str) -> list[dict]:
     exits_short = [
         {"tp1": 0.30, "tp2": 0.50, "sl": 0.50, "hold_h": 24, "tsl_t": 0.0, "tsl_o": 0.0, "lbl": "decay_24h"},
         {"tp1": 0.40, "tp2": 0.60, "sl": 1.00, "hold_h": 48, "tsl_t": 0.0, "tsl_o": 0.0, "lbl": "decay_48h_wide_sl"},
+        {"tp1": 0.50, "tp2": 0.70, "sl": 1.50, "hold_h": 72, "tsl_t": 0.0, "tsl_o": 0.0, "lbl": "decay_72h_widest"},
     ]
 
     cooldown_options = [12, 24]
@@ -127,12 +128,20 @@ def grid_for_strategy(name: str) -> list[dict]:
                     out.append({"gen": {"period": period, "tf": tf}, "exit": e,
                                 "label": f"donchian_breakout.{period}.{tf}.{e['lbl']}"})
     elif name == "sell_premium_high_vol":
-        for vol_thresh in [0.70, 0.85]:
-            for regimes in [("range", "transition"), ("range",), ("range", "transition", "trend")]:
-                for e in exits_short:
-                    out.append({"gen": {"vol_threshold": vol_thresh, "regime_filter": list(regimes)},
+        # Iter 2: expanded grid — sides, thresholds, regimes, adx caps, exits
+        for side in ["P", "C", "both"]:
+            for vol_thresh in [0.50, 0.70, 0.85]:
+                for regimes in [("range",), ("range", "transition")]:
+                    for adx_max in [None, 20]:
+                        for e in exits_short:
+                            adx_tag = "any" if adx_max is None else f"adx{adx_max}"
+                            out.append({
+                                "gen": {"vol_threshold": vol_thresh,
+                                        "regime_filter": list(regimes),
+                                        "side": side, "adx_max": adx_max},
                                 "exit": e,
-                                "label": f"sell_premium.t{vol_thresh}.{'+'.join(regimes)}.{e['lbl']}"})
+                                "label": f"sp.{side}.t{vol_thresh}.{'+'.join(regimes)}.{adx_tag}.{e['lbl']}",
+                            })
     elif name == "volume_spike_continuation":
         for z in [2.0, 2.5, 3.0]:
             for tf in tfs:

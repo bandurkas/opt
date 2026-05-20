@@ -171,13 +171,18 @@ def gen_donchian_breakout(k5, k15, k1h, *, tf: str = "1h", period: int = 20,
 
 def gen_sell_premium_iv_high(k5, k15, k1h, *, vol_lookback_h: int = 168, vol_threshold: float = 0.85,
                               regime_filter: list[str] | None = ("range", "transition"),
+                              side: str = "P",
+                              adx_max: float | None = None,
                               cooldown_bars: int = 24) -> list[dict]:
-    """When realized vol is in TOP 15% of recent week AND we're in non-trend regime,
-    sell ATM Put (we expect mean-reversion in IV). Returns short_premium signals.
+    """When realized vol is in TOP (1-vol_threshold) of recent week AND we're in
+    non-trend regime, sell ATM option(s). Returns short_premium signals.
 
-    Approximation: real IV rank requires options snapshot history (not in backtest).
-    We use REALIZED vol percentile as a proxy — high realized vol typically correlates
-    with high implied vol.
+    `side`:
+      'P' — sell ATM Put only (delta-positive; bullish stance)
+      'C' — sell ATM Call only (delta-negative; bearish stance)
+      'both' — strangle: emit BOTH P and C at same idx (delta-neutral, double theta)
+
+    `adx_max`: optional hard cap on ADX to enforce a true range regime (e.g. 15).
     """
     out: list[dict] = []
     last_idx = -10_000
@@ -187,7 +192,6 @@ def gen_sell_premium_iv_high(k5, k15, k1h, *, vol_lookback_h: int = 168, vol_thr
         if len(s1h) < vol_lookback_h + 20:
             continue
 
-        # Compute realized vol at each of last N hours
         closes_1h = [c["close"] for c in s1h]
         rolling_vols = []
         for j in range(20, len(closes_1h)):
@@ -203,14 +207,16 @@ def gen_sell_premium_iv_high(k5, k15, k1h, *, vol_lookback_h: int = 168, vol_thr
         if current_vol < threshold:
             continue
 
-        if regime_filter:
-            regime = detect_regime(s1h).get("regime", "unknown")
-            if regime not in regime_filter:
-                continue
+        reg = detect_regime(s1h)
+        if regime_filter and reg.get("regime", "unknown") not in regime_filter:
+            continue
+        if adx_max is not None and (reg.get("adx") or 999) > adx_max:
+            continue
 
-        # Sell ATM Put (short premium): we want price to stay flat or rise
-        out.append(_emit(i, ts, close, "P", "sell_premium_high_vol", 6.5,
-                         position="short_premium"))
+        sides = ["P", "C"] if side == "both" else [side]
+        sig_type = "sell_premium_strangle" if side == "both" else "sell_premium_high_vol"
+        for s in sides:
+            out.append(_emit(i, ts, close, s, sig_type, 6.5, position="short_premium"))
         last_idx = i
     return out
 
