@@ -277,3 +277,23 @@ export async function fetchEquityHistory(
 ): Promise<{ hours: number; points: EquityPoint[] }> {
   return jget(`/paper/equity_history?hours=${hours}`);
 }
+
+export type PaperConditions = {
+  ready: boolean;
+  vol_high: boolean;
+  regime_ok: boolean;
+  mtf_down_aligned: boolean;
+  bull_filter_ok: boolean;
+  spot: number | null;
+  vol_pctile: number | null;
+  regime: string | null;
+  mtf_direction: string | null;
+  mtf_aligned_count: number | null;
+  ema_ratio: number | null;
+  checked_at_ms: number;
+  bars_available: { "5m": number; "15m": number; "1h": number };
+};
+
+export async function fetchPaperConditions(): Promise<PaperConditions> {
+  return jget(`/paper/conditions`);
+}

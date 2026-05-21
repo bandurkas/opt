@@ -52,6 +52,74 @@ def current_size_usd(state: dict, equity_usd: float) -> float:
     return max(SIZE_MIN_USD, min(SIZE_MAX_USD, base))
 
 
+def evaluate_conditions(k5: list, k15: list, k1h: list) -> dict:
+    """Check each entry condition against the LATEST bar without emitting a
+    signal. Returns a dict with per-condition booleans + summary."""
+    from .indicators import ema, realized_vol
+    from .momentum_mtf import analyze_tf, consensus
+    from .regime import detect_regime
+
+    out = {
+        "ready": False,
+        "vol_high": False,
+        "regime_ok": False,
+        "mtf_down_aligned": False,
+        "bull_filter_ok": False,
+        "spot": None,
+        "vol_pctile": None,
+        "regime": None,
+        "mtf_direction": None,
+        "mtf_aligned_count": None,
+        "ema_ratio": None,
+    }
+    if not k5 or not k15 or not k1h:
+        return out
+    if len(k5) < 50 or len(k15) < 50 or len(k1h) < 200:
+        return out
+
+    out["spot"] = k5[-1]["close"]
+    s5, s15, s1h = k5, k15, k1h
+
+    # 1) Vol percentile (last 168h history, lookback 24h)
+    closes_1h = [c["close"] for c in s1h]
+    rolling_vols: list[float] = []
+    for j in range(20, len(closes_1h)):
+        rv = realized_vol(closes_1h[:j + 1], lookback=24)
+        if rv is not None:
+            rolling_vols.append(rv)
+    if len(rolling_vols) >= 30:
+        current_vol = rolling_vols[-1]
+        sorted_vols = sorted(rolling_vols)
+        # rank percentile
+        below = sum(1 for v in sorted_vols if v < current_vol)
+        pctile = below / len(sorted_vols)
+        out["vol_pctile"] = round(pctile, 3)
+        out["vol_high"] = pctile >= WINNER_GEN_KWARGS["vol_threshold"]
+
+    # 2) Regime (range/transition)
+    reg = detect_regime(s1h)
+    out["regime"] = reg.get("regime", "unknown")
+    out["regime_ok"] = out["regime"] in WINNER_GEN_KWARGS["regime_filter"]
+
+    # 3) MTF direction
+    mtf = consensus(analyze_tf(s5), analyze_tf(s15), analyze_tf(s1h))
+    out["mtf_direction"] = mtf["direction"]
+    out["mtf_aligned_count"] = mtf["tfs_aligned"]
+    out["mtf_down_aligned"] = (mtf["direction"] == "down" and mtf["tfs_aligned"] >= 2)
+
+    # 4) Bull-market filter (EMA50_1h / EMA200_1h < 1.05)
+    ema50 = ema(closes_1h, 50)
+    ema200 = ema(closes_1h, 200)
+    if ema50 is not None and ema200 not in (None, 0):
+        ratio = ema50 / ema200
+        out["ema_ratio"] = round(ratio, 4)
+        out["bull_filter_ok"] = ratio <= WINNER_GEN_KWARGS["bull_market_ratio_max"]
+
+    out["ready"] = (out["vol_high"] and out["regime_ok"]
+                    and out["mtf_down_aligned"] and out["bull_filter_ok"])
+    return out
+
+
 def record_trade_result(pnl_pct: float) -> dict:
     """Update CB counters + recent_pnls list after a trade closes.
     Returns the new state."""

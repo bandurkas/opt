@@ -1,0 +1,276 @@
+{
+  "days": 365,
+  "results": [
+    {
+      "label": "P_mtfup.cd6.range.decay_48h_wide_sl",
+      "sigma": 0.4,
+      "spread": 1.0,
+      "train_avg": -6.94,
+      "test_avg": -2.64,
+      "test_n": 155,
+      "test_sharpe": -0.03,
+      "test_wr": 0.606
+    },
+    {
+      "label": "P_mtfup.cd6.range.decay_48h_wide_sl",
+      "sigma": 0.4,
+      "spread": 2.0,
+      "train_avg": -7.52,
+      "test_avg": -2.78,
+      "test_n": 155,
+      "test_sharpe": -0.04,
+      "test_wr": 0.606
+    },
+    {
+      "label": "P_mtfup.cd6.range.decay_48h_wide_sl",
+      "sigma": 0.4,
+      "spread": 4.0,
+      "train_avg": -9.76,
+      "test_avg": -2.98,
+      "test_n": 155,
+      "test_sharpe": -0.04,
+      "test_wr": 0.606
+    },
+    {
+      "label": "P_mtfup.cd6.range.decay_48h_wide_sl",
+      "sigma": 0.6,
+      "spread": 1.0,
+      "train_avg": 8.7,
+      "test_avg": 11.79,
+      "test_n": 155,
+      "test_sharpe": 0.21,
+      "test_wr": 0.587
+    },
+    {
+      "label": "P_mtfup.cd6.range.decay_48h_wide_sl",
+      "sigma": 0.6,
+      "spread": 2.0,
+      "train_avg": 8.16,
+      "test_avg": 9.54,
+      "test_n": 155,
+      "test_sharpe": 0.17,
+      "test_wr": 0.581
+    },
+    {
+      "label": "P_mtfup.cd6.range.decay_48h_wide_sl",
+      "sigma": 0.6,
+      "spread": 4.0,
+      "train_avg": 6.79,
+      "test_avg": 5.82,
+      "test_n": 155,
+      "test_sharpe": 0.1,
+      "test_wr": 0.574
+    },
+    {
+      "label": "P_mtfup.cd6.range.decay_48h_wide_sl",
+      "sigma": 0.8,
+      "spread": 1.0,
+      "train_avg": 16.48,
+      "test_avg": 11.4,
+      "test_n": 155,
+      "test_sharpe": 0.31,
+      "test_wr": 0.626
+    },
+    {
+      "label": "P_mtfup.cd6.range.decay_48h_wide_sl",
+      "sigma": 0.8,
+      "spread": 2.0,
+      "train_avg": 15.93,
+      "test_avg": 9.6,
+      "test_n": 155,
+      "test_sharpe": 0.25,
+      "test_wr": 0.613
+    },
+    {
+      "label": "P_mtfup.cd6.range.decay_48h_wide_sl",
+      "sigma": 0.8,
+      "spread": 4.0,
+      "train_avg": 14.36,
+      "test_avg": 7.29,
+      "test_n": 155,
+      "test_sharpe": 0.19,
+      "test_wr": 0.574
+    },
+    {
+      "label": "C_mtfdown.cd6.range+transition.decay_24h",
+      "sigma": 0.4,
+      "spread": 1.0,
+      "train_avg": 0.2,
+      "test_avg": 4.88,
+      "test_n": 201,
+      "test_sharpe": 0.11,
+      "test_wr": 0.547
+    },
+    {
+      "label": "C_mtfdown.cd6.range+transition.decay_24h",
+      "sigma": 0.4,
+      "spread": 2.0,
+      "train_avg": -0.96,
+      "test_avg": 4.56,
+      "test_n": 201,
+      "test_sharpe": 0.1,
+      "test_wr": 0.542
+    },
+    {
+      "label": "C_mtfdown.cd6.range+transition.decay_24h",
+      "sigma": 0.4,
+      "spread": 4.0,
+      "train_avg": -2.21,
+      "test_avg": 3.95,
+      "test_n": 201,
+      "test_sharpe": 0.09,
+      "test_wr": 0.542
+    },
+    {
+      "label": "C_mtfdown.cd6.range+transition.decay_24h",
+      "sigma": 0.6,
+      "spread": 1.0,
+      "train_avg": 2.73,
+      "test_avg": 7.76,
+      "test_n": 201,
+      "test_sharpe": 0.2,
+      "test_wr": 0.607
+    },
+    {
+      "label": "C_mtfdown.cd6.range+transition.decay_24h",
+      "sigma": 0.6,
+      "spread": 2.0,
+      "train_avg": 1.99,
+      "test_avg": 6.87,
+      "test_n": 201,
+      "test_sharpe": 0.18,
+      "test_wr": 0.597
+    },
+    {
+      "label": "C_mtfdown.cd6.range+transition.decay_24h",
+      "sigma": 0.6,
+      "spread": 4.0,
+      "train_avg": 1.13,
+      "test_avg": 4.36,
+      "test_n": 201,
+      "test_sharpe": 0.11,
+      "test_wr": 0.567
+    },
+    {
+      "label": "C_mtfdown.cd6.range+transition.decay_24h",
+      "sigma": 0.8,
+      "spread": 1.0,
+      "train_avg": 2.99,
+      "test_avg": 7.04,
+      "test_n": 201,
+      "test_sharpe": 0.2,
+      "test_wr": 0.612
+    },
+    {
+      "label": "C_mtfdown.cd6.range+transition.decay_24h",
+      "sigma": 0.8,
+      "spread": 2.0,
+      "train_avg": 2.28,
+      "test_avg": 6.5,
+      "test_n": 201,
+      "test_sharpe": 0.18,
+      "test_wr": 0.612
+    },
+    {
+      "label": "C_mtfdown.cd6.range+transition.decay_24h",
+      "sigma": 0.8,
+      "spread": 4.0,
+      "train_avg": 0.77,
+      "test_avg": 5.1,
+      "test_n": 201,
+      "test_sharpe": 0.15,
+      "test_wr": 0.607
+    },
+    {
+      "label": "C_mtfdown.cd12.range+transition.decay_24h",
+      "sigma": 0.4,
+      "spread": 1.0,
+      "train_avg": -0.26,
+      "test_avg": 3.61,
+      "test_n": 108,
+      "test_sharpe": 0.08,
+      "test_wr": 0.537
+    },
+    {
+      "label": "C_mtfdown.cd12.range+transition.decay_24h",
+      "sigma": 0.4,
+      "spread": 2.0,
+      "train_avg": -1.28,
+      "test_avg": 3.36,
+      "test_n": 108,
+      "test_sharpe": 0.07,
+      "test_wr": 0.537
+    },
+    {
+      "label": "C_mtfdown.cd12.range+transition.decay_24h",
+      "sigma": 0.4,
+      "spread": 4.0,
+      "train_avg": -2.34,
+      "test_avg": 2.86,
+      "test_n": 108,
+      "test_sharpe": 0.06,
+      "test_wr": 0.537
+    },
+    {
+      "label": "C_mtfdown.cd12.range+transition.decay_24h",
+      "sigma": 0.6,
+      "spread": 1.0,
+      "train_avg": 2.7,
+      "test_avg": 6.14,
+      "test_n": 108,
+      "test_sharpe": 0.16,
+      "test_wr": 0.593
+    },
+    {
+      "label": "C_mtfdown.cd12.range+transition.decay_24h",
+      "sigma": 0.6,
+      "spread": 2.0,
+      "train_avg": 2.07,
+      "test_avg": 4.9,
+      "test_n": 108,
+      "test_sharpe": 0.13,
+      "test_wr": 0.583
+    },
+    {
+      "label": "C_mtfdown.cd12.range+transition.decay_24h",
+      "sigma": 0.6,
+      "spread": 4.0,
+      "train_avg": 1.17,
+      "test_avg": 2.83,
+      "test_n": 108,
+      "test_sharpe": 0.07,
+      "test_wr": 0.565
+    },
+    {
+      "label": "C_mtfdown.cd12.range+transition.decay_24h",
+      "sigma": 0.8,
+      "spread": 1.0,
+      "train_avg": 2.84,
+      "test_avg": 5.76,
+      "test_n": 108,
+      "test_sharpe": 0.16,
+      "test_wr": 0.602
+    },
+    {
+      "label": "C_mtfdown.cd12.range+transition.decay_24h",
+      "sigma": 0.8,
+      "spread": 2.0,
+      "train_avg": 2.21,
+      "test_avg": 5.22,
+      "test_n": 108,
+      "test_sharpe": 0.15,
+      "test_wr": 0.602
+    },
+    {
+      "label": "C_mtfdown.cd12.range+transition.decay_24h",
+      "sigma": 0.8,
+      "spread": 4.0,
+      "train_avg": 0.87,
+      "test_avg": 3.54,
+      "test_n": 108,
+      "test_sharpe": 0.1,
+      "test_wr": 0.602
+    }
+  ],
+  "elapsed_s": 611.3
+}

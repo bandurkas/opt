@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { fetchTop, type Side, type TopResponse } from "./lib/api";
+import {
+  fetchPaperConditions,
+  fetchTop,
+  type PaperConditions,
+  type Side,
+  type TopResponse,
+} from "./lib/api";
 import { EmptyState } from "./components/EmptyState";
 import { MarketBar } from "./components/MarketBar";
 import { OpportunityCard } from "./components/OpportunityCard";
@@ -16,6 +22,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
+  const [conditions, setConditions] = useState<PaperConditions | null>(null);
 
   const load = async () => {
     try {
@@ -44,6 +51,20 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [side, maxDistance, maxHours]);
 
+  useEffect(() => {
+    const tick = async () => {
+      try {
+        const c = await fetchPaperConditions();
+        setConditions(c);
+      } catch {
+        /* ignore */
+      }
+    };
+    tick();
+    const id = setInterval(tick, 20_000);
+    return () => clearInterval(id);
+  }, []);
+
   return (
     <main className="p-6 md:p-10 max-w-7xl mx-auto flex flex-col gap-6">
       <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
@@ -65,21 +86,63 @@ export default function Home() {
       </header>
 
       {/* Paper-trader banner */}
-      <section className="glass-panel p-4 border border-emerald-500/40 bg-emerald-500/5 flex flex-col gap-2">
-        <div className="flex items-center gap-2 flex-wrap">
+      <section className="glass-panel p-4 border border-emerald-500/40 bg-emerald-500/5 flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-3">
           <span className="px-2 py-1 rounded bg-emerald-500/20 text-emerald-200 font-bold text-xs">
-            ✓ ВАЛИДИРОВАННАЯ СТРАТЕГИЯ ЗАПУЩЕНА В PAPER-РЕЖИМЕ
+            Стратегия помощник
           </span>
           <a href="/paper" className="text-emerald-300 hover:text-emerald-200 underline text-sm">
             Открыть paper-dashboard →
           </a>
         </div>
-        <p className="text-xs text-slate-400 leading-relaxed">
-          Стратегия SELL ATM Call (MTF=down + vol&gt;70%ile + range/transition) подтверждена sensitivity-тестом
-          9/9 ячеек. Iter5 overlays (bull filter + CB + dyn sizing) держат max DD в районе 5%. Backtest +1000% в год
-          на $1000. Сейчас торгует на бумаге с $100 — реальные числа на странице /paper.
-        </p>
+        {conditions && (
+          <div className="flex items-center gap-2 text-xs">
+            {conditions.ready ? (
+              <span className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/15 border border-emerald-400/40">
+                <span className="relative inline-flex w-2.5 h-2.5">
+                  <span className="absolute inset-0 rounded-full bg-emerald-400 animate-ping opacity-75" />
+                  <span className="relative inline-block w-2.5 h-2.5 rounded-full bg-emerald-400" />
+                </span>
+                <span className="text-emerald-200 font-semibold">🟢 ВХОД АКТУАЛЕН СЕЙЧАС</span>
+              </span>
+            ) : (
+              <span className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-700/30 border border-slate-600/30">
+                <span className="inline-block w-2.5 h-2.5 rounded-full bg-slate-500" />
+                <span className="text-slate-400">Условия не сошлись — ждём</span>
+              </span>
+            )}
+          </div>
+        )}
       </section>
+
+      {conditions && (
+        <section className="glass-panel p-3 grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+          <ConditionPill
+            label="Высокая волатильность"
+            ok={conditions.vol_high}
+            detail={conditions.vol_pctile !== null ? `${Math.round((conditions.vol_pctile || 0) * 100)}-й перцентиль` : "—"}
+            need="нужно ≥ 70"
+          />
+          <ConditionPill
+            label="Режим рынка"
+            ok={conditions.regime_ok}
+            detail={conditions.regime ?? "—"}
+            need="range / transition"
+          />
+          <ConditionPill
+            label="Тренд вниз (MTF)"
+            ok={conditions.mtf_down_aligned}
+            detail={`${conditions.mtf_direction ?? "—"} · ${conditions.mtf_aligned_count ?? 0}/3 TF`}
+            need="down + 2/3"
+          />
+          <ConditionPill
+            label="Не bull-рынок"
+            ok={conditions.bull_filter_ok}
+            detail={conditions.ema_ratio !== null ? `EMA50/200 = ${conditions.ema_ratio.toFixed(3)}` : "—"}
+            need="≤ 1.05"
+          />
+        </section>
+      )}
 
       {/* Filters */}
       <section className="glass-panel p-4 flex flex-wrap gap-4 items-end">
@@ -186,6 +249,27 @@ function Loader() {
     <div className="flex items-center justify-center flex-col gap-3 py-16">
       <div className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" />
       <p className="text-slate-400 font-mono animate-pulse">Сканирую цепочку опционов…</p>
+    </div>
+  );
+}
+
+function ConditionPill({
+  label, ok, detail, need,
+}: { label: string; ok: boolean; detail: string; need: string }) {
+  return (
+    <div
+      className={`rounded-lg px-3 py-2 border ${
+        ok
+          ? "bg-emerald-500/10 border-emerald-500/30"
+          : "bg-slate-700/30 border-slate-600/30"
+      }`}
+    >
+      <div className="flex items-center gap-2">
+        <span className={ok ? "text-emerald-400" : "text-slate-500"}>{ok ? "✓" : "✕"}</span>
+        <span className="font-semibold text-slate-200">{label}</span>
+      </div>
+      <div className="mt-1 text-slate-400">{detail}</div>
+      <div className="text-[10px] text-slate-500 mt-0.5">{need}</div>
     </div>
   );
 }

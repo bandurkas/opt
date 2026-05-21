@@ -1,0 +1,69 @@
+{
+  "variants": [
+    {
+      "label": "A_baseline",
+      "stats": {
+        "n": 668,
+        "wr": 0.558,
+        "avg": 3.46,
+        "stdev": 40.89,
+        "sharpe": 0.084,
+        "total_pnl_pct": 2308.1,
+        "final_equity": 3308.08,
+        "max_dd_pct": 88.3,
+        "return_pct": 230.8
+      },
+      "n_signals": 668
+    },
+    {
+      "label": "B_bull_filter",
+      "stats": {
+        "n": 633,
+        "wr": 0.569,
+        "avg": 4.03,
+        "stdev": 40.89,
+        "sharpe": 0.098,
+        "total_pnl_pct": 2548.9,
+        "final_equity": 3548.9,
+        "max_dd_pct": 76.5,
+        "return_pct": 254.9
+      },
+      "n_signals": 633
+    },
+    {
+      "label": "C_bull_cb_dynsize",
+      "stats": {
+        "n": 444,
+        "wr": 0.8,
+        "avg": 22.73,
+        "stdev": 32.57,
+        "sharpe": 0.698,
+        "total_pnl_pct": 10092.4,
+        "final_equity": 11086.65,
+        "max_dd_pct": 5.2,
+        "return_pct": 1008.7
+      },
+      "n_signals": 633
+    },
+    {
+      "label": "D_cb_dynsize_only",
+      "stats": {
+        "n": 464,
+        "wr": 0.789,
+        "avg": 22.16,
+        "stdev": 33.12,
+        "sharpe": 0.669,
+        "total_pnl_pct": 10280.5,
+        "final_equity": 11419.3,
+        "max_dd_pct": 9.2,
+        "return_pct": 1041.9
+      },
+      "n_signals": 668
+    }
+  ],
+  "elapsed_s": 794.1,
+  "start_equity": 1000.0,
+  "base_size": 100.0,
+  "sigma": 0.6,
+  "spread_pct": 2.0
+}

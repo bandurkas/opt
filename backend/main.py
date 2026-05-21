@@ -225,6 +225,22 @@ def paper_positions_endpoint(
     return {"positions": out, "count": len(out)}
 
 
+@app.get("/api/v1/paper/conditions")
+def paper_conditions():
+    """Live check: does the current 5m bar satisfy all entry conditions?
+    Returns per-condition booleans for UI indicators."""
+    from services.paper_strategy import evaluate_conditions
+
+    symbol = "ETHUSDT"
+    k5 = recent_klines(symbol, "5m", limit=600)
+    k15 = recent_klines(symbol, "15m", limit=220)
+    k1h = recent_klines(symbol, "1h", limit=270)
+    cond = evaluate_conditions(k5, k15, k1h)
+    cond["checked_at_ms"] = int(time.time() * 1000)
+    cond["bars_available"] = {"5m": len(k5), "15m": len(k15), "1h": len(k1h)}
+    return cond
+
+
 @app.get("/api/v1/paper/equity_history")
 def paper_equity_history(hours: int = Query(168, ge=1, le=8760)):
     rows = paper_repo.equity_history(hours=hours)

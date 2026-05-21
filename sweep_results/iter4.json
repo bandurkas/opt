@@ -1,0 +1,201 @@
+{
+  "days": 365,
+  "sigma": 0.6,
+  "spread_pct": 2.0,
+  "results": [
+    {
+      "label": "sp.P_mtfup.cd6.t0.5.range.decay_48h_wide_sl",
+      "strategy": "sell_premium_high_vol",
+      "signals_total": 519,
+      "train": {
+        "n": 363,
+        "wr": 0.614,
+        "avg": 7.03,
+        "median": 45.72,
+        "stdev": 63.49,
+        "sharpe": 0.11,
+        "total": 2552.7
+      },
+      "test": {
+        "n": 156,
+        "wr": 0.577,
+        "avg": 9.37,
+        "median": 38.07,
+        "stdev": 56.95,
+        "sharpe": 0.16,
+        "total": 1462.1
+      },
+      "all": {
+        "n": 519,
+        "wr": 0.603,
+        "avg": 7.74,
+        "median": 41.96,
+        "stdev": 61.56,
+        "sharpe": 0.13,
+        "total": 4014.8
+      }
+    },
+    {
+      "label": "sp.C_mtfdown.cd6.t0.7.range+transition.decay_24h",
+      "strategy": "sell_premium_high_vol",
+      "signals_total": 668,
+      "train": {
+        "n": 467,
+        "wr": 0.542,
+        "avg": 1.99,
+        "median": 4.45,
+        "stdev": 41.92,
+        "sharpe": 0.05,
+        "total": 927.7
+      },
+      "test": {
+        "n": 201,
+        "wr": 0.597,
+        "avg": 6.87,
+        "median": 19.09,
+        "stdev": 38.28,
+        "sharpe": 0.18,
+        "total": 1380.4
+      },
+      "all": {
+        "n": 668,
+        "wr": 0.558,
+        "avg": 3.46,
+        "median": 6.68,
+        "stdev": 40.89,
+        "sharpe": 0.08,
+        "total": 2308.1
+      }
+    },
+    {
+      "label": "sp.P_mtfup.cd12.t0.5.range.decay_48h_wide_sl",
+      "strategy": "sell_premium_high_vol",
+      "signals_total": 284,
+      "train": {
+        "n": 198,
+        "wr": 0.621,
+        "avg": 8.21,
+        "median": 46.62,
+        "stdev": 62.79,
+        "sharpe": 0.13,
+        "total": 1626.1
+      },
+      "test": {
+        "n": 86,
+        "wr": 0.593,
+        "avg": 9.87,
+        "median": 38.14,
+        "stdev": 57.4,
+        "sharpe": 0.17,
+        "total": 848.7
+      },
+      "all": {
+        "n": 284,
+        "wr": 0.613,
+        "avg": 8.71,
+        "median": 44.31,
+        "stdev": 61.11,
+        "sharpe": 0.14,
+        "total": 2474.7
+      }
+    },
+    {
+      "label": "sp.C_mtfdown.cd12.t0.7.range+transition.decay_24h",
+      "strategy": "sell_premium_high_vol",
+      "signals_total": 359,
+      "train": {
+        "n": 251,
+        "wr": 0.546,
+        "avg": 2.07,
+        "median": 4.25,
+        "stdev": 41.56,
+        "sharpe": 0.05,
+        "total": 520.4
+      },
+      "test": {
+        "n": 108,
+        "wr": 0.583,
+        "avg": 4.9,
+        "median": 11.72,
+        "stdev": 38.93,
+        "sharpe": 0.13,
+        "total": 529.6
+      },
+      "all": {
+        "n": 359,
+        "wr": 0.557,
+        "avg": 2.92,
+        "median": 6.76,
+        "stdev": 40.76,
+        "sharpe": 0.07,
+        "total": 1050.0
+      }
+    },
+    {
+      "label": "sp.P_mtfup.cd24.t0.5.range.decay_48h_wide_sl",
+      "strategy": "sell_premium_high_vol",
+      "signals_total": 166,
+      "train": {
+        "n": 116,
+        "wr": 0.621,
+        "avg": 6.41,
+        "median": 43.08,
+        "stdev": 63.76,
+        "sharpe": 0.1,
+        "total": 743.3
+      },
+      "test": {
+        "n": 50,
+        "wr": 0.6,
+        "avg": 10.67,
+        "median": 36.11,
+        "stdev": 55.85,
+        "sharpe": 0.19,
+        "total": 533.4
+      },
+      "all": {
+        "n": 166,
+        "wr": 0.614,
+        "avg": 7.69,
+        "median": 38.05,
+        "stdev": 61.35,
+        "sharpe": 0.13,
+        "total": 1276.8
+      }
+    },
+    {
+      "label": "sp.C_mtfdown.cd24.t0.7.range+transition.decay_24h",
+      "strategy": "sell_premium_high_vol",
+      "signals_total": 212,
+      "train": {
+        "n": 148,
+        "wr": 0.534,
+        "avg": 0.92,
+        "median": 3.38,
+        "stdev": 41.83,
+        "sharpe": 0.02,
+        "total": 135.5
+      },
+      "test": {
+        "n": 64,
+        "wr": 0.578,
+        "avg": 4.42,
+        "median": 11.72,
+        "stdev": 38.92,
+        "sharpe": 0.11,
+        "total": 282.9
+      },
+      "all": {
+        "n": 212,
+        "wr": 0.547,
+        "avg": 1.97,
+        "median": 5.65,
+        "stdev": 40.91,
+        "sharpe": 0.05,
+        "total": 418.4
+      }
+    }
+  ],
+  "elapsed_s": 1125.7,
+  "complete": true
+}

@@ -150,12 +150,135 @@ function StatsCard({ state }: { state: PaperState }) {
   );
 }
 
+function PositionDetailCard({ p, isOpen }: { p: PaperPosition; isOpen: boolean }) {
+  const ageMs = (p.closed_at_ms || Date.now()) - p.opened_at_ms;
+  const ageH = ageMs / 3_600_000;
+  const remainingH = isOpen ? Math.max(0, p.hold_h - ageH) : 0;
+  const status = statusLabel(p.status);
+  const sideRu = p.side === "C" ? "Call (право купить)" : "Put (право продать)";
+  const directionWord = p.side === "C" ? "выше" : "ниже";
+  const pnlPos = (p.pnl_pct || 0) > 0;
+  const expiryDays = (p.expiry_ms - p.opened_at_ms) / 86_400_000;
+
+  // Plain-language explanation
+  const entryExplanation = p.side === "C"
+    ? `Бот ПРОДАЛ Call-опцион — обязательство продать ETH по цене $${p.strike.toFixed(0)} если кто-то захочет купить. За это получил ${fmtUsd(p.entry_credit_usd)} с одного контракта.`
+    : `Бот ПРОДАЛ Put-опцион — обязательство купить ETH по цене $${p.strike.toFixed(0)} если кто-то захочет продать. За это получил ${fmtUsd(p.entry_credit_usd)} с одного контракта.`;
+  const winCondition = `Прибыль если ETH останется ${directionWord} $${p.strike.toFixed(0)} к экспирации (или премия упадёт раньше — тогда выкупаем дешевле).`;
+
+  return (
+    <div className="border border-slate-700/50 rounded-xl p-4 bg-slate-900/40">
+      <div className="flex justify-between items-start gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className={`px-2 py-0.5 rounded text-[10px] font-bold tracking-wider ${status.color} bg-slate-800/60`}>
+              {status.label}
+            </span>
+            <span className="text-slate-200 font-semibold">
+              SELL {sideRu} @ ${p.strike.toFixed(0)}
+            </span>
+            <span className="text-xs text-slate-500 font-mono">#{p.id}</span>
+          </div>
+          <div className="text-xs text-slate-400 mt-1.5 leading-relaxed">
+            {entryExplanation}
+          </div>
+          <div className="text-xs text-slate-500 mt-1">{winCondition}</div>
+        </div>
+        {!isOpen && p.pnl_pct !== null && (
+          <div className="text-right shrink-0">
+            <div className={`text-2xl font-bold ${pnlPos ? "neon-green-text" : "neon-red-text"}`}>
+              {fmtUsd(p.pnl_usd || 0)}
+            </div>
+            <div className={`text-xs font-semibold ${pnlPos ? "text-emerald-400" : "text-rose-400"}`}>
+              {fmtPct(p.pnl_pct)} от премии
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Entry block */}
+      <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+        <DetailField label="Когда зашли" value={fmtTime(p.opened_at_ms)} sub={`ETH был $${p.underlying_at_open.toFixed(2)}`} />
+        <DetailField label="Сколько контрактов" value={p.contracts.toFixed(4)} sub={`на ${fmtUsd(p.size_usd)} депозита`} />
+        <DetailField label="Цена премии" value={fmtUsd(p.entry_credit_usd)} sub={`${fmtPct(p.entry_credit_pct)} от спота`} />
+        <DetailField
+          label="Экспирация"
+          value={fmtTime(p.expiry_ms)}
+          sub={`через ${expiryDays.toFixed(1)} дн от входа`}
+        />
+      </div>
+
+      {/* Targets / risk */}
+      <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+        <DetailField
+          label="Цель TP1 (закрыть 50%)"
+          value={`премия ≤ ${fmtUsd(p.entry_credit_usd * (1 - p.tp1_pct))}`}
+          sub={`−${(p.tp1_pct * 100).toFixed(0)}% от credit`}
+        />
+        <DetailField
+          label="Цель TP2 (полное закрытие)"
+          value={`премия ≤ ${fmtUsd(p.entry_credit_usd * (1 - p.tp2_pct))}`}
+          sub={`−${(p.tp2_pct * 100).toFixed(0)}% от credit`}
+        />
+        <DetailField
+          label="Стоп (стоп-лосс)"
+          value={`премия ≥ ${fmtUsd(p.entry_credit_usd * (1 + p.sl_pct))}`}
+          sub={`+${(p.sl_pct * 100).toFixed(0)}% от credit`}
+        />
+        <DetailField
+          label={isOpen ? "Времени до тайм-стопа" : "Сколько держали"}
+          value={isOpen ? fmtDuration(remainingH * 3_600_000) : fmtDuration(ageMs)}
+          sub={isOpen ? `макс ${p.hold_h}h` : `закрыта ${p.closed_at_ms ? fmtTime(p.closed_at_ms) : ""}`}
+        />
+      </div>
+
+      {/* Exit info (only for closed) */}
+      {!isOpen && p.exit_debit_usd !== null && (
+        <div className="mt-4 pt-3 border-t border-slate-700/40 grid grid-cols-2 md:grid-cols-3 gap-3 text-xs">
+          <DetailField label="Когда вышли" value={p.closed_at_ms ? fmtTime(p.closed_at_ms) : "—"} />
+          <DetailField label="Цена выкупа" value={fmtUsd(p.exit_debit_usd)} sub={`выкупили обратно`} />
+          <DetailField label="Причина выхода" value={(p.exit_reason || "").toUpperCase()} sub={exitReasonExplain(p.exit_reason)} />
+        </div>
+      )}
+
+      {!isOpen && p.pnl_usd !== null && (
+        <div className={`mt-3 p-3 rounded-lg ${pnlPos ? "bg-emerald-500/10" : "bg-rose-500/10"} text-xs leading-relaxed`}>
+          <strong className={pnlPos ? "text-emerald-300" : "text-rose-300"}>Итог:</strong>{" "}
+          {pnlPos
+            ? `получили ${fmtUsd(p.entry_credit_usd)} за продажу, выкупили за ${fmtUsd(p.exit_debit_usd || 0)} → разница ${fmtUsd((p.entry_credit_usd - (p.exit_debit_usd || 0)))} × ${p.contracts.toFixed(4)} контр. = ${fmtUsd(p.pnl_usd)} прибыли (${fmtPct(p.pnl_pct)} от премии).`
+            : `получили ${fmtUsd(p.entry_credit_usd)} за продажу, но премия выросла до ${fmtUsd(p.exit_debit_usd || 0)} → пришлось выкупать дороже, убыток ${fmtUsd(Math.abs(p.pnl_usd))} (${fmtPct(p.pnl_pct)}).`}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DetailField({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div>
+      <div className="text-[10px] uppercase tracking-wider text-slate-500">{label}</div>
+      <div className="text-slate-200 font-mono">{value}</div>
+      {sub && <div className="text-[10px] text-slate-500 mt-0.5">{sub}</div>}
+    </div>
+  );
+}
+
+function exitReasonExplain(r: string | null): string {
+  switch (r) {
+    case "tp1": return "сработал тейк-профит #1 (премия упала на 30%)";
+    case "tp2": return "сработал полный тейк-профит (премия упала на 50%)";
+    case "sl": return "сработал стоп-лосс (премия выросла на 50%)";
+    case "time_stop": return "вышли по таймеру 24h";
+    default: return "";
+  }
+}
+
 function OpenPositionsCard({ positions }: { positions: PaperPosition[] }) {
   if (!positions.length) {
     return (
       <div className="glass-panel p-6">
         <div className="text-xs uppercase tracking-wider text-slate-400 mb-2">Открытые позиции</div>
-        <div className="text-slate-400 text-sm">Сейчас нет открытых позиций. Бот ждёт следующий сигнал (5m цикл).</div>
+        <div className="text-slate-400 text-sm">Сейчас нет открытых позиций. Бот ждёт следующий сигнал.</div>
       </div>
     );
   }
@@ -165,51 +288,7 @@ function OpenPositionsCard({ positions }: { positions: PaperPosition[] }) {
         Открытые позиции ({positions.length})
       </div>
       <div className="space-y-3">
-        {positions.map((p) => {
-          const ageMs = Date.now() - p.opened_at_ms;
-          const ageH = ageMs / 3_600_000;
-          const remainingH = Math.max(0, p.hold_h - ageH);
-          const status = statusLabel(p.status);
-          return (
-            <div key={p.id} className="border border-slate-700/50 rounded-lg p-3 bg-slate-900/30">
-              <div className="flex justify-between items-start">
-                <div>
-                  <div className="font-mono text-sm text-slate-200">
-                    SELL {p.side} @ ${p.strike.toFixed(0)} ·{" "}
-                    <span className={status.color}>{status.label}</span>
-                  </div>
-                  <div className="text-xs text-slate-500 mt-0.5">
-                    #{p.id} · opened {fmtTime(p.opened_at_ms)} · ETH was ${p.underlying_at_open.toFixed(2)}
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-xs text-slate-500">size</div>
-                  <div className="text-sm font-semibold text-slate-200">{fmtUsd(p.size_usd)}</div>
-                </div>
-              </div>
-              <div className="mt-2 grid grid-cols-4 gap-2 text-xs">
-                <div>
-                  <div className="text-slate-500">Credit</div>
-                  <div className="text-slate-300">{fmtUsd(p.entry_credit_usd)} ({fmtPct(p.entry_credit_pct, 2)})</div>
-                </div>
-                <div>
-                  <div className="text-slate-500">Contracts</div>
-                  <div className="text-slate-300">{p.contracts.toFixed(4)}</div>
-                </div>
-                <div>
-                  <div className="text-slate-500">TP / SL</div>
-                  <div className="text-slate-300">
-                    -{(p.tp1_pct * 100).toFixed(0)}/-{(p.tp2_pct * 100).toFixed(0)} / +{(p.sl_pct * 100).toFixed(0)}%
-                  </div>
-                </div>
-                <div>
-                  <div className="text-slate-500">Time left</div>
-                  <div className="text-slate-300">{fmtDuration(remainingH * 3_600_000)}</div>
-                </div>
-              </div>
-            </div>
-          );
-        })}
+        {positions.map((p) => <PositionDetailCard key={p.id} p={p} isOpen={true} />)}
       </div>
     </div>
   );
@@ -230,29 +309,8 @@ function RecentTradesCard({ trades }: { trades: PaperPosition[] }) {
       <div className="text-xs uppercase tracking-wider text-slate-400 mb-4">
         История сделок ({closed.length})
       </div>
-      <div className="space-y-2 max-h-[600px] overflow-y-auto">
-        {closed.map((t) => {
-          const status = statusLabel(t.status);
-          const pnlPos = (t.pnl_pct || 0) > 0;
-          return (
-            <div
-              key={t.id}
-              className="flex justify-between items-center border-b border-slate-800/50 py-2 text-xs"
-            >
-              <div className="font-mono">
-                <span className="text-slate-400">#{t.id} </span>
-                <span className="text-slate-200">SELL {t.side} ${t.strike.toFixed(0)}</span>
-                <span className={`ml-2 ${status.color}`}>{status.label}</span>
-              </div>
-              <div className="text-right">
-                <div className={pnlPos ? "text-emerald-400 font-semibold" : "text-rose-400 font-semibold"}>
-                  {fmtUsd(t.pnl_usd || 0)} ({fmtPct(t.pnl_pct)})
-                </div>
-                <div className="text-slate-500">{t.closed_at_ms ? fmtTime(t.closed_at_ms) : "—"}</div>
-              </div>
-            </div>
-          );
-        })}
+      <div className="space-y-3 max-h-[1200px] overflow-y-auto pr-1">
+        {closed.map((t) => <PositionDetailCard key={t.id} p={t} isOpen={false} />)}
       </div>
     </div>
   );
@@ -325,16 +383,13 @@ export default function PaperPage() {
         <EquityChart points={equity} />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <OpenPositionsCard positions={openPositions} />
-        <RecentTradesCard trades={recentTrades} />
-      </div>
+      <OpenPositionsCard positions={openPositions} />
+      <RecentTradesCard trades={recentTrades} />
 
-      <div className="text-xs text-slate-500 pt-2">
-        Стратегия: SELL ATM Call когда MTF=down + vol&gt;70%ile + regime=range/transition.
-        Размер позиции = 10% от текущего equity (мин $5, макс $50).
-        Exits: TP1 −30% / TP2 −50% / SL +50% / Time stop 24h.
-        Bull-market filter и consecutive-loss CB активны.
+      <div className="text-xs text-slate-500 pt-2 leading-relaxed">
+        Бот торгует на бумаге. Размер каждой позиции — 10% от текущего баланса.
+        Прибыль фиксируется на тейк-профитах, убыток ограничен стоп-лоссом или таймером 24 часа.
+        После 3 убытков подряд автоматическая пауза на сутки.
       </div>
     </main>
   );
