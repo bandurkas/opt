@@ -5,12 +5,14 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from db.engine import apply_schema
+from db import paper_repo
 from db.repository import (
     latest_snapshot_age_seconds,
     persist_signal,
     recent_klines,
     recent_signals,
 )
+from services.paper_strategy import START_EQUITY_USD
 from services.analysis import (
     STRATEGIES,
     build_mtf_context,
@@ -180,6 +182,65 @@ def get_top_opportunities(
 @app.get("/api/v1/signals/recent")
 def get_recent_signals(limit: int = Query(50, ge=1, le=500)):
     return {"signals": recent_signals(limit=limit)}
+
+
+# ───────────────────────── Paper trading API ─────────────────────────
+
+@app.get("/api/v1/paper/state")
+def paper_state():
+    state = paper_repo.ensure_state(START_EQUITY_USD)
+    stats = paper_repo.position_stats()
+    latest = paper_repo.latest_equity()
+    return {
+        "start_equity_usd": float(state["start_equity_usd"]),
+        "started_at_ms": int(state["started_at_ms"]),
+        "cb_cooldown_until_ms": int(state["cb_cooldown_until_ms"]),
+        "cb_active": int(state["cb_cooldown_until_ms"]) > time.time() * 1000,
+        "consec_losses": int(state["consec_losses"]),
+        "current_equity_usd": float(latest["equity_usd"]) if latest else float(state["start_equity_usd"]),
+        "realized_usd": stats["realized_usd"],
+        "n_open": stats["n_open"],
+        "n_closed": stats["n_closed"],
+        "wins": stats["wins"],
+        "losses": stats["losses"],
+        "win_rate": (stats["wins"] / stats["n_closed"]) if stats["n_closed"] else None,
+        "avg_pnl_pct": stats["avg_pnl_pct"],
+    }
+
+
+@app.get("/api/v1/paper/positions")
+def paper_positions_endpoint(
+    status: str = Query("open", description="'open' | 'recent' | 'all'"),
+    limit: int = Query(50, ge=1, le=500),
+):
+    if status == "open":
+        rows = paper_repo.open_positions()
+    else:
+        rows = paper_repo.recent_positions(limit=limit)
+    # Cast Decimal → float for JSON
+    out = []
+    for r in rows:
+        out.append({k: (float(v) if hasattr(v, "real") and not isinstance(v, bool) else v)
+                    if v is not None else None for k, v in r.items()})
+    return {"positions": out, "count": len(out)}
+
+
+@app.get("/api/v1/paper/equity_history")
+def paper_equity_history(hours: int = Query(168, ge=1, le=8760)):
+    rows = paper_repo.equity_history(hours=hours)
+    return {
+        "hours": hours,
+        "points": [
+            {
+                "ts_ms": int(r["ts_ms"]),
+                "equity": float(r["equity_usd"]),
+                "realized": float(r["realized_usd"]),
+                "unrealized": float(r["unrealized_usd"]),
+                "n_open": int(r["n_open"]),
+                "n_closed": int(r["n_closed"]),
+            } for r in rows
+        ],
+    }
 
 
 @app.get("/api/v1/analysis/test")

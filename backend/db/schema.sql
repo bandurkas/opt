@@ -57,3 +57,57 @@ CREATE INDEX IF NOT EXISTS signals_recent
     ON signals (generated_at_ms DESC);
 CREATE INDEX IF NOT EXISTS signals_score
     ON signals (score DESC, generated_at_ms DESC);
+
+-- Paper-trading positions (one row per paper trade taken by the live strategy).
+CREATE TABLE IF NOT EXISTS paper_positions (
+    id                  BIGSERIAL    PRIMARY KEY,
+    opened_at_ms        BIGINT       NOT NULL,
+    underlying_at_open  NUMERIC(18,4) NOT NULL,
+    side                CHAR(1)      NOT NULL,                -- 'C' or 'P'
+    strike              NUMERIC(18,4) NOT NULL,
+    expiry_ms           BIGINT       NOT NULL,
+    contracts           NUMERIC(18,8) NOT NULL,               -- # contracts (size_usd / entry_credit_usd)
+    size_usd            NUMERIC(18,2) NOT NULL,               -- dollar size at entry
+    entry_credit_usd    NUMERIC(18,4) NOT NULL,               -- per-contract premium received
+    entry_credit_pct    NUMERIC(10,4) NOT NULL,               -- premium / underlying * 100
+    entry_source        TEXT         NOT NULL,                -- 'bybit' | 'bs_fallback'
+    status              TEXT         NOT NULL DEFAULT 'open', -- 'open' | 'closed_tp1' | 'closed_tp2' | 'closed_sl' | 'closed_time'
+    tp1_pct             NUMERIC(10,4) NOT NULL,               -- decay-% for half-close
+    tp2_pct             NUMERIC(10,4) NOT NULL,               -- decay-% for full close
+    sl_pct              NUMERIC(10,4) NOT NULL,               -- growth-% for stop-loss
+    hold_h              INT          NOT NULL,                -- max hold hours (time-stop)
+    half_closed_at_ms   BIGINT,                               -- when TP1 fired
+    closed_at_ms        BIGINT,
+    exit_debit_usd      NUMERIC(18,4),                        -- per-contract premium paid back at close
+    pnl_pct             NUMERIC(10,4),                        -- realized P&L %
+    pnl_usd             NUMERIC(18,4),                        -- realized P&L $
+    exit_reason         TEXT,                                  -- mirrors status's reason
+    signal_payload      JSONB                                 -- entry conditions for audit
+);
+CREATE INDEX IF NOT EXISTS paper_positions_status
+    ON paper_positions (status, opened_at_ms DESC);
+CREATE INDEX IF NOT EXISTS paper_positions_recent
+    ON paper_positions (opened_at_ms DESC);
+
+-- Paper-trading equity snapshots (one row per minute or per equity change event).
+CREATE TABLE IF NOT EXISTS paper_equity_snapshots (
+    ts_ms          BIGINT       PRIMARY KEY,
+    equity_usd     NUMERIC(18,4) NOT NULL,
+    realized_usd   NUMERIC(18,4) NOT NULL,                    -- $ realized from closed trades since start
+    unrealized_usd NUMERIC(18,4) NOT NULL,                    -- mark-to-market of open positions
+    n_open         INT          NOT NULL,
+    n_closed       INT          NOT NULL,
+    max_dd_pct     NUMERIC(10,4)                              -- running max drawdown
+);
+CREATE INDEX IF NOT EXISTS paper_equity_recent
+    ON paper_equity_snapshots (ts_ms DESC);
+
+-- Paper-trading state singleton (CB cooldown, recent WR for dynamic sizing).
+CREATE TABLE IF NOT EXISTS paper_state (
+    id                       INT       PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+    started_at_ms            BIGINT    NOT NULL,
+    start_equity_usd         NUMERIC(18,4) NOT NULL,
+    cb_cooldown_until_ms     BIGINT    NOT NULL DEFAULT 0,    -- 24h pause after 3 losses
+    consec_losses            INT       NOT NULL DEFAULT 0,
+    recent_pnls_json         JSONB     NOT NULL DEFAULT '[]'  -- last 10 pnls for dyn sizing
+);

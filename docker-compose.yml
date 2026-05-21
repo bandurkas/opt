@@ -39,6 +39,18 @@ services:
       - POLLER_BASE_COIN=${POLLER_BASE_COIN:-ETH}
     restart: unless-stopped
 
+  paper:
+    build:
+      context: ./backend
+    command: python services/paper_loop.py
+    depends_on:
+      - postgres
+      - poller
+    environment:
+      - DATABASE_URL=postgresql://user:password@postgres:5432/options_assistant
+      - PAPER_POLL_INTERVAL=${PAPER_POLL_INTERVAL:-30}
+    restart: unless-stopped
+
   frontend:
     build:
       context: ./frontend
