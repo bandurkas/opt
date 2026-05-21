@@ -202,3 +202,78 @@ export async function fetchTop(params: {
   }
   return res.json();
 }
+
+// ───────────────────────── Paper trading ─────────────────────────
+
+export type PaperState = {
+  start_equity_usd: number;
+  started_at_ms: number;
+  cb_cooldown_until_ms: number;
+  cb_active: boolean;
+  consec_losses: number;
+  current_equity_usd: number;
+  realized_usd: number;
+  n_open: number;
+  n_closed: number;
+  wins: number;
+  losses: number;
+  win_rate: number | null;
+  avg_pnl_pct: number;
+};
+
+export type PaperPosition = {
+  id: number;
+  opened_at_ms: number;
+  underlying_at_open: number;
+  side: "C" | "P";
+  strike: number;
+  expiry_ms: number;
+  contracts: number;
+  size_usd: number;
+  entry_credit_usd: number;
+  entry_credit_pct: number;
+  entry_source: string;
+  status: string;
+  tp1_pct: number;
+  tp2_pct: number;
+  sl_pct: number;
+  hold_h: number;
+  half_closed_at_ms: number | null;
+  closed_at_ms: number | null;
+  exit_debit_usd: number | null;
+  pnl_pct: number | null;
+  pnl_usd: number | null;
+  exit_reason: string | null;
+};
+
+export type EquityPoint = {
+  ts_ms: number;
+  equity: number;
+  realized: number;
+  unrealized: number;
+  n_open: number;
+  n_closed: number;
+};
+
+async function jget<T>(path: string): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`API ${res.status}: ${await res.text()}`);
+  return res.json();
+}
+
+export async function fetchPaperState(): Promise<PaperState> {
+  return jget<PaperState>(`/paper/state`);
+}
+
+export async function fetchPaperPositions(
+  status: "open" | "recent" = "open",
+  limit = 50,
+): Promise<{ positions: PaperPosition[]; count: number }> {
+  return jget(`/paper/positions?status=${status}&limit=${limit}`);
+}
+
+export async function fetchEquityHistory(
+  hours = 168,
+): Promise<{ hours: number; points: EquityPoint[] }> {
+  return jget(`/paper/equity_history?hours=${hours}`);
+}

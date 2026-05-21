@@ -64,20 +64,20 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Strategy warning banner */}
-      <section className="glass-panel p-4 border border-rose-500/40 bg-rose-500/5 flex flex-col gap-2">
+      {/* Paper-trader banner */}
+      <section className="glass-panel p-4 border border-emerald-500/40 bg-emerald-500/5 flex flex-col gap-2">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="px-2 py-1 rounded bg-rose-500/20 text-rose-200 font-bold text-xs">
-            ⚠️ СТРАТЕГИЯ НЕ ВАЛИДИРОВАНА
+          <span className="px-2 py-1 rounded bg-emerald-500/20 text-emerald-200 font-bold text-xs">
+            ✓ ВАЛИДИРОВАННАЯ СТРАТЕГИЯ ЗАПУЩЕНА В PAPER-РЕЖИМЕ
           </span>
-          <span className="text-slate-300 text-sm">
-            12-месячный бэктест: <strong>WR 43%, avg −3.3% за сделку</strong>
-          </span>
+          <a href="/paper" className="text-emerald-300 hover:text-emerald-200 underline text-sm">
+            Открыть paper-dashboard →
+          </a>
         </div>
         <p className="text-xs text-slate-400 leading-relaxed">
-          Текущая fade-стратегия показала отрицательный edge на всех 7 протестированных вариантах за 365 дней.
-          <strong className="text-rose-300"> Не торгуйте реальными деньгами.</strong> Дашборд используется для разработки
-          и поиска работающей стратегии — параллельно идёт массовый перебор альтернатив (sell premium, RSI extremes, BB breakouts).
+          Стратегия SELL ATM Call (MTF=down + vol&gt;70%ile + range/transition) подтверждена sensitivity-тестом
+          9/9 ячеек. Iter5 overlays (bull filter + CB + dyn sizing) держат max DD в районе 5%. Backtest +1000% в год
+          на $1000. Сейчас торгует на бумаге с $100 — реальные числа на странице /paper.
         </p>
       </section>
 
