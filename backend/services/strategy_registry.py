@@ -174,6 +174,7 @@ def gen_sell_premium_iv_high(k5, k15, k1h, *, vol_lookback_h: int = 168, vol_thr
                               side: str = "P",
                               adx_max: float | None = None,
                               mtf_direction_filter: str | None = None,
+                              bull_market_ratio_max: float | None = None,
                               cooldown_bars: int = 24) -> list[dict]:
     """When realized vol is in TOP (1-vol_threshold) of recent week AND we're in
     non-trend regime, sell ATM option(s). Returns short_premium signals.
@@ -223,6 +224,20 @@ def gen_sell_premium_iv_high(k5, k15, k1h, *, vol_lookback_h: int = 168, vol_thr
                 continue
             mtf = consensus(analyze_tf(s5), analyze_tf(s15), analyze_tf(s1h))
             if mtf["direction"] != mtf_direction_filter or mtf["tfs_aligned"] < 2:
+                continue
+
+        # Bull-market kill switch: when EMA50_1h / EMA200_1h > threshold, skip
+        # (Designed to disable C-side selling in strong uptrends where calls get crushed.)
+        if bull_market_ratio_max is not None:
+            closes_1h = [c["close"] for c in s1h]
+            if len(closes_1h) < 200:
+                continue
+            ema50 = ema(closes_1h, 50)
+            ema200 = ema(closes_1h, 200)
+            if ema50 is None or ema200 is None or ema200 == 0:
+                continue
+            ratio = ema50 / ema200
+            if ratio > bull_market_ratio_max:
                 continue
 
         sides = ["P", "C"] if side == "both" else [side]
