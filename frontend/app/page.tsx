@@ -175,10 +175,37 @@ export default function Home() {
             <div className="text-slate-200 font-semibold mb-2">Как это работает</div>
             <p>
               Каждые 5 минут бот проверяет 4 условия выше. Когда ВСЕ четыре сходятся одновременно — продаёт ATM Call-опцион
-              на 10% от баланса (мин $5, макс $50). Закрывает на тейк-профите −30/−50%, стоп-лоссе +50% или через 24h.
+              на 10% от текущего баланса (минимум $5, максимум $50). От продажи получает премию — это потенциальная прибыль.
+            </p>
+            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2">
+              <div className="bg-emerald-500/5 border border-emerald-500/20 rounded p-2.5">
+                <div className="text-emerald-300 font-semibold text-xs uppercase tracking-wider">Выход в плюс</div>
+                <div className="mt-1 text-xs text-slate-300">
+                  <strong>TP1:</strong> цена премии упала на 30% — закрываем половину позиции, фиксируем +30% от премии
+                </div>
+                <div className="mt-1 text-xs text-slate-300">
+                  <strong>TP2:</strong> цена премии упала на 50% — закрываем полностью, фиксируем +50% от премии
+                </div>
+              </div>
+              <div className="bg-rose-500/5 border border-rose-500/20 rounded p-2.5">
+                <div className="text-rose-300 font-semibold text-xs uppercase tracking-wider">Выход в минус</div>
+                <div className="mt-1 text-xs text-slate-300">
+                  <strong>Stop-loss:</strong> цена премии выросла на 50% (рынок пошёл против нас) — закрываем с убытком −50% от премии
+                </div>
+                <div className="mt-1 text-xs text-slate-300">
+                  <strong>Тайм-стоп:</strong> прошло 24h — закрываем по текущей цене, какой бы она ни была
+                </div>
+              </div>
+            </div>
+            <p className="mt-3 text-xs">
+              <span className="text-slate-300 font-semibold">Пример:</span> получили $10 за контракт.
+              Если рынок не пошёл против нас и премия упала до $5 — выкупаем за $5, прибыль <span className="text-emerald-300">+$5</span>.
+              Если рынок пошёл против и премия выросла до $15 — обязаны выкупить за $15, убыток <span className="text-rose-300">−$5</span>.
             </p>
             <p className="mt-3">
-              В тихом рынке (как сейчас) сигналы редкие — могут быть 0-3 в день. После 3 убытков подряд бот делает паузу на сутки.
+              <span className="text-slate-300">В среднем ожидается ~1-2 сделки в день, ~8 в неделю, ~37 в месяц.</span>
+              {" "}В тихом рынке может быть 0 сигналов несколько дней подряд — это нормально.
+              После 3 убытков подряд бот делает паузу на 24h.
               Все сделки и текущий баланс — на странице{" "}
               <a href="/paper" className="text-emerald-300 hover:text-emerald-200 underline">
                 /paper
