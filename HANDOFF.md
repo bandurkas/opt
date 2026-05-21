@@ -1,7 +1,8 @@
 # ETH Options Assistant — Session Handoff
 
-**Date:** 2026-05-20
-**Status:** Production safe (no false trade signals); massive strategy sweep running on VPS.
+**Date:** 2026-05-21
+**Status:** ✅ **Strategy found and sensitivity-validated.** See `STRATEGY.md` for the spec.
+Production still shows red warning banner — replace with new strategy when paper-trade phase begins.
 
 ## Critical finding to remember
 
