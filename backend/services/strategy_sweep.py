@@ -128,25 +128,30 @@ def grid_for_strategy(name: str) -> list[dict]:
                     out.append({"gen": {"period": period, "tf": tf}, "exit": e,
                                 "label": f"donchian_breakout.{period}.{tf}.{e['lbl']}"})
     elif name == "sell_premium_high_vol":
-        # Iter 3: directional sell_premium — sell puts only when MTF says up,
-        # sell calls only when MTF says down. Tests whether iter 2 P-side edge
-        # was real "with the trend" signal vs OOS regime drift.
-        # Pair side with mtf_filter: (P,up) and (C,down) only.
-        side_mtf_pairs = [("P", "up"), ("C", "down")]
-        for side, mtf in side_mtf_pairs:
-            for vol_thresh in [0.50, 0.70]:
-                for regimes in [("range",), ("range", "transition")]:
-                    for adx_max in [None, 20]:
-                        for e in exits_short[:2]:  # decay_24h, decay_48h_wide_sl only
-                            adx_tag = "any" if adx_max is None else f"adx{adx_max}"
-                            out.append({
-                                "gen": {"vol_threshold": vol_thresh,
-                                        "regime_filter": list(regimes),
-                                        "side": side, "adx_max": adx_max,
-                                        "mtf_direction_filter": mtf},
-                                "exit": e,
-                                "label": f"sp.{side}_mtf{mtf}.t{vol_thresh}.{'+'.join(regimes)}.{adx_tag}.{e['lbl']}",
-                            })
+        # Iter 4: cooldown reduction sweep. Iter 3 found genuine edge in
+        # sp.P_mtfup.t0.5.range.decay_48h_wide_sl (train +5.83, test +9.82,
+        # sharpe 0.18) and sp.C_mtfdown.t0.7.range+transition.decay_24h
+        # (train +0.92, test +4.57, sharpe 0.12) but both test_n < 100.
+        # Lower cooldown 24→6 should grow n 4x while preserving the MTF gate.
+        # Grid: cooldown × side_mtf × keep everything else at iter3 winners.
+        # 3 × 2 × ... = small focused sweep.
+        winning_specs = [
+            # (side, mtf, vol, regime, exit_idx)
+            ("P", "up", 0.50, ("range",), 1),    # decay_48h_wide_sl
+            ("C", "down", 0.70, ("range", "transition"), 0),  # decay_24h
+        ]
+        for cd in [6, 12, 24]:
+            for side, mtf, vol_thresh, regimes, exit_idx in winning_specs:
+                e = exits_short[exit_idx]
+                out.append({
+                    "gen": {"vol_threshold": vol_thresh,
+                            "regime_filter": list(regimes),
+                            "side": side, "adx_max": None,
+                            "mtf_direction_filter": mtf,
+                            "cooldown_bars": cd},
+                    "exit": e,
+                    "label": f"sp.{side}_mtf{mtf}.cd{cd}.t{vol_thresh}.{'+'.join(regimes)}.{e['lbl']}",
+                })
     elif name == "volume_spike_continuation":
         for z in [2.0, 2.5, 3.0]:
             for tf in tfs:
