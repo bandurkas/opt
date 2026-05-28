@@ -9,6 +9,7 @@ import {
   type PaperPosition,
   type PaperState,
 } from "../lib/api";
+import { MissedSignals } from "../components/MissedSignals";
 
 const REFRESH_MS = 15_000;
 
@@ -385,6 +386,8 @@ export default function PaperPage() {
 
       <OpenPositionsCard positions={openPositions} />
       <RecentTradesCard trades={recentTrades} />
+
+      <MissedSignals />
 
       <div className="text-xs text-slate-500 pt-2 leading-relaxed">
         Бот торгует на бумаге. Размер каждой позиции — 10% от текущего баланса.

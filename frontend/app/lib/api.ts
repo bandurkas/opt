@@ -297,3 +297,52 @@ export type PaperConditions = {
 export async function fetchPaperConditions(): Promise<PaperConditions> {
   return jget(`/paper/conditions`);
 }
+
+// ───────────────────────── Missed signals (the bug cost) ─────────────────────────
+
+export type MissedTrade = {
+  ts_ms: number;
+  ts_iso: string;
+  side: "C" | "P";
+  strike: number;
+  spot_at_entry: number;
+  size_usd: number;
+  pnl_pct: number;
+  pnl_usd: number;
+  exit_reason: string;
+  bars_held: number | null;
+  equity_before: number;
+  equity_after: number;
+};
+
+export type MissedEquityPoint = {
+  ts_ms: number;
+  equity_usd: number;
+  label: string;
+};
+
+export type MissedSignalsReport = {
+  lookback_days: number;
+  generated_at_ms: number;
+  n_signals: number;
+  n_skipped_by_cb: number;
+  wins: number;
+  losses: number;
+  win_rate: number | null;
+  total_pnl_usd: number;
+  total_pnl_pct: number;
+  avg_pnl_pct_per_trade: number;
+  start_equity_usd: number;
+  final_equity_usd: number;
+  resolution_counts: Record<string, number>;
+  trades: MissedTrade[];
+  equity_curve: MissedEquityPoint[];
+  pricing_note: string;
+  cached: boolean;
+  cache_age_s: number;
+  error?: string;
+};
+
+export async function fetchMissedSignals(lookback_days = 14): Promise<MissedSignalsReport> {
+  return jget(`/paper/missed-signals?lookback_days=${lookback_days}`);
+}
