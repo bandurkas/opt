@@ -105,15 +105,24 @@ def price_option_bs(side: str, spot: float, strike: float, expiry_ms: int,
 # ───────────────────── signal logic ─────────────────────────────────
 
 def check_new_signal(k5, k15, k1h) -> dict | None:
-    """Run the validated generator on recent klines. If the LAST bar emitted
-    a signal, return its dict. Otherwise None."""
+    """Run the validated generator on recent klines. If the JUST-CLOSED bar
+    (or the live edge, in case the in-progress bar isn't in DB yet) emitted a
+    signal, return its dict.
+
+    Why both last_idx and last_idx-1: when paper polls at a minute boundary
+    (e.g. 01:30:00), the DB may have either:
+      - k5[-1] = 01:30 bar (just opened, ~0s data) AND k5[-2] = 01:25 (closed)
+      - OR k5[-1] = 01:25 bar (closed) with no 01:30 yet (poller hadn't run)
+    Signal fires on the CLOSED 01:25 bar — which is at either idx -1 or -2
+    depending on whether the live bar got upserted yet. Accept both to be safe.
+    """
     if not k5:
         return None
     last_idx = len(k5) - 1
     sigs = gen_sell_premium_iv_high(k5, k15, k1h, **WINNER_GEN_KWARGS)
-    # Filter to ones emitted at the latest bar
-    latest = [s for s in sigs if s.get("idx_5m") == last_idx]
-    return latest[0] if latest else None
+    # Accept signals at the just-closed bar OR the live edge
+    latest = [s for s in sigs if s.get("idx_5m") in (last_idx - 1, last_idx)]
+    return latest[-1] if latest else None  # newest if both fire
 
 
 # ───────────────────── equity computation ──────────────────────────
