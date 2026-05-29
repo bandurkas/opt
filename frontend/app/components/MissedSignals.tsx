@@ -62,7 +62,9 @@ export function MissedSignals() {
 
   const profitable = data.total_pnl_usd > 0;
   const trades = data.trades;
-  const visibleTrades = expanded ? trades : trades.slice(-15);
+  // newest-first for display (backend returns oldest-first by ts_ms)
+  const sortedTrades = [...trades].sort((a, b) => b.ts_ms - a.ts_ms);
+  const visibleTrades = expanded ? sortedTrades : sortedTrades.slice(0, 15);
 
   return (
     <section className="glass-panel p-6 flex flex-col gap-5 border border-amber-500/30">
@@ -82,24 +84,37 @@ export function MissedSignals() {
           <span className="text-[11px] uppercase tracking-widest text-slate-500 font-bold">
             Окно
           </span>
-          {LOOKBACK_OPTIONS.map((d) => (
-            <button
-              key={d}
-              onClick={() => setLookback(d)}
-              className={`px-3 py-1 text-xs font-bold rounded transition ${
-                lookback === d
-                  ? "bg-amber-500/30 text-amber-100"
-                  : "bg-slate-800/60 text-slate-400 border border-slate-700/50 hover:text-white"
-              }`}
-            >
-              {d}д
-            </button>
-          ))}
+          {LOOKBACK_OPTIONS.map((d) => {
+            const isActive = lookback === d;
+            const isRefetching = loading && isActive;
+            return (
+              <button
+                key={d}
+                disabled={loading}
+                onClick={() => setLookback(d)}
+                className={`px-3 py-1 text-xs font-bold rounded transition flex items-center gap-1 ${
+                  isActive
+                    ? "bg-amber-500/30 text-amber-100"
+                    : "bg-slate-800/60 text-slate-400 border border-slate-700/50 hover:text-white"
+                } ${loading ? "opacity-60 cursor-wait" : ""}`}
+              >
+                {isRefetching && (
+                  <span className="inline-block w-2 h-2 rounded-full bg-amber-300 animate-pulse" />
+                )}
+                {d}д
+              </button>
+            );
+          })}
+          {loading && (
+            <span className="text-[11px] text-amber-300/80 ml-2 animate-pulse">
+              пересчёт ~45с…
+            </span>
+          )}
         </div>
       </header>
 
       {/* Summary stats grid */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div className={`grid grid-cols-2 md:grid-cols-5 gap-3 transition-opacity ${loading ? "opacity-50" : ""}`}>
         <Stat label="Сигналов" value={String(data.n_signals)} sub={`пропущено CB: ${data.n_skipped_by_cb}`} />
         <Stat
           label="Win Rate"
@@ -129,11 +144,15 @@ export function MissedSignals() {
       </div>
 
       {/* Equity sparkline */}
-      {data.equity_curve.length > 1 && <EquitySparkline points={data.equity_curve} />}
+      {data.equity_curve.length > 1 && (
+        <div className={`transition-opacity ${loading ? "opacity-50" : ""}`}>
+          <EquitySparkline points={data.equity_curve} />
+        </div>
+      )}
 
       {/* Trade table */}
       {trades.length > 0 && (
-        <div className="mt-2">
+        <div className={`mt-2 transition-opacity ${loading ? "opacity-50" : ""}`}>
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-[11px] uppercase tracking-widest text-slate-400 font-bold">
               История сделок ({expanded ? trades.length : Math.min(15, trades.length)} из {trades.length})
@@ -249,7 +268,8 @@ function EquitySparkline({
   const range = Math.max(1, maxE - minE);
 
   const tsMin = points[0].ts_ms;
-  const tsRange = Math.max(1, points[points.length - 1].ts_ms - tsMin);
+  const tsMax = points[points.length - 1].ts_ms;
+  const tsRange = Math.max(1, tsMax - tsMin);
 
   const xy = points.map((p) => {
     const x = PAD + ((p.ts_ms - tsMin) / tsRange) * (W - 2 * PAD);
@@ -258,15 +278,30 @@ function EquitySparkline({
   });
 
   const path = xy.map((pt, i) => `${i === 0 ? "M" : "L"} ${pt.x.toFixed(1)} ${pt.y.toFixed(1)}`).join(" ");
-  const lastY = xy[xy.length - 1].y;
   const startY = xy[0].y;
   const isUp = points[points.length - 1].equity_usd > points[0].equity_usd;
+
+  // 5 evenly-spaced time ticks (start, 25%, 50%, 75%, end)
+  const N_TICKS = 5;
+  const ticks = Array.from({ length: N_TICKS }, (_, i) => {
+    const frac = i / (N_TICKS - 1);
+    return tsMin + frac * tsRange;
+  });
+  const fmtDate = (ms: number) => {
+    const d = new Date(ms);
+    return `${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+  };
+  const spanH = tsRange / 3_600_000;
+  const spanLabel =
+    spanH < 48
+      ? `${spanH.toFixed(0)}h`
+      : `${(spanH / 24).toFixed(1)}d`;
 
   return (
     <div className="bg-slate-900/40 rounded-lg p-3 border border-slate-700/40">
       <div className="flex items-center justify-between mb-2">
         <span className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">
-          Equity curve
+          Equity curve · период {spanLabel}
         </span>
         <span className="text-[11px] font-mono text-slate-400">
           ${minE.toFixed(2)} … ${maxE.toFixed(2)}
@@ -285,6 +320,11 @@ function EquitySparkline({
           />
         ))}
       </svg>
+      <div className="mt-1 flex justify-between text-[10px] font-mono text-slate-500 px-1">
+        {ticks.map((t, i) => (
+          <span key={i}>{fmtDate(t)}</span>
+        ))}
+      </div>
     </div>
   );
 }
