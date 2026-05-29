@@ -98,6 +98,39 @@ def price_option_live(symbol: str, side: str) -> dict | None:
     return None
 
 
+def build_chain_dict(chain: list[dict]) -> dict[str, dict]:
+    """Index a Bybit option chain by (side-strike-expiry) → ticker."""
+    out: dict[str, dict] = {}
+    for o in chain:
+        side = o.get("side")
+        strike = o.get("strike")
+        expiry_ms = o.get("expiry_ms")
+        if side and strike and expiry_ms:
+            key = f"{side}-{int(strike)}-{expiry_ms}"
+            out[key] = o
+    return out
+
+
+def current_mark(p: dict, spot: float, chain_dict: dict[str, dict] | None) -> float:
+    """Live Bybit mark/mid for an open position; BS fallback only if the
+    chain doesn't have this exact contract (delisted / very illiquid).
+    Live data MUST be preferred — BS with a fixed sigma=0.6 disagrees with
+    real Bybit IV by 30–50% and would cause spurious TP/SL triggers."""
+    if chain_dict:
+        key = f"{p['side']}-{int(p['strike'])}-{p['expiry_ms']}"
+        q = chain_dict.get(key)
+        if q:
+            mark = float(q.get("mark_price", 0) or 0)
+            if mark > 0:
+                return mark
+            bid = float(q.get("bid", 0) or 0)
+            ask = float(q.get("ask", 0) or 0)
+            if bid > 0 and ask > 0:
+                return (bid + ask) / 2.0
+    return price_option_bs(p["side"], spot, float(p["strike"]),
+                           int(p["expiry_ms"]), DEFAULT_SIGMA)
+
+
 def price_option_bs(side: str, spot: float, strike: float, expiry_ms: int,
                     sigma: float = DEFAULT_SIGMA) -> float:
     """Black-Scholes fallback pricing. Returns per-contract premium (USD)."""
@@ -137,25 +170,11 @@ def compute_equity(state: dict, spot: float, atm_chain_quotes: dict[str, dict] |
     stats = paper_repo.position_stats()
     realized = float(stats["realized_usd"])
 
-    # Mark open positions to current option mark price (live if available; BS fallback)
     open_pos = paper_repo.open_positions()
     unrealized = 0.0
     for p in open_pos:
-        # Build the symbol so we can look up the live ticker (best-effort)
-        # We stored entry_credit_usd per contract. Need current mark per contract.
-        # We pass the chain quotes via atm_chain_quotes if available; else fallback.
-        live_quote = None
-        if atm_chain_quotes:
-            # Match by (strike, expiry_ms, side)
-            key = f"{p['side']}-{int(p['strike'])}-{p['expiry_ms']}"
-            live_quote = atm_chain_quotes.get(key)
-        if live_quote and live_quote.get("mark_price", 0) > 0:
-            current_mark = float(live_quote["mark_price"])
-        else:
-            current_mark = price_option_bs(p["side"], spot, float(p["strike"]),
-                                           int(p["expiry_ms"]), DEFAULT_SIGMA)
-        # short premium: profit = entry_credit - current_mark
-        pnl_per_contract = float(p["entry_credit_usd"]) - current_mark
+        mark = current_mark(p, spot, atm_chain_quotes)
+        pnl_per_contract = float(p["entry_credit_usd"]) - mark
         unrealized += pnl_per_contract * float(p["contracts"])
 
     equity = start_equity + realized + unrealized
@@ -262,18 +281,18 @@ def open_paper_position(signal: dict, spot: float, equity_usd: float, state: dic
     return pid
 
 
-def check_and_close_position(p: dict, spot: float) -> bool:
+def check_and_close_position(p: dict, spot: float,
+                              chain_dict: dict[str, dict] | None = None) -> bool:
     """Check exit conditions on one position. Returns True if state changed.
 
-    TP/SL compare against the BS-mid (clean signal), but the actual exit
-    debit applies the ask-side spread + exit fee — so realized P&L
-    includes round-trip friction (entry already accounts for its half).
+    TP/SL compare against the LIVE Bybit mid (when available) or BS fallback,
+    NOT against the fixed-sigma BS — the two disagree by 30–50% and would
+    trigger spurious SL on the very next tick after open.
     """
     now_ms = int(time.time() * 1000)
     age_h = (now_ms - int(p["opened_at_ms"])) / 3_600_000
 
-    premium_mid = price_option_bs(p["side"], spot, float(p["strike"]),
-                                  int(p["expiry_ms"]), DEFAULT_SIGMA)
+    premium_mid = current_mark(p, spot, chain_dict)
     entry_credit = float(p["entry_credit_usd"])  # NET per contract, post entry-side friction
     tp1_threshold = entry_credit * (1 - float(p["tp1_pct"]))
     tp2_threshold = entry_credit * (1 - float(p["tp2_pct"]))
@@ -364,9 +383,21 @@ async def loop():
 
             state = paper_repo.get_state() or state
 
+            # Fetch the Bybit option chain ONCE per tick. Pass it to both the
+            # position-monitor and equity-MtM paths so live marks (not stale BS)
+            # are used. Skip if no open positions to save the API call.
+            open_pos_now = paper_repo.open_positions()
+            chain_dict: dict[str, dict] | None = None
+            if open_pos_now:
+                try:
+                    chain = bybit_client.get_options_tickers(BASE_COIN)
+                    chain_dict = build_chain_dict(chain)
+                except Exception as e:  # noqa: BLE001
+                    print(f"[paper] WARN: chain fetch failed: {e!r}", flush=True)
+
             # 1) Position monitoring — every iteration
-            for p in paper_repo.open_positions():
-                check_and_close_position(p, spot)
+            for p in open_pos_now:
+                check_and_close_position(p, spot, chain_dict)
 
             # 2) Signal check — every 5 min
             if is_signal_check_time(last_signal_check_ms):
@@ -384,14 +415,14 @@ async def loop():
                     else:
                         sig = check_new_signal(k5, k15, k1h)
                         if sig:
-                            eq = compute_equity(state, spot)
+                            eq = compute_equity(state, spot, chain_dict)
                             open_paper_position(sig, spot, eq["equity"], state)
                         else:
-                            print(f"[paper] tick: no signal (spot=${spot:.2f}, open={len(paper_repo.open_positions())})",
+                            print(f"[paper] tick: no signal (spot=${spot:.2f}, open={len(open_pos_now)})",
                                   flush=True)
 
             # 3) Equity snapshot — every iteration
-            eq = compute_equity(state, spot)
+            eq = compute_equity(state, spot, chain_dict)
             paper_repo.insert_equity_snapshot(
                 ts_ms=int(time.time() * 1000),
                 equity_usd=eq["equity"],
