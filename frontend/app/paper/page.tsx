@@ -117,6 +117,56 @@ function BalanceCard({ state }: { state: PaperState }) {
           ⏸ Circuit breaker активен — после 3 убытков подряд пауза 24h. Сигналы не открываются.
         </div>
       )}
+      <SignalFreshness state={state} />
+    </div>
+  );
+}
+
+function SignalFreshness({ state }: { state: PaperState }) {
+  const age = state.last_signal_age_h;
+  const n24 = state.signals_24h;
+
+  let ageLabel: string;
+  let tone: "ok" | "stale" | "none";
+  if (age === null) {
+    ageLabel = `нет за окно ${state.window_5m_bars} баров (~${Math.round((state.window_5m_bars * 5) / 60)}h)`;
+    tone = "none";
+  } else if (age < 1) {
+    ageLabel = `${Math.round(age * 60)} мин назад`;
+    tone = "ok";
+  } else if (age < 6) {
+    ageLabel = `${age.toFixed(1)}h назад`;
+    tone = "ok";
+  } else if (age < 24) {
+    ageLabel = `${age.toFixed(1)}h назад`;
+    tone = "stale";
+  } else {
+    ageLabel = `${(age / 24).toFixed(1)}d назад`;
+    tone = "stale";
+  }
+
+  const palette =
+    tone === "ok"
+      ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
+      : tone === "stale"
+        ? "bg-slate-500/10 border-slate-500/30 text-slate-300"
+        : "bg-slate-500/10 border-slate-500/30 text-slate-400";
+
+  return (
+    <div className={`mt-3 px-3 py-2 rounded-lg border text-xs ${palette}`}>
+      <div className="flex items-center justify-between gap-3">
+        <span>Последний сигнал генератора:</span>
+        <span className="font-semibold">{ageLabel}</span>
+      </div>
+      <div className="flex items-center justify-between gap-3 mt-1 text-slate-400">
+        <span>За последние 24h:</span>
+        <span>{n24} сигнал(ов)</span>
+      </div>
+      {tone === "stale" && n24 === 0 && (
+        <div className="mt-1 text-slate-500">
+          Рынок тихий — нет setup'а для входа. Это норма, ждём волатильности.
+        </div>
+      )}
     </div>
   );
 }

@@ -14,6 +14,7 @@ from db.repository import (
 )
 from services.missed_signals import compute_missed_signals
 from services.paper_strategy import START_EQUITY_USD
+from services.signal_freshness import compute_freshness
 from services.analysis import (
     STRATEGIES,
     build_mtf_context,
@@ -192,6 +193,17 @@ def paper_state():
     state = paper_repo.ensure_state(START_EQUITY_USD)
     stats = paper_repo.position_stats()
     latest = paper_repo.latest_equity()
+    try:
+        freshness = compute_freshness()
+    except Exception as e:  # noqa: BLE001
+        freshness = {
+            "last_signal_ts_ms": None,
+            "last_signal_age_h": None,
+            "bars_since_last_signal_5m": None,
+            "signals_24h": 0,
+            "window_5m_bars": 0,
+            "error": repr(e),
+        }
     return {
         "start_equity_usd": float(state["start_equity_usd"]),
         "started_at_ms": int(state["started_at_ms"]),
@@ -206,6 +218,7 @@ def paper_state():
         "losses": stats["losses"],
         "win_rate": (stats["wins"] / stats["n_closed"]) if stats["n_closed"] else None,
         "avg_pnl_pct": stats["avg_pnl_pct"],
+        **freshness,
     }
 
 

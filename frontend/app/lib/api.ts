@@ -219,6 +219,11 @@ export type PaperState = {
   losses: number;
   win_rate: number | null;
   avg_pnl_pct: number;
+  last_signal_ts_ms: number | null;
+  last_signal_age_h: number | null;
+  bars_since_last_signal_5m: number | null;
+  signals_24h: number;
+  window_5m_bars: number;
 };
 
 export type PaperPosition = {
