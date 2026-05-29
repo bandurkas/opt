@@ -1,16 +1,17 @@
 """Compute the trades paper_loop SHOULD have opened (but missed due to bug).
 
 Replays the validated sell-premium generator on recent DB klines and simulates
-each signal through the same exit/sizing/CB rules used by the live paper
-service. Returns per-trade outcomes + equity curve so the frontend can show
-'this is what the bug cost us'.
+each signal through the same EXIT / SIZING / FRICTION rules that the live
+paper_loop now uses (Bybit-realistic: 0.1-ETH lots, ~10% IM, 5% round-trip
+spread, 0.03% taker fees capped at 12.5% premium).
 
-Synthetic pricing: BS with sigma=0.6 and 2% round-trip spread (same friction
-as the validation backtest). Real Bybit historical option premiums are not
-available, so this is a model approximation — should be within ±20% of real.
+Pricing remains BS-based since real Bybit historical option chains aren't
+available; expect ±20% accuracy vs real fills, but P&L numbers should now
+be on the right ORDER OF MAGNITUDE for a $400 starting account.
 """
 from __future__ import annotations
 
+import math
 import time
 from datetime import datetime, timezone
 
@@ -19,41 +20,38 @@ from services.backtest import simulate_signal_set
 from services.paper_strategy import (
     DEFAULT_SIGMA,
     EXPIRY_TARGET_HOURS,
-    SIZE_MAX_USD,
-    SIZE_MIN_USD,
-    SIZE_PCT_OF_EQUITY,
+    LOT_MIN_ETH,
+    SPREAD_HALF_PCT,
     START_EQUITY_USD,
     WINNER_EXIT,
     WINNER_GEN_KWARGS,
+    fee_per_side,
+    margin_per_lot,
+    realistic_size_lots,
 )
 from services.strategy_registry import gen_sell_premium_iv_high
 
-
-SPREAD_PCT = 2.0
 STRIKE_GRID = 25.0
+SPREAD_PCT_TOTAL = SPREAD_HALF_PCT * 2.0  # round-trip, fed to simulate_signal_set
+_T_YEARS = EXPIRY_TARGET_HOURS / (365.0 * 24.0)
 
-# Module-level cache. compute is ~2 minutes due to O(N^2) realized_vol;
-# we cache so the HTTP endpoint returns instantly after the first warm-up.
 _CACHE: dict[int, tuple[float, dict]] = {}
-_CACHE_TTL_S = 600  # 10 min
+_CACHE_TTL_S = 600
 
 
-def _size_usd(equity: float, recent_pnls: list[float]) -> float:
-    """Replicate paper_strategy.current_size_usd exactly."""
-    base = equity * SIZE_PCT_OF_EQUITY
-    if len(recent_pnls) >= 10:
-        wr = sum(1 for p in recent_pnls[-10:] if p > 0) / 10.0
-        if wr < 0.40:
-            base *= 0.5
-    return max(SIZE_MIN_USD, min(SIZE_MAX_USD, base))
+def _bs_call(spot: float, K: float, T_years: float = _T_YEARS,
+             sigma: float = DEFAULT_SIGMA) -> float:
+    """Black-Scholes call price, no dividend, r=0."""
+    if T_years <= 0 or sigma <= 0:
+        return max(0.0, spot - K)
+    sqrtT = math.sqrt(T_years)
+    d1 = (math.log(spot / K) + 0.5 * sigma * sigma * T_years) / (sigma * sqrtT)
+    d2 = d1 - sigma * sqrtT
+    cdf = lambda x: 0.5 * (1.0 + math.erf(x / math.sqrt(2)))
+    return spot * cdf(d1) - K * cdf(d2)
 
 
 def compute_missed_signals(lookback_days: int = 14, force_refresh: bool = False) -> dict:
-    """Generate signals from DB klines + simulate each as if paper had opened it.
-
-    Returns a fully-formed report dict with per-trade list + summary stats +
-    equity curve points (one per closed trade). Cached for 10 min per lookback_days.
-    """
     if not force_refresh:
         cached = _CACHE.get(lookback_days)
         if cached:
@@ -77,29 +75,8 @@ def compute_missed_signals(lookback_days: int = 14, force_refresh: bool = False)
     raw_signals.sort(key=lambda s: s["ts_ms"])
 
     if not raw_signals:
-        return {
-            "lookback_days": lookback_days,
-            "generated_at_ms": now_ms,
-            "n_signals": 0,
-            "wins": 0,
-            "losses": 0,
-            "win_rate": None,
-            "total_pnl_usd": 0.0,
-            "total_pnl_pct": 0.0,
-            "start_equity_usd": float(START_EQUITY_USD),
-            "final_equity_usd": float(START_EQUITY_USD),
-            "avg_pnl_pct_per_trade": 0.0,
-            "n_skipped_by_cb": 0,
-            "resolution_counts": {},
-            "trades": [],
-            "equity_curve": [{"ts_ms": now_ms, "equity_usd": float(START_EQUITY_USD), "label": "start"}],
-            "pricing_note": (
-                "BS pricing with sigma=0.6 and 2% spread (same as backtest). Real "
-                "Bybit historical option prices not available; expect approx ±20% accuracy."
-            ),
-        }
+        return _empty_report(lookback_days, now_ms)
 
-    # Simulate every signal with the live exit rules
     sims = simulate_signal_set(
         raw_signals, k5,
         sigma=DEFAULT_SIGMA, expiry_hours=EXPIRY_TARGET_HOURS,
@@ -107,10 +84,10 @@ def compute_missed_signals(lookback_days: int = 14, force_refresh: bool = False)
         tp2_pct=WINNER_EXIT["tp2_pct"],
         sl_pct=WINNER_EXIT["sl_pct"],
         option_horizon_h=WINNER_EXIT["hold_h"],
-        spread_pct=SPREAD_PCT,
+        spread_pct=SPREAD_PCT_TOTAL,
     )
 
-    # Replay paper's state machine (CB + dynsize)
+    # Replay paper's full state machine: CB + dynsize + margin budget
     equity = float(START_EQUITY_USD)
     consec_losses = 0
     cb_until_ms = 0
@@ -119,6 +96,7 @@ def compute_missed_signals(lookback_days: int = 14, force_refresh: bool = False)
     equity_curve = [{"ts_ms": int(raw_signals[0]["ts_ms"]) - 60_000,
                      "equity_usd": equity, "label": "start"}]
     skipped_cb = 0
+    skipped_margin = 0
 
     for sim in sims:
         ts = int(sim["ts_ms"])
@@ -130,18 +108,49 @@ def compute_missed_signals(lookback_days: int = 14, force_refresh: bool = False)
             skipped_cb += 1
             continue
 
-        size_usd = _size_usd(equity, recent_pnls)
-        pnl_pct = float(opt["pnl_pct"])
-        pnl_usd = round(size_usd * pnl_pct / 100, 2)
+        spot = float(sim["close"])
+        strike = round(spot / STRIKE_GRID) * STRIKE_GRID
+        premium_mid = _bs_call(spot, strike)
+        if premium_mid <= 0:
+            continue
 
-        equity_before = equity
-        equity = round(equity + pnl_usd, 2)
+        n_lots = realistic_size_lots(
+            equity, strike, premium_mid,
+            {"recent_pnls_json": recent_pnls},
+        )
+        if n_lots < 1:
+            skipped_margin += 1
+            continue
 
-        recent_pnls.append(pnl_pct)
+        contracts = n_lots * LOT_MIN_ETH
+        notional = strike * contracts
+        margin_locked = margin_per_lot(strike, premium_mid) * n_lots
+
+        # Spread-haircut premium (matches what paper_loop's open does)
+        premium_received_per_contract = premium_mid * (1 - SPREAD_HALF_PCT / 100.0)
+        premium_received_total = premium_received_per_contract * contracts
+
+        # P&L: simulate's pnl_pct is post-spread % on premium. Convert to USD,
+        # then subtract entry+exit fees.
+        model_pnl_pct = float(opt["pnl_pct"])
+        gross_pnl_usd = premium_received_total * model_pnl_pct / 100.0
+
+        entry_fee = fee_per_side(notional, premium_received_total)
+        # exit notional similar (strike·contracts), premium handled ≈ exit_debit·contracts
+        # approximate exit premium ≈ premium_received_total·(1 − model_pnl_pct/100)
+        approx_exit_premium = premium_received_total * (1 - model_pnl_pct / 100.0)
+        exit_fee = fee_per_side(notional, approx_exit_premium)
+        fees_total = entry_fee + exit_fee
+
+        pnl_usd = round(gross_pnl_usd - fees_total, 2)
+        # % return on net premium received (matches paper_loop's pnl_pct semantics)
+        pnl_pct_net = (pnl_usd / premium_received_total * 100.0) if premium_received_total > 0 else 0
+
+        recent_pnls.append(pnl_pct_net)
         if len(recent_pnls) > 50:
             recent_pnls = recent_pnls[-50:]
 
-        if pnl_pct <= 0:
+        if pnl_pct_net <= 0:
             consec_losses += 1
             if consec_losses >= 3:
                 cb_until_ms = ts + 24 * 3_600_000
@@ -149,8 +158,8 @@ def compute_missed_signals(lookback_days: int = 14, force_refresh: bool = False)
         else:
             consec_losses = 0
 
-        spot = float(sim["close"])
-        strike = round(spot / STRIKE_GRID) * STRIKE_GRID
+        equity_before = equity
+        equity = round(equity + pnl_usd, 2)
 
         trades.append({
             "ts_ms": ts,
@@ -158,8 +167,13 @@ def compute_missed_signals(lookback_days: int = 14, force_refresh: bool = False)
             "side": sim["side"],
             "strike": strike,
             "spot_at_entry": round(spot, 2),
-            "size_usd": round(size_usd, 2),
-            "pnl_pct": round(pnl_pct, 2),
+            # `size_usd` field now carries MARGIN locked (frontend label = "Маржа")
+            "size_usd": round(margin_locked, 2),
+            "n_lots": n_lots,
+            "contracts_eth": round(contracts, 2),
+            "premium_recv_usd": round(premium_received_total, 2),
+            "fees_usd": round(fees_total, 3),
+            "pnl_pct": round(pnl_pct_net, 2),
             "pnl_usd": pnl_usd,
             "exit_reason": opt.get("resolution", "unknown"),
             "bars_held": opt.get("bars_held"),
@@ -168,7 +182,7 @@ def compute_missed_signals(lookback_days: int = 14, force_refresh: bool = False)
         })
 
         equity_curve.append({"ts_ms": ts, "equity_usd": equity,
-                             "label": "win" if pnl_pct > 0 else "loss"})
+                             "label": "win" if pnl_usd > 0 else "loss"})
 
     n = len(trades)
     wins = sum(1 for t in trades if t["pnl_usd"] > 0)
@@ -186,6 +200,7 @@ def compute_missed_signals(lookback_days: int = 14, force_refresh: bool = False)
         "generated_at_ms": now_ms,
         "n_signals": n,
         "n_skipped_by_cb": skipped_cb,
+        "n_skipped_by_margin": skipped_margin,
         "wins": wins,
         "losses": losses,
         "win_rate": round(wins / n, 3) if n else None,
@@ -198,11 +213,34 @@ def compute_missed_signals(lookback_days: int = 14, force_refresh: bool = False)
         "trades": trades,
         "equity_curve": equity_curve,
         "pricing_note": (
-            "BS pricing with sigma=0.6 and 2% spread (same as backtest). Real "
-            "Bybit historical option prices not available; expect approx +/-20% accuracy."
+            f"Bybit-realistic model: 0.1-ETH lots, IM≈10%·strike+premium, "
+            f"{SPREAD_PCT_TOTAL:.0f}% round-trip spread, 0.03% taker fee (cap 12.5% premium). "
+            f"Start ${START_EQUITY_USD:.0f}. BS pricing — real fills ±20%."
         ),
         "cached": False,
         "cache_age_s": 0,
     }
     _CACHE[lookback_days] = (time.time(), payload)
     return payload
+
+
+def _empty_report(lookback_days: int, now_ms: int) -> dict:
+    return {
+        "lookback_days": lookback_days,
+        "generated_at_ms": now_ms,
+        "n_signals": 0,
+        "n_skipped_by_cb": 0,
+        "n_skipped_by_margin": 0,
+        "wins": 0,
+        "losses": 0,
+        "win_rate": None,
+        "total_pnl_usd": 0.0,
+        "total_pnl_pct": 0.0,
+        "start_equity_usd": float(START_EQUITY_USD),
+        "final_equity_usd": float(START_EQUITY_USD),
+        "avg_pnl_pct_per_trade": 0.0,
+        "resolution_counts": {},
+        "trades": [],
+        "equity_curve": [{"ts_ms": now_ms, "equity_usd": float(START_EQUITY_USD), "label": "start"}],
+        "pricing_note": "no signals in window",
+    }

@@ -250,7 +250,7 @@ function PositionDetailCard({ p, isOpen }: { p: PaperPosition; isOpen: boolean }
       {/* Entry block */}
       <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
         <DetailField label="Когда зашли" value={fmtTime(p.opened_at_ms)} sub={`ETH был $${p.underlying_at_open.toFixed(2)}`} />
-        <DetailField label="Сколько контрактов" value={p.contracts.toFixed(4)} sub={`на ${fmtUsd(p.size_usd)} депозита`} />
+        <DetailField label="Размер позиции" value={`${p.contracts.toFixed(2)} ETH`} sub={`маржа ${fmtUsd(p.size_usd)}`} />
         <DetailField label="Цена премии" value={fmtUsd(p.entry_credit_usd)} sub={`${fmtPct(p.entry_credit_pct)} от спота`} />
         <DetailField
           label="Экспирация"
@@ -440,7 +440,9 @@ export default function PaperPage() {
       <MissedSignals />
 
       <div className="text-xs text-slate-500 pt-2 leading-relaxed">
-        Бот торгует на бумаге. Размер каждой позиции — 10% от текущего баланса.
+        Бот торгует на бумаге по Bybit-реалистичной модели: лоты 0.1 ETH,
+        начальная маржа ≈ 10% × strike + премия, спред 5% round-trip, taker-fee 0.03%
+        (cap 12.5% от премии). Бюджет на сделку — 40% equity в маржу.
         Прибыль фиксируется на тейк-профитах, убыток ограничен стоп-лоссом или таймером 24 часа.
         После 3 убытков подряд автоматическая пауза на сутки.
       </div>

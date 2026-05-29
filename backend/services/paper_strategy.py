@@ -30,26 +30,75 @@ WINNER_EXIT = {
 # available; this is only for the BS fallback path.
 DEFAULT_SIGMA = 0.6
 EXPIRY_TARGET_HOURS = 168  # ~7 days
-START_EQUITY_USD = 100.0
-SIZE_PCT_OF_EQUITY = 0.10   # 10%
-SIZE_MIN_USD = 5.0
-SIZE_MAX_USD = 50.0
+
+# ───────────── Bybit-realistic sizing / friction model ─────────────
+# Starting equity sized so the minimum 0.1-ETH lot fits in budget.
+START_EQUITY_USD = 400.0
+# Per trade: up to 40% of equity goes into option margin (the rest is buffer
+# against TP/SL volatility and the next signal). On $400 → $160 budget.
+MARGIN_PCT_PER_TRADE = 0.40
+# Bybit min lot for ETH options.
+LOT_MIN_ETH = 0.1
+# Bybit Cross-Margin IM rate for short ETH options ≈ 10% of strike-notional.
+# Effective IM per lot ≈ (0.10·strike + premium)·0.1 ≈ $20-30 at strike $2000.
+IM_RATE = 0.10
+# Half of round-trip spread. 2.5%·2 = 5% total slippage (sell at bid below
+# mid, buy back at ask above mid). Realistic for weekly OTM ETH options.
+SPREAD_HALF_PCT = 2.5
+# Bybit taker fee on notional, capped at 12.5% of premium per side.
+FEE_RATE = 0.0003
+FEE_CAP_PCT_OF_PREMIUM = 0.125
 
 
 def is_cb_active(state: dict, now_ms: int) -> bool:
     return now_ms < int(state.get("cb_cooldown_until_ms") or 0)
 
 
-def current_size_usd(state: dict, equity_usd: float) -> float:
-    base = equity_usd * SIZE_PCT_OF_EQUITY
-    # Dynamic sizing — halve if last-10 WR < 0.40
+def dyn_size_factor(state: dict) -> float:
+    """Halve size when 10-trade WR < 40%. Same as the old current_size_usd."""
     pnls = state.get("recent_pnls_json") or []
     if len(pnls) >= 10:
-        recent = pnls[-10:]
-        wr = sum(1 for p in recent if p > 0) / 10.0
+        wr = sum(1 for p in pnls[-10:] if p > 0) / 10.0
         if wr < 0.40:
-            base *= 0.5
-    return max(SIZE_MIN_USD, min(SIZE_MAX_USD, base))
+            return 0.5
+    return 1.0
+
+
+def realistic_size_lots(equity_usd: float, strike: float,
+                        premium_mid: float, state: dict) -> int:
+    """How many 0.1-ETH lots fit in our margin budget at this signal.
+
+    Bybit IM ≈ (IM_RATE·strike + premium_mid)·lot_size_eth (per contract).
+    Budget = MARGIN_PCT_PER_TRADE · equity · dyn_factor.
+    Returns 0 if even one lot doesn't fit — caller should skip the signal.
+    """
+    if strike <= 0 or premium_mid <= 0 or equity_usd <= 0:
+        return 0
+    margin_per_lot = (IM_RATE * strike + premium_mid) * LOT_MIN_ETH
+    if margin_per_lot <= 0:
+        return 0
+    budget = equity_usd * MARGIN_PCT_PER_TRADE * dyn_size_factor(state)
+    return max(0, int(budget // margin_per_lot))
+
+
+def margin_per_lot(strike: float, premium_mid: float) -> float:
+    return (IM_RATE * strike + premium_mid) * LOT_MIN_ETH
+
+
+def apply_entry_spread(premium_mid: float) -> float:
+    """We SELL at bid = mid·(1 − half-spread)."""
+    return premium_mid * (1 - SPREAD_HALF_PCT / 100.0)
+
+
+def apply_exit_spread(premium_mid: float) -> float:
+    """We BUY BACK at ask = mid·(1 + half-spread)."""
+    return premium_mid * (1 + SPREAD_HALF_PCT / 100.0)
+
+
+def fee_per_side(notional_usd: float, premium_total_usd: float) -> float:
+    """0.03% × notional, capped at 12.5% of the premium that side handles."""
+    cap = abs(premium_total_usd) * FEE_CAP_PCT_OF_PREMIUM
+    return min(notional_usd * FEE_RATE, cap)
 
 
 def evaluate_conditions(k5: list, k15: list, k1h: list) -> dict:

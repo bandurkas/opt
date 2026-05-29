@@ -31,13 +31,16 @@ from services.bybit_client import bybit_client  # noqa: E402
 from services.paper_strategy import (  # noqa: E402
     DEFAULT_SIGMA,
     EXPIRY_TARGET_HOURS,
-    SIZE_MAX_USD,
-    SIZE_MIN_USD,
+    LOT_MIN_ETH,
     START_EQUITY_USD,
     WINNER_EXIT,
     WINNER_GEN_KWARGS,
-    current_size_usd,
+    apply_entry_spread,
+    apply_exit_spread,
+    fee_per_side,
     is_cb_active,
+    margin_per_lot,
+    realistic_size_lots,
     record_trade_result,
 )
 from services.strategy_registry import gen_sell_premium_iv_high  # noqa: E402
@@ -167,31 +170,57 @@ def compute_equity(state: dict, spot: float, atm_chain_quotes: dict[str, dict] |
 # ───────────────────── position open / close ───────────────────────
 
 def open_paper_position(signal: dict, spot: float, equity_usd: float, state: dict) -> int | None:
-    """Open a paper position for a signal. Returns position_id or None."""
+    """Open a paper position for a signal — Bybit-realistic sizing/friction.
+
+    Sizing: pick the largest whole number of 0.1-ETH lots whose Bybit Cross-
+    Margin IM fits in MARGIN_PCT_PER_TRADE × equity. Skip the signal if even
+    one lot doesn't fit.
+
+    Entry friction: receive premium at bid = mid·(1 − half-spread), then
+    deduct 0.03%·notional taker fee (capped at 12.5% of premium). The stored
+    entry_credit_usd is per-contract NET of entry fee, so all downstream
+    P&L math (close, equity) is correct without schema changes.
+    """
     chain = bybit_client.get_options_tickers(BASE_COIN)
     pick = pick_bybit_atm_call(chain, spot, EXPIRY_TARGET_HOURS)
 
-    size_usd = current_size_usd(state, equity_usd)
-
-    if pick and pick.get("bid", 0) > 0:
+    if pick and pick.get("bid", 0) > 0 and pick.get("ask", 0) > 0:
         strike = float(pick["strike"])
         expiry_ms = int(pick["expiry_ms"])
-        entry_credit_usd = float(pick["bid"])
+        # Bybit's posted bid/ask already include market spread; use mid as
+        # the reference and apply our model haircut on top to be conservative.
+        premium_mid = (float(pick["bid"]) + float(pick["ask"])) / 2.0
         entry_source = "bybit"
         symbol = pick["symbol"]
     else:
-        # BS fallback
         strike = round(spot / STRIKE_GRID) * STRIKE_GRID
         expiry_ms = int(time.time() * 1000) + EXPIRY_TARGET_HOURS * 3_600_000
-        entry_credit_usd = price_option_bs("C", spot, strike, expiry_ms, DEFAULT_SIGMA)
-        if entry_credit_usd <= 0:
+        premium_mid = price_option_bs("C", spot, strike, expiry_ms, DEFAULT_SIGMA)
+        if premium_mid <= 0:
             print(f"[paper] open skipped — could not price option", flush=True)
             return None
         entry_source = "bs_fallback"
         symbol = f"ETH-?-{int(strike)}-C"
 
-    contracts = size_usd / entry_credit_usd if entry_credit_usd > 0 else 0
-    entry_credit_pct = entry_credit_usd / spot * 100
+    n_lots = realistic_size_lots(equity_usd, strike, premium_mid, state)
+    if n_lots < 1:
+        m_per_lot = margin_per_lot(strike, premium_mid)
+        print(f"[paper] open skipped — insufficient margin "
+              f"(need ${m_per_lot:.2f}/lot, have ${equity_usd:.2f} equity)", flush=True)
+        return None
+
+    contracts = n_lots * LOT_MIN_ETH
+    notional = strike * contracts
+
+    # Entry-side friction
+    entry_credit_per_contract_gross = apply_entry_spread(premium_mid)  # we sell at bid
+    premium_received_total = entry_credit_per_contract_gross * contracts
+    entry_fee = fee_per_side(notional, premium_received_total)
+    entry_credit_per_contract_net = entry_credit_per_contract_gross - (entry_fee / max(contracts, 1e-9))
+
+    # size_usd now means MARGIN locked, not premium budget
+    margin_locked = margin_per_lot(strike, premium_mid) * n_lots
+    entry_credit_pct = entry_credit_per_contract_net / spot * 100
 
     pid = paper_repo.open_position(
         opened_at_ms=int(time.time() * 1000),
@@ -200,69 +229,88 @@ def open_paper_position(signal: dict, spot: float, equity_usd: float, state: dic
         strike=strike,
         expiry_ms=expiry_ms,
         contracts=contracts,
-        size_usd=size_usd,
-        entry_credit_usd=entry_credit_usd,
+        size_usd=margin_locked,
+        entry_credit_usd=entry_credit_per_contract_net,
         entry_credit_pct=entry_credit_pct,
         entry_source=entry_source,
         tp1_pct=WINNER_EXIT["tp1_pct"],
         tp2_pct=WINNER_EXIT["tp2_pct"],
         sl_pct=WINNER_EXIT["sl_pct"],
         hold_h=WINNER_EXIT["hold_h"],
-        signal_payload={"symbol": symbol, "signal": signal, "size_usd": size_usd},
+        signal_payload={
+            "symbol": symbol, "signal": signal,
+            "n_lots": n_lots, "margin_locked": round(margin_locked, 2),
+            "premium_mid": round(premium_mid, 4),
+            "entry_fee_usd": round(entry_fee, 4),
+        },
     )
-    print(f"[paper] OPENED #{pid}: SELL {symbol} @ ${entry_credit_usd:.2f}  "
-          f"contracts={contracts:.4f}  size=${size_usd:.2f}  source={entry_source}", flush=True)
+    print(f"[paper] OPENED #{pid}: SELL {symbol} "
+          f"lots={n_lots} contracts={contracts:.2f}ETH  "
+          f"credit_net=${entry_credit_per_contract_net:.2f}/ETH "
+          f"margin=${margin_locked:.2f}  fee=${entry_fee:.3f}  source={entry_source}",
+          flush=True)
     return pid
 
 
 def check_and_close_position(p: dict, spot: float) -> bool:
-    """Check exit conditions on one position. Returns True if state changed."""
+    """Check exit conditions on one position. Returns True if state changed.
+
+    TP/SL compare against the BS-mid (clean signal), but the actual exit
+    debit applies the ask-side spread + exit fee — so realized P&L
+    includes round-trip friction (entry already accounts for its half).
+    """
     now_ms = int(time.time() * 1000)
     age_h = (now_ms - int(p["opened_at_ms"])) / 3_600_000
 
-    # Current price of the option
-    # We don't store the bybit symbol — best-effort BS fallback every poll.
-    current_price = price_option_bs(p["side"], spot, float(p["strike"]),
-                                    int(p["expiry_ms"]), DEFAULT_SIGMA)
-    entry_credit = float(p["entry_credit_usd"])
+    premium_mid = price_option_bs(p["side"], spot, float(p["strike"]),
+                                  int(p["expiry_ms"]), DEFAULT_SIGMA)
+    entry_credit = float(p["entry_credit_usd"])  # NET per contract, post entry-side friction
     tp1_threshold = entry_credit * (1 - float(p["tp1_pct"]))
     tp2_threshold = entry_credit * (1 - float(p["tp2_pct"]))
     sl_threshold = entry_credit * (1 + float(p["sl_pct"]))
 
     reason = None
-    if current_price >= sl_threshold:
+    if premium_mid >= sl_threshold:
         reason = "sl"
-    elif current_price <= tp2_threshold:
+    elif premium_mid <= tp2_threshold:
         reason = "tp2"
     elif age_h >= float(p["hold_h"]):
         reason = "time_stop"
-    elif p["status"] == "open" and current_price <= tp1_threshold:
-        # Half close TP1 — keep position open with half contracts
+    elif p["status"] == "open" and premium_mid <= tp1_threshold:
         paper_repo.mark_half_closed(int(p["id"]), now_ms)
-        # NB: for simplicity we don't actually halve contracts in P&L math here;
-        # this flag is used for UI. Full close at TP2 captures the same outcome.
-        print(f"[paper] #{p['id']} TP1 marked @ ${current_price:.2f} (entry ${entry_credit:.2f})", flush=True)
+        print(f"[paper] #{p['id']} TP1 marked @ mid ${premium_mid:.2f} (entry ${entry_credit:.2f})",
+              flush=True)
         return True
 
     if reason is None:
         return False
 
     contracts = float(p["contracts"])
-    pnl_per_contract = entry_credit - current_price  # short premium
+    notional = float(p["strike"]) * contracts
+
+    # Exit-side friction: we buy back at ask = mid·(1 + half-spread), then
+    # pay 0.03%·notional taker fee (capped at 12.5% of premium handled).
+    exit_debit_gross = apply_exit_spread(premium_mid)
+    premium_paid_total = exit_debit_gross * contracts
+    exit_fee = fee_per_side(notional, premium_paid_total)
+    exit_debit_net = exit_debit_gross + (exit_fee / max(contracts, 1e-9))
+
+    pnl_per_contract = entry_credit - exit_debit_net
     pnl_usd = pnl_per_contract * contracts
     pnl_pct = (pnl_per_contract / entry_credit) * 100 if entry_credit > 0 else 0
 
     paper_repo.close_position(
         int(p["id"]),
         closed_at_ms=now_ms,
-        exit_debit_usd=current_price,
+        exit_debit_usd=exit_debit_net,
         pnl_pct=pnl_pct,
         pnl_usd=pnl_usd,
         exit_reason=reason,
     )
     record_trade_result(pnl_pct)
-    print(f"[paper] CLOSED #{p['id']} reason={reason} pnl={pnl_pct:+.2f}% (${pnl_usd:+.2f})",
-          flush=True)
+    print(f"[paper] CLOSED #{p['id']} reason={reason} "
+          f"mid=${premium_mid:.2f} debit_net=${exit_debit_net:.2f} fee=${exit_fee:.3f}  "
+          f"pnl={pnl_pct:+.2f}% (${pnl_usd:+.2f})", flush=True)
     return True
 
 

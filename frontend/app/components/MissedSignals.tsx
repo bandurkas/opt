@@ -115,7 +115,16 @@ export function MissedSignals() {
 
       {/* Summary stats grid */}
       <div className={`grid grid-cols-2 md:grid-cols-5 gap-3 transition-opacity ${loading ? "opacity-50" : ""}`}>
-        <Stat label="Сигналов" value={String(data.n_signals)} sub={`пропущено CB: ${data.n_skipped_by_cb}`} />
+        <Stat
+          label="Сигналов"
+          value={String(data.n_signals)}
+          sub={[
+            `CB: ${data.n_skipped_by_cb}`,
+            data.n_skipped_by_margin !== undefined && data.n_skipped_by_margin > 0
+              ? `margin: ${data.n_skipped_by_margin}`
+              : null,
+          ].filter(Boolean).join(" · ") || `пропущено CB: ${data.n_skipped_by_cb}`}
+        />
         <Stat
           label="Win Rate"
           value={data.win_rate !== null ? `${(data.win_rate * 100).toFixed(1)}%` : "—"}
@@ -174,7 +183,8 @@ export function MissedSignals() {
                   <th className="text-left p-2 font-bold">Сторона</th>
                   <th className="text-right p-2 font-bold">Strike</th>
                   <th className="text-right p-2 font-bold">Spot</th>
-                  <th className="text-right p-2 font-bold">Размер</th>
+                  <th className="text-right p-2 font-bold">Лоты</th>
+                  <th className="text-right p-2 font-bold">Маржа</th>
                   <th className="text-right p-2 font-bold">P&L %</th>
                   <th className="text-right p-2 font-bold">P&L $</th>
                   <th className="text-right p-2 font-bold">Equity</th>
@@ -237,6 +247,16 @@ function TradeRow({ trade }: { trade: MissedTrade }) {
       </td>
       <td className="p-2 text-right font-mono">${trade.strike}</td>
       <td className="p-2 text-right font-mono text-slate-400">${trade.spot_at_entry.toFixed(2)}</td>
+      <td className="p-2 text-right font-mono text-slate-300">
+        {trade.n_lots !== undefined ? (
+          <>
+            {trade.n_lots}
+            <span className="text-slate-500 text-[10px]">
+              {trade.contracts_eth !== undefined ? ` (${trade.contracts_eth.toFixed(1)}ETH)` : ""}
+            </span>
+          </>
+        ) : "—"}
+      </td>
       <td className="p-2 text-right font-mono text-slate-300">${trade.size_usd.toFixed(2)}</td>
       <td className={`p-2 text-right font-mono font-bold ${isWin ? "text-emerald-300" : "text-rose-300"}`}>
         {isWin ? "+" : ""}

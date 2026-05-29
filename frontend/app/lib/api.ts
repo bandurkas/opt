@@ -311,7 +311,11 @@ export type MissedTrade = {
   side: "C" | "P";
   strike: number;
   spot_at_entry: number;
-  size_usd: number;
+  size_usd: number;            // margin locked (USD)
+  n_lots?: number;             // 0.1-ETH lots
+  contracts_eth?: number;      // total ETH
+  premium_recv_usd?: number;   // net premium received at entry (post-spread)
+  fees_usd?: number;           // entry+exit fees combined
   pnl_pct: number;
   pnl_usd: number;
   exit_reason: string;
@@ -331,6 +335,7 @@ export type MissedSignalsReport = {
   generated_at_ms: number;
   n_signals: number;
   n_skipped_by_cb: number;
+  n_skipped_by_margin?: number;
   wins: number;
   losses: number;
   win_rate: number | null;
