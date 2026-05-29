@@ -44,6 +44,7 @@ from services.paper_strategy import (  # noqa: E402
     record_trade_result,
 )
 from services.strategy_registry import gen_sell_premium_iv_high  # noqa: E402
+from services import telegram_notify  # noqa: E402
 
 
 POLL_INTERVAL_S = int(os.getenv("PAPER_POLL_INTERVAL", "30"))
@@ -207,6 +208,9 @@ def open_paper_position(signal: dict, spot: float, equity_usd: float, state: dic
         m_per_lot = margin_per_lot(strike, premium_mid)
         print(f"[paper] open skipped — insufficient margin "
               f"(need ${m_per_lot:.2f}/lot, have ${equity_usd:.2f} equity)", flush=True)
+        telegram_notify.notify_skipped_margin(
+            spot=spot, strike=strike, need_usd=m_per_lot, have_usd=equity_usd,
+        )
         return None
 
     contracts = n_lots * LOT_MIN_ETH
@@ -249,6 +253,12 @@ def open_paper_position(signal: dict, spot: float, equity_usd: float, state: dic
           f"credit_net=${entry_credit_per_contract_net:.2f}/ETH "
           f"margin=${margin_locked:.2f}  fee=${entry_fee:.3f}  source={entry_source}",
           flush=True)
+    telegram_notify.notify_open(
+        pid=pid, symbol=symbol, side="C", strike=strike, spot=spot,
+        n_lots=n_lots, contracts=contracts,
+        premium_recv=premium_received_total,
+        margin_locked=margin_locked, entry_fee=entry_fee, source=entry_source,
+    )
     return pid
 
 
@@ -307,10 +317,21 @@ def check_and_close_position(p: dict, spot: float) -> bool:
         pnl_usd=pnl_usd,
         exit_reason=reason,
     )
-    record_trade_result(pnl_pct)
+    res = record_trade_result(pnl_pct)
     print(f"[paper] CLOSED #{p['id']} reason={reason} "
           f"mid=${premium_mid:.2f} debit_net=${exit_debit_net:.2f} fee=${exit_fee:.3f}  "
           f"pnl={pnl_pct:+.2f}% (${pnl_usd:+.2f})", flush=True)
+
+    # Telegram notify — close event + CB-triggered alert if it just fired
+    stats_after = paper_repo.position_stats()
+    equity_after = float(START_EQUITY_USD) + float(stats_after["realized_usd"])
+    telegram_notify.notify_close(
+        pid=int(p["id"]), side=p["side"], strike=float(p["strike"]),
+        reason=reason, pnl_pct=pnl_pct, pnl_usd=pnl_usd,
+        equity_after=equity_after,
+    )
+    if int(res.get("cb_cooldown_until_ms") or 0) > now_ms:
+        telegram_notify.notify_cb_triggered(equity_after=equity_after)
     return True
 
 
