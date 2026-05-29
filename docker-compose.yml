@@ -46,6 +46,8 @@ services:
     depends_on:
       - postgres
       - poller
+    env_file:
+      - .env
     environment:
       - DATABASE_URL=postgresql://user:password@postgres:5432/options_assistant
       - PAPER_POLL_INTERVAL=${PAPER_POLL_INTERVAL:-30}
