@@ -1,5 +1,0 @@
-set timeout -1
-spawn ssh -o StrictHostKeyChecking=no root@187.127.114.34 "docker exec opt-app-backend-1 python services/verify_backtest.py"
-expect "password:"
-send "B@nd73610421\r"
-expect eof

@@ -26,3 +26,10 @@ next-env.d.ts
 # Local
 .streamlit/
 *.log
+# Scratch / debug files
+*.exp
+test_missed*.py
+verify.py
+backtest_*.py
+__pycache__/
+*.pyc

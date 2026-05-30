@@ -1,5 +1,0 @@
-set timeout -1
-spawn bash -c "ssh -o StrictHostKeyChecking=no root@187.127.114.34 'docker exec -i opt-app-backend-1 python' < test_missed_final.py"
-expect "password:"
-send "B@nd73610421\r"
-expect eof
