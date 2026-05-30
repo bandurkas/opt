@@ -242,8 +242,9 @@ def paper_positions_endpoint(
 @app.get("/api/v1/paper/conditions")
 def paper_conditions():
     """Live check: does the current 5m bar satisfy all entry conditions?
-    Returns per-condition booleans for UI indicators."""
-    from services.paper_strategy import evaluate_conditions
+    Returns per-condition booleans + the current thresholds so the UI never
+    drifts from the actual strategy config."""
+    from services.paper_strategy import WINNER_GEN_KWARGS, evaluate_conditions
 
     symbol = "ETHUSDT"
     k5 = recent_klines(symbol, "5m", limit=600)
@@ -252,6 +253,14 @@ def paper_conditions():
     cond = evaluate_conditions(k5, k15, k1h)
     cond["checked_at_ms"] = int(time.time() * 1000)
     cond["bars_available"] = {"5m": len(k5), "15m": len(k15), "1h": len(k1h)}
+    # Surface live config so UI labels stay in sync with strategy_registry
+    cond["thresholds"] = {
+        "vol_threshold": WINNER_GEN_KWARGS["vol_threshold"],
+        "regime_filter": list(WINNER_GEN_KWARGS["regime_filter"] or []),
+        "mtf_direction_filter": WINNER_GEN_KWARGS["mtf_direction_filter"],
+        "mtf_min_aligned": 2,
+        "bull_market_ratio_max": WINNER_GEN_KWARGS["bull_market_ratio_max"],
+    }
     return cond
 
 

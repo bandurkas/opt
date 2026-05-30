@@ -7,20 +7,26 @@ const REFRESH_MS = 15_000;
 
 function whyBlocked(c: PaperConditions): string[] {
   const reasons: string[] = [];
+  const volTh = Math.round((c.thresholds?.vol_threshold ?? 0.6) * 100);
+  const bullMax = c.thresholds?.bull_market_ratio_max ?? 1.05;
+  const regimeList = c.thresholds?.regime_filter?.join(" / ") ?? "range / transition";
+  const mtfMin = c.thresholds?.mtf_min_aligned ?? 2;
+  const mtfDir = c.thresholds?.mtf_direction_filter ?? "down";
+
   if (!c.vol_high) {
     const pct = Math.round((c.vol_pctile ?? 0) * 100);
-    reasons.push(`Волатильность слишком низкая — ${pct}-й перцентиль, нужно ≥ 70`);
+    reasons.push(`Волатильность слишком низкая — ${pct}-й перцентиль, нужно ≥ ${volTh}`);
   }
   if (!c.regime_ok) {
-    reasons.push(`Режим рынка «${c.regime ?? "?"}» не подходит — нужно range или transition (то есть не сильный тренд)`);
+    reasons.push(`Режим рынка «${c.regime ?? "?"}» не подходит — нужно ${regimeList} (то есть не сильный тренд)`);
   }
   if (!c.mtf_down_aligned) {
     reasons.push(
-      `MTF тренд не вниз — сейчас ${c.mtf_direction ?? "?"} с согласием ${c.mtf_aligned_count ?? 0}/3 ТФ; нужно down И ≥ 2/3`,
+      `MTF тренд не ${mtfDir} — сейчас ${c.mtf_direction ?? "?"} с согласием ${c.mtf_aligned_count ?? 0}/3 ТФ; нужно ${mtfDir} И ≥ ${mtfMin}/3`,
     );
   }
   if (!c.bull_filter_ok) {
-    reasons.push(`Рынок в bull-фазе — EMA50/EMA200 = ${(c.ema_ratio ?? 0).toFixed(3)} > 1.05`);
+    reasons.push(`Рынок в bull-фазе — EMA50/EMA200 = ${(c.ema_ratio ?? 0).toFixed(3)} > ${bullMax}`);
   }
   return reasons;
 }
@@ -146,19 +152,19 @@ export default function Home() {
                   ? `${Math.round((conditions.vol_pctile || 0) * 100)}-й перцентиль`
                   : "—"
               }
-              need="нужно ≥ 70"
+              need={`нужно ≥ ${Math.round((conditions.thresholds?.vol_threshold ?? 0.6) * 100)}`}
             />
             <ConditionPill
               label="Режим рынка"
               ok={conditions.regime_ok}
               detail={conditions.regime ?? "—"}
-              need="range / transition"
+              need={(conditions.thresholds?.regime_filter ?? ["range", "transition"]).join(" / ")}
             />
             <ConditionPill
-              label="Тренд вниз (MTF)"
+              label={`Тренд ${conditions.thresholds?.mtf_direction_filter ?? "down"} (MTF)`}
               ok={conditions.mtf_down_aligned}
               detail={`${conditions.mtf_direction ?? "—"} · ${conditions.mtf_aligned_count ?? 0}/3 TF`}
-              need="down + 2/3"
+              need={`${conditions.thresholds?.mtf_direction_filter ?? "down"} + ${conditions.thresholds?.mtf_min_aligned ?? 2}/3`}
             />
             <ConditionPill
               label="Не bull-рынок"
@@ -166,7 +172,7 @@ export default function Home() {
               detail={
                 conditions.ema_ratio !== null ? `EMA50/200 = ${conditions.ema_ratio.toFixed(3)}` : "—"
               }
-              need="≤ 1.05"
+              need={`≤ ${conditions.thresholds?.bull_market_ratio_max ?? 1.05}`}
             />
           </section>
 
@@ -175,7 +181,9 @@ export default function Home() {
             <div className="text-slate-200 font-semibold mb-2">Как это работает</div>
             <p>
               Каждые 5 минут бот проверяет 4 условия выше. Когда ВСЕ четыре сходятся одновременно — продаёт ATM Call-опцион
-              на 10% от текущего баланса (минимум $5, максимум $50). От продажи получает премию — это потенциальная прибыль.
+              на Bybit. Размер позиции: целое число лотов по 0.1 ETH в рамках бюджета <strong>40% equity в маржу</strong>{" "}
+              (Bybit Cross IM ≈ 10% strike + премия). От продажи получает премию — это потенциальная прибыль.
+              Спред 5% round-trip и комиссия 0.03% учтены в P&amp;L.
             </p>
             <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2">
               <div className="bg-emerald-500/5 border border-emerald-500/20 rounded p-2.5">

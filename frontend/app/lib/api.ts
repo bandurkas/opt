@@ -297,6 +297,13 @@ export type PaperConditions = {
   ema_ratio: number | null;
   checked_at_ms: number;
   bars_available: { "5m": number; "15m": number; "1h": number };
+  thresholds?: {
+    vol_threshold: number;
+    regime_filter: string[];
+    mtf_direction_filter: string | null;
+    mtf_min_aligned: number;
+    bull_market_ratio_max: number | null;
+  };
 };
 
 export async function fetchPaperConditions(): Promise<PaperConditions> {
