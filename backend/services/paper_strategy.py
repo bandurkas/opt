@@ -38,9 +38,9 @@ EXPIRY_TARGET_HOURS = 168  # ~7 days
 # ───────────── Bybit-realistic sizing / friction model ─────────────
 # Starting equity sized so the minimum 0.1-ETH lot fits in budget.
 START_EQUITY_USD = 400.0
-# Per trade: up to 40% of equity goes into option margin (the rest is buffer
-# against TP/SL volatility and the next signal). On $400 → $160 budget.
-MARGIN_PCT_PER_TRADE = 0.40
+# Per trade: up to 10% of equity goes into option margin. On $400 → $40 budget.
+# This allows the bot to take up to 8 concurrent trades (at ~1 lot each) for diversification.
+MARGIN_PCT_PER_TRADE = 0.10
 # Bybit min lot for ETH options.
 LOT_MIN_ETH = 0.1
 # Bybit Cross-Margin IM rate for short ETH options ≈ 10% of strike-notional.
