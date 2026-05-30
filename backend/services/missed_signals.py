@@ -163,8 +163,8 @@ def compute_missed_signals(lookback_days: int = 14, force_refresh: bool = False)
 
         if pnl_pct_net <= 0:
             consec_losses += 1
-            if consec_losses >= 3:
-                cb_until_ms = ts + 24 * 3_600_000
+            if consec_losses >= 5:  # match paper_strategy CB threshold
+                cb_until_ms = ts + 12 * 3_600_000  # 12h cooldown
                 consec_losses = 0
         else:
             consec_losses = 0

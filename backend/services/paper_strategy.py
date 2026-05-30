@@ -27,7 +27,7 @@ WINNER_EXIT = {
     "tp1_pct": 0.30,   # close half at -30% from entry credit (premium decayed 30%)
     "tp2_pct": 0.50,   # close remainder at -50% decay
     "sl_pct": 0.50,    # stop at +50% growth from entry credit
-    "hold_h": 12,      # time stop — 12h frees margin 2x faster vs 24h
+    "hold_h": 24,      # time stop — 24h gives 7-day options enough theta to hit TP
 }
 
 # Sigma constant used to price fallbacks. Bybit live IV will be used when
@@ -38,10 +38,10 @@ EXPIRY_TARGET_HOURS = 168  # ~7 days
 # ───────────── Bybit-realistic sizing / friction model ─────────────
 # Starting equity sized so the minimum 0.1-ETH lot fits in budget.
 START_EQUITY_USD = 400.0
-# Per trade: up to 10% of equity goes into option margin. On $400 → $40 budget.
-# At 10%, up to 8 concurrent trades fit within the 80% portfolio limit.
-# Reduces skipped_by_busy drastically (was 102 skipped on 21-day backtest with 20%).
-MARGIN_PCT_PER_TRADE = 0.10
+# Per trade: up to 15% of equity goes into option margin. On $400 → $60 budget.
+# 15% covers margin_per_lot up to ~$60 (ETH ≈ $3300 strike).
+# At 15%, up to 5 concurrent trades fit in 80% portfolio limit — good balance.
+MARGIN_PCT_PER_TRADE = 0.15
 # Bybit min lot for ETH options.
 LOT_MIN_ETH = 0.1
 # Bybit Cross-Margin IM rate for short ETH options ≈ 10% of strike-notional.
@@ -206,8 +206,8 @@ def record_trade_result(pnl_pct: float) -> dict:
 
     if pnl_pct <= 0:
         consec += 1
-        if consec >= 3:
-            cb_until = int(time.time() * 1000) + 24 * 60 * 60 * 1000
+        if consec >= 5:  # 5 consecutive losses → CB (was 3, too aggressive with few trades)
+            cb_until = int(time.time() * 1000) + 12 * 60 * 60 * 1000  # 12h cooldown (was 24h)
             consec = 0
     else:
         consec = 0
