@@ -1,0 +1,4 @@
+spawn bash -c "ssh -o StrictHostKeyChecking=no root@187.127.114.34 'cat > /root/opt-app/backend/services/verify_backtest.py' < verify.py"
+expect "password:"
+send "B@nd73610421\r"
+expect eof

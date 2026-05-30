@@ -27,7 +27,7 @@ WINNER_EXIT = {
     "tp1_pct": 0.30,   # close half at -30% from entry credit (premium decayed 30%)
     "tp2_pct": 0.50,   # close remainder at -50% decay
     "sl_pct": 0.50,    # stop at +50% growth from entry credit
-    "hold_h": 24,      # time stop
+    "hold_h": 12,      # time stop — 12h frees margin 2x faster vs 24h
 }
 
 # Sigma constant used to price fallbacks. Bybit live IV will be used when
@@ -38,9 +38,10 @@ EXPIRY_TARGET_HOURS = 168  # ~7 days
 # ───────────── Bybit-realistic sizing / friction model ─────────────
 # Starting equity sized so the minimum 0.1-ETH lot fits in budget.
 START_EQUITY_USD = 400.0
-# Per trade: up to 20% of equity goes into option margin. On $400 → $80 budget.
-# This allows the bot to take up to 4 concurrent trades (at 1-2 lots each) for diversification.
-MARGIN_PCT_PER_TRADE = 0.20
+# Per trade: up to 10% of equity goes into option margin. On $400 → $40 budget.
+# At 10%, up to 8 concurrent trades fit within the 80% portfolio limit.
+# Reduces skipped_by_busy drastically (was 102 skipped on 21-day backtest with 20%).
+MARGIN_PCT_PER_TRADE = 0.10
 # Bybit min lot for ETH options.
 LOT_MIN_ETH = 0.1
 # Bybit Cross-Margin IM rate for short ETH options ≈ 10% of strike-notional.
