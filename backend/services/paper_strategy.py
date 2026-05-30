@@ -107,7 +107,13 @@ def fee_per_side(notional_usd: float, premium_total_usd: float) -> float:
 
 def evaluate_conditions(k5: list, k15: list, k1h: list) -> dict:
     """Check each entry condition against the LATEST bar without emitting a
-    signal. Returns a dict with per-condition booleans + summary."""
+    signal. Returns a dict with per-condition booleans + summary.
+
+    IMPORTANT: uses the same 240-bar history window as gen_sell_premium_iv_high
+    (strategy_registry._walk_iter), so the live UI conditions match exactly
+    what the generator decides. Without this, vol_pctile / regime / mtf could
+    differ slightly and confuse the user ('UI says block but bot opened').
+    """
     from .indicators import ema, realized_vol
     from .momentum_mtf import analyze_tf, consensus
     from .regime import detect_regime
@@ -131,7 +137,11 @@ def evaluate_conditions(k5: list, k15: list, k1h: list) -> dict:
         return out
 
     out["spot"] = k5[-1]["close"]
-    s5, s15, s1h = k5, k15, k1h
+    # Match the generator's HIST=240 window so this endpoint can't drift
+    HIST = 240
+    s5 = k5[-HIST:] if len(k5) > HIST else k5
+    s15 = k15[-HIST:] if len(k15) > HIST else k15
+    s1h = k1h[-HIST:] if len(k1h) > HIST else k1h
 
     # 1) Vol percentile (last 168h history, lookback 24h)
     closes_1h = [c["close"] for c in s1h]

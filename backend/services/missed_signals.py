@@ -87,16 +87,22 @@ def compute_missed_signals(lookback_days: int = 14, force_refresh: bool = False)
         spread_pct=SPREAD_PCT_TOTAL,
     )
 
-    # Replay paper's full state machine: CB + dynsize + margin budget
+    # Replay paper's full state machine: CB + dynsize + margin budget + 1-position discipline
     equity = float(START_EQUITY_USD)
     consec_losses = 0
     cb_until_ms = 0
+    # Single-position discipline: track when current trade is "released".
+    # In paper_loop only one position can be open at a time; the sim must
+    # match that so cooldown_bars analysis isn't distorted by overlapping
+    # trades. A trade opened at ts holds for bars_held × 5 min, max hold_h.
+    position_busy_until_ms = 0
     recent_pnls: list[float] = []
     trades: list[dict] = []
     equity_curve = [{"ts_ms": int(raw_signals[0]["ts_ms"]) - 60_000,
                      "equity_usd": equity, "label": "start"}]
     skipped_cb = 0
     skipped_margin = 0
+    skipped_busy = 0
 
     for sim in sims:
         ts = int(sim["ts_ms"])
@@ -106,6 +112,9 @@ def compute_missed_signals(lookback_days: int = 14, force_refresh: bool = False)
 
         if ts < cb_until_ms:
             skipped_cb += 1
+            continue
+        if ts < position_busy_until_ms:
+            skipped_busy += 1
             continue
 
         spot = float(sim["close"])
@@ -158,6 +167,12 @@ def compute_missed_signals(lookback_days: int = 14, force_refresh: bool = False)
         else:
             consec_losses = 0
 
+        # Mark position as busy until the simulated exit. bars_held × 5 min,
+        # capped at hold_h. (paper_loop releases the slot on close.)
+        bars_held = int(opt.get("bars_held") or 0)
+        held_ms = min(bars_held * 5 * 60 * 1000, WINNER_EXIT["hold_h"] * 3_600_000)
+        position_busy_until_ms = ts + held_ms
+
         equity_before = equity
         equity = round(equity + pnl_usd, 2)
 
@@ -201,6 +216,7 @@ def compute_missed_signals(lookback_days: int = 14, force_refresh: bool = False)
         "n_signals": n,
         "n_skipped_by_cb": skipped_cb,
         "n_skipped_by_margin": skipped_margin,
+        "n_skipped_by_busy": skipped_busy,
         "wins": wins,
         "losses": losses,
         "win_rate": round(wins / n, 3) if n else None,

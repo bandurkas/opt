@@ -193,6 +193,7 @@ def paper_state():
     state = paper_repo.ensure_state(START_EQUITY_USD)
     stats = paper_repo.position_stats()
     latest = paper_repo.latest_equity()
+    exit_counts = paper_repo.exit_reason_counts()
     try:
         freshness = compute_freshness()
     except Exception as e:  # noqa: BLE001
@@ -204,20 +205,27 @@ def paper_state():
             "window_5m_bars": 0,
             "error": repr(e),
         }
+    cur_eq = float(latest["equity_usd"]) if latest else float(state["start_equity_usd"])
     return {
         "start_equity_usd": float(state["start_equity_usd"]),
         "started_at_ms": int(state["started_at_ms"]),
         "cb_cooldown_until_ms": int(state["cb_cooldown_until_ms"]),
         "cb_active": int(state["cb_cooldown_until_ms"]) > time.time() * 1000,
         "consec_losses": int(state["consec_losses"]),
-        "current_equity_usd": float(latest["equity_usd"]) if latest else float(state["start_equity_usd"]),
-        "realized_usd": stats["realized_usd"],
+        "current_equity_usd": cur_eq,
+        # Realized vs unrealized split (latest snapshot)
+        "realized_usd": float(latest["realized_usd"]) if latest else 0.0,
+        "unrealized_usd": float(latest["unrealized_usd"]) if latest else 0.0,
+        # Max drawdown from latest snapshot (running peak-to-trough since started)
+        "max_dd_pct": float(latest["max_dd_pct"]) if latest and latest.get("max_dd_pct") is not None else 0.0,
         "n_open": stats["n_open"],
         "n_closed": stats["n_closed"],
         "wins": stats["wins"],
         "losses": stats["losses"],
         "win_rate": (stats["wins"] / stats["n_closed"]) if stats["n_closed"] else None,
         "avg_pnl_pct": stats["avg_pnl_pct"],
+        # Exit-reason breakdown
+        "exit_counts": exit_counts,
         **freshness,
     }
 

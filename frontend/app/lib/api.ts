@@ -213,12 +213,15 @@ export type PaperState = {
   consec_losses: number;
   current_equity_usd: number;
   realized_usd: number;
+  unrealized_usd?: number;
+  max_dd_pct?: number;
   n_open: number;
   n_closed: number;
   wins: number;
   losses: number;
   win_rate: number | null;
   avg_pnl_pct: number;
+  exit_counts?: Record<string, number>;
   last_signal_ts_ms: number | null;
   last_signal_age_h: number | null;
   bars_since_last_signal_5m: number | null;

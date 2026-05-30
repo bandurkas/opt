@@ -98,6 +98,9 @@ function BalanceCard({ state }: { state: PaperState }) {
   const change = state.current_equity_usd - state.start_equity_usd;
   const changePct = (change / state.start_equity_usd) * 100;
   const isUp = change >= 0;
+  const realized = state.realized_usd ?? 0;
+  const unrealized = state.unrealized_usd ?? 0;
+  const maxDd = state.max_dd_pct ?? 0;
   return (
     <div className="glass-panel p-6">
       <div className="text-xs uppercase tracking-wider text-slate-400 mb-2">
@@ -111,6 +114,27 @@ function BalanceCard({ state }: { state: PaperState }) {
           {fmtUsd(change, 2)} ({fmtPct(changePct)})
         </span>
         <span className="text-slate-500"> от старта {fmtUsd(state.start_equity_usd)}</span>
+      </div>
+      {/* Realized + Unrealized split */}
+      <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+        <div className="bg-slate-900/40 border border-slate-700/40 rounded p-2">
+          <div className="text-[10px] uppercase tracking-widest text-slate-500">Realized</div>
+          <div className={`font-mono mt-0.5 ${realized >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
+            {realized >= 0 ? "+" : ""}{fmtUsd(realized, 2)}
+          </div>
+        </div>
+        <div className="bg-slate-900/40 border border-slate-700/40 rounded p-2">
+          <div className="text-[10px] uppercase tracking-widest text-slate-500">Unrealized</div>
+          <div className={`font-mono mt-0.5 ${unrealized >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
+            {unrealized >= 0 ? "+" : ""}{fmtUsd(unrealized, 2)}
+          </div>
+        </div>
+        <div className="bg-slate-900/40 border border-slate-700/40 rounded p-2">
+          <div className="text-[10px] uppercase tracking-widest text-slate-500">Max DD</div>
+          <div className={`font-mono mt-0.5 ${maxDd < 5 ? "text-slate-300" : maxDd < 15 ? "text-amber-300" : "text-rose-300"}`}>
+            {maxDd.toFixed(2)}%
+          </div>
+        </div>
       </div>
       {state.cb_active && (
         <div className="mt-3 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs">
@@ -186,6 +210,14 @@ function StatsCard({ state }: { state: PaperState }) {
     { label: "Реализовано", value: fmtUsd(state.realized_usd) },
     { label: "Wins / Losses", value: `${state.wins} / ${state.losses}` },
   ];
+  const ec = state.exit_counts ?? {};
+  const exitItems = [
+    { label: "TP1", value: ec.tp1 ?? 0, color: "text-emerald-300" },
+    { label: "TP2", value: ec.tp2 ?? 0, color: "text-emerald-400" },
+    { label: "SL", value: ec.sl ?? 0, color: "text-rose-400" },
+    { label: "Time-stop", value: ec.time_stop ?? 0, color: "text-slate-300" },
+  ];
+  const hasExits = exitItems.some((e) => e.value > 0);
   return (
     <div className="glass-panel p-6">
       <div className="text-xs uppercase tracking-wider text-slate-400 mb-4">Статистика</div>
@@ -196,6 +228,20 @@ function StatsCard({ state }: { state: PaperState }) {
             <div className="text-lg font-semibold text-slate-100">{it.value}</div>
           </div>
         ))}
+      </div>
+      {/* Exit reason breakdown */}
+      <div className="mt-4 pt-3 border-t border-slate-700/40">
+        <div className="text-[10px] uppercase tracking-widest text-slate-500 mb-2">
+          Причины выхода {!hasExits && <span className="text-slate-600 normal-case">(пока без сделок)</span>}
+        </div>
+        <div className="grid grid-cols-4 gap-2 text-xs">
+          {exitItems.map((e) => (
+            <div key={e.label} className="bg-slate-900/40 border border-slate-700/40 rounded p-2 text-center">
+              <div className="text-[10px] text-slate-500">{e.label}</div>
+              <div className={`text-lg font-mono font-bold ${e.value > 0 ? e.color : "text-slate-600"}`}>{e.value}</div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

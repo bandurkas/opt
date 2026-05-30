@@ -266,6 +266,42 @@ def equity_history(hours: int = 168) -> list[dict]:
         put_conn(conn)
 
 
+def exit_reason_counts() -> dict[str, int]:
+    """How many closed positions per exit_reason (tp1/tp2/sl/time_stop)."""
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT COALESCE(exit_reason, 'unknown') AS r, COUNT(*) AS c
+                  FROM paper_positions
+                 WHERE status LIKE 'closed_%'
+                 GROUP BY exit_reason
+                """,
+            )
+            return {row[0]: int(row[1]) for row in cur.fetchall()}
+    finally:
+        put_conn(conn)
+
+
+def peak_equity_since(ts_ms_floor: int) -> float | None:
+    """Highest equity recorded since `ts_ms_floor`. Used to compute running
+    max drawdown without re-reading the whole history per tick."""
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT MAX(equity_usd) FROM paper_equity_snapshots WHERE ts_ms >= %s",
+                (ts_ms_floor,),
+            )
+            row = cur.fetchone()
+            if row and row[0] is not None:
+                return float(row[0])
+            return None
+    finally:
+        put_conn(conn)
+
+
 def latest_equity() -> dict | None:
     conn = get_conn()
     try:

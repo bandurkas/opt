@@ -111,11 +111,16 @@ def build_chain_dict(chain: list[dict]) -> dict[str, dict]:
     return out
 
 
-def current_mark(p: dict, spot: float, chain_dict: dict[str, dict] | None) -> float:
-    """Live Bybit mark/mid for an open position; BS fallback only if the
-    chain doesn't have this exact contract (delisted / very illiquid).
-    Live data MUST be preferred — BS with a fixed sigma=0.6 disagrees with
-    real Bybit IV by 30–50% and would cause spurious TP/SL triggers."""
+def current_mark(p: dict, spot: float, chain_dict: dict[str, dict] | None) -> float | None:
+    """Live Bybit mark/mid for an open position.
+
+    Returns None if no live data is available. Caller MUST handle None and
+    NOT fall back to BS for TP/SL decisions — BS sigma=0.6 disagrees with
+    real Bybit IV by 30-50% and triggers spurious SLs.
+
+    BS is still used as a soft fallback for MtM display (so the equity chart
+    doesn't flat-line on a brief chain outage), but never for exit triggers.
+    """
     if chain_dict:
         key = f"{p['side']}-{int(p['strike'])}-{p['expiry_ms']}"
         q = chain_dict.get(key)
@@ -127,6 +132,16 @@ def current_mark(p: dict, spot: float, chain_dict: dict[str, dict] | None) -> fl
             ask = float(q.get("ask", 0) or 0)
             if bid > 0 and ask > 0:
                 return (bid + ask) / 2.0
+    return None
+
+
+def current_mark_or_bs(p: dict, spot: float, chain_dict: dict[str, dict] | None) -> float:
+    """For MtM (equity display) only — never use this for TP/SL decisions.
+    Falls back to BS sigma=0.6 if no live data, accepting that the display
+    may briefly be inaccurate during a chain outage."""
+    live = current_mark(p, spot, chain_dict)
+    if live is not None:
+        return live
     return price_option_bs(p["side"], spot, float(p["strike"]),
                            int(p["expiry_ms"]), DEFAULT_SIGMA)
 
@@ -173,7 +188,7 @@ def compute_equity(state: dict, spot: float, atm_chain_quotes: dict[str, dict] |
     open_pos = paper_repo.open_positions()
     unrealized = 0.0
     for p in open_pos:
-        mark = current_mark(p, spot, atm_chain_quotes)
+        mark = current_mark_or_bs(p, spot, atm_chain_quotes)
         pnl_per_contract = float(p["entry_credit_usd"]) - mark
         unrealized += pnl_per_contract * float(p["contracts"])
 
@@ -285,15 +300,35 @@ def check_and_close_position(p: dict, spot: float,
                               chain_dict: dict[str, dict] | None = None) -> bool:
     """Check exit conditions on one position. Returns True if state changed.
 
-    TP/SL compare against the LIVE Bybit mid (when available) or BS fallback,
-    NOT against the fixed-sigma BS — the two disagree by 30–50% and would
-    trigger spurious SL on the very next tick after open.
+    SAFETY: TP/SL evaluation requires LIVE Bybit mark. If chain is unavailable
+    (network outage / API error), only the time_stop check still runs — BS-
+    fallback for TP/SL would cause spurious SL hits due to BS vs Bybit IV
+    divergence (~30-50%).
     """
     now_ms = int(time.time() * 1000)
     age_h = (now_ms - int(p["opened_at_ms"])) / 3_600_000
 
-    premium_mid = current_mark(p, spot, chain_dict)
     entry_credit = float(p["entry_credit_usd"])  # NET per contract, post entry-side friction
+
+    # Time-stop ALWAYS runs — independent of mark price.
+    if age_h >= float(p["hold_h"]):
+        # Need a mark to compute exit P&L. Use BS fallback ONLY here (after
+        # 24h, paying realistic transaction cost via BS is acceptable vs not
+        # closing at all). In live, this branch should ideally trigger a
+        # Bybit market-close order.
+        premium_mid = current_mark_or_bs(p, spot, chain_dict)
+        return _do_close(p, premium_mid, "time_stop", now_ms)
+
+    # All other exits (TP1, TP2, SL) require LIVE mark.
+    premium_mid = current_mark(p, spot, chain_dict)
+    if premium_mid is None:
+        # No live data — safest is to keep position open and wait for next tick.
+        # Log once per minute to avoid log spam.
+        if int(now_ms / 60_000) % 2 == 0:  # every ~2 min
+            print(f"[paper] #{p['id']} no live mark — skipping TP/SL check this tick",
+                  flush=True)
+        return False
+
     tp1_threshold = entry_credit * (1 - float(p["tp1_pct"]))
     tp2_threshold = entry_credit * (1 - float(p["tp2_pct"]))
     sl_threshold = entry_credit * (1 + float(p["sl_pct"]))
@@ -303,8 +338,6 @@ def check_and_close_position(p: dict, spot: float,
         reason = "sl"
     elif premium_mid <= tp2_threshold:
         reason = "tp2"
-    elif age_h >= float(p["hold_h"]):
-        reason = "time_stop"
     elif p["status"] == "open" and premium_mid <= tp1_threshold:
         paper_repo.mark_half_closed(int(p["id"]), now_ms)
         print(f"[paper] #{p['id']} TP1 marked @ mid ${premium_mid:.2f} (entry ${entry_credit:.2f})",
@@ -313,6 +346,13 @@ def check_and_close_position(p: dict, spot: float,
 
     if reason is None:
         return False
+
+    return _do_close(p, premium_mid, reason, now_ms)
+
+
+def _do_close(p: dict, premium_mid: float, reason: str, now_ms: int) -> bool:
+    """Apply exit-side friction (spread + fee), record close, notify."""
+    entry_credit = float(p["entry_credit_usd"])
 
     contracts = float(p["contracts"])
     notional = float(p["strike"]) * contracts
@@ -341,9 +381,13 @@ def check_and_close_position(p: dict, spot: float,
           f"mid=${premium_mid:.2f} debit_net=${exit_debit_net:.2f} fee=${exit_fee:.3f}  "
           f"pnl={pnl_pct:+.2f}% (${pnl_usd:+.2f})", flush=True)
 
-    # Telegram notify — close event + CB-triggered alert if it just fired
+    # Telegram notify — close event + CB-triggered alert if it just fired.
+    # Use DB-stored start equity (not module constant) so the right number
+    # carries through if anyone manually resets the paper account later.
     stats_after = paper_repo.position_stats()
-    equity_after = float(START_EQUITY_USD) + float(stats_after["realized_usd"])
+    state_now = paper_repo.get_state() or {}
+    start_eq = float(state_now.get("start_equity_usd") or START_EQUITY_USD)
+    equity_after = start_eq + float(stats_after["realized_usd"])
     telegram_notify.notify_close(
         pid=int(p["id"]), side=p["side"], strike=float(p["strike"]),
         reason=reason, pnl_pct=pnl_pct, pnl_usd=pnl_usd,
@@ -407,6 +451,13 @@ async def loop():
                                        last_signal_check_ms) / 3_600_000
                     print(f"[paper] CB cooldown active ({cb_remaining_h:.1f}h left), no signals",
                           flush=True)
+                elif open_pos_now:
+                    # Single-position discipline: never open a 2nd while 1st is alive.
+                    # Avoids overlapping-margin scenarios that would break on real Bybit.
+                    print(f"[paper] skip signal check — already 1 open position "
+                          f"(#{open_pos_now[0]['id']}, age "
+                          f"{(int(time.time()*1000) - int(open_pos_now[0]['opened_at_ms']))/3_600_000:.1f}h)",
+                          flush=True)
                 else:
                     k5, k15, k1h = load_klines_for_generator()
                     if len(k5) < 300:
@@ -418,11 +469,17 @@ async def loop():
                             eq = compute_equity(state, spot, chain_dict)
                             open_paper_position(sig, spot, eq["equity"], state)
                         else:
-                            print(f"[paper] tick: no signal (spot=${spot:.2f}, open={len(open_pos_now)})",
+                            print(f"[paper] tick: no signal (spot=${spot:.2f}, open=0)",
                                   flush=True)
 
             # 3) Equity snapshot — every iteration
             eq = compute_equity(state, spot, chain_dict)
+            # Running max drawdown from session start. Pulls peak equity since
+            # `started_at_ms` and computes (peak - current) / peak.
+            started_at = int(state.get("started_at_ms") or 0)
+            peak = paper_repo.peak_equity_since(started_at) or eq["equity"]
+            peak_eff = max(peak, eq["equity"], float(state.get("start_equity_usd") or 0))
+            max_dd_pct = ((peak_eff - eq["equity"]) / peak_eff * 100.0) if peak_eff > 0 else 0.0
             paper_repo.insert_equity_snapshot(
                 ts_ms=int(time.time() * 1000),
                 equity_usd=eq["equity"],
@@ -430,7 +487,7 @@ async def loop():
                 unrealized_usd=eq["unrealized"],
                 n_open=eq["n_open"],
                 n_closed=eq["n_closed"],
-                max_dd_pct=None,  # computed on read
+                max_dd_pct=round(max_dd_pct, 4),
             )
 
         except Exception as e:  # noqa: BLE001
