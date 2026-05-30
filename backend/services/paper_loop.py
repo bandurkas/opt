@@ -59,8 +59,8 @@ STRIKE_GRID = 25.0   # Bybit ETH options use $25/$50 grid; use $25 for safety
 def load_klines_for_generator(window_5m: int = 600) -> tuple[list, list, list]:
     """Pull recent klines from DB for the generator. Returns (k5, k15, k1h)."""
     k5 = recent_klines(SPOT_SYMBOL, "5m", limit=window_5m)
-    k15 = recent_klines(SPOT_SYMBOL, "15m", limit=window_5m // 3 + 20)
-    k1h = recent_klines(SPOT_SYMBOL, "1h", limit=window_5m // 12 + 20)
+    k15 = recent_klines(SPOT_SYMBOL, "15m", limit=220)
+    k1h = recent_klines(SPOT_SYMBOL, "1h", limit=270)
     return k5, k15, k1h
 
 

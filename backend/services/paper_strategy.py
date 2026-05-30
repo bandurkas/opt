@@ -153,11 +153,18 @@ def evaluate_conditions(k5: list, k15: list, k1h: list) -> dict:
     if len(rolling_vols) >= 30:
         current_vol = rolling_vols[-1]
         sorted_vols = sorted(rolling_vols)
-        # rank percentile
+        
+        # Match generator's threshold lookup exactly
+        threshold_idx = int(len(sorted_vols) * WINNER_GEN_KWARGS["vol_threshold"])
+        threshold = sorted_vols[threshold_idx]
+        
+        # Rank percentile (just for UI display)
         below = sum(1 for v in sorted_vols if v < current_vol)
         pctile = below / len(sorted_vols)
         out["vol_pctile"] = round(pctile, 3)
-        out["vol_high"] = pctile >= WINNER_GEN_KWARGS["vol_threshold"]
+        
+        # Exact logic match with generator (current_vol >= threshold)
+        out["vol_high"] = current_vol >= threshold
 
     # 2) Regime (range/transition)
     reg = detect_regime(s1h)
