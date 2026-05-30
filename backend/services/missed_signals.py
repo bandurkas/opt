@@ -91,11 +91,8 @@ def compute_missed_signals(lookback_days: int = 14, force_refresh: bool = False)
     equity = float(START_EQUITY_USD)
     consec_losses = 0
     cb_until_ms = 0
-    # Single-position discipline: track when current trade is "released".
-    # In paper_loop only one position can be open at a time; the sim must
-    # match that so cooldown_bars analysis isn't distorted by overlapping
-    # trades. A trade opened at ts holds for bars_held × 5 min, max hold_h.
-    position_busy_until_ms = 0
+    from services.paper_strategy import MAX_PORTFOLIO_MARGIN_PCT
+    active_positions = []  # list of {"exit_ms": int, "margin_locked": float}
     recent_pnls: list[float] = []
     trades: list[dict] = []
     equity_curve = [{"ts_ms": int(raw_signals[0]["ts_ms"]) - 60_000,
@@ -113,9 +110,8 @@ def compute_missed_signals(lookback_days: int = 14, force_refresh: bool = False)
         if ts < cb_until_ms:
             skipped_cb += 1
             continue
-        if ts < position_busy_until_ms:
-            skipped_busy += 1
-            continue
+        # Purge closed positions
+        active_positions = [p for p in active_positions if p["exit_ms"] > ts]
 
         spot = float(sim["close"])
         strike = round(spot / STRIKE_GRID) * STRIKE_GRID
@@ -123,12 +119,18 @@ def compute_missed_signals(lookback_days: int = 14, force_refresh: bool = False)
         if premium_mid <= 0:
             continue
 
+        locked_margin = sum(p["margin_locked"] for p in active_positions)
+        free_margin = (equity * MAX_PORTFOLIO_MARGIN_PCT) - locked_margin
+        
         n_lots = realistic_size_lots(
-            equity, strike, premium_mid,
+            free_margin, equity, strike, premium_mid,
             {"recent_pnls_json": recent_pnls},
         )
         if n_lots < 1:
-            skipped_margin += 1
+            if locked_margin > 0:
+                skipped_busy += 1
+            else:
+                skipped_margin += 1
             continue
 
         contracts = n_lots * LOT_MIN_ETH
@@ -167,11 +169,9 @@ def compute_missed_signals(lookback_days: int = 14, force_refresh: bool = False)
         else:
             consec_losses = 0
 
-        # Mark position as busy until the simulated exit. bars_held × 5 min,
-        # capped at hold_h. (paper_loop releases the slot on close.)
         bars_held = int(opt.get("bars_held") or 0)
         held_ms = min(bars_held * 5 * 60 * 1000, WINNER_EXIT["hold_h"] * 3_600_000)
-        position_busy_until_ms = ts + held_ms
+        active_positions.append({"exit_ms": ts + held_ms, "margin_locked": margin_locked})
 
         equity_before = equity
         equity = round(equity + pnl_usd, 2)

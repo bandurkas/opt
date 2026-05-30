@@ -46,9 +46,10 @@ LOT_MIN_ETH = 0.1
 # Bybit Cross-Margin IM rate for short ETH options ≈ 10% of strike-notional.
 # Effective IM per lot ≈ (0.10·strike + premium)·0.1 ≈ $20-30 at strike $2000.
 IM_RATE = 0.10
-# Half of round-trip spread. 2.5%·2 = 5% total slippage (sell at bid below
-# mid, buy back at ask above mid). Realistic for weekly OTM ETH options.
-SPREAD_HALF_PCT = 2.5
+# Half of round-trip spread. 1.0%·2 = 2% total slippage. Realistic for weekly ETH options.
+SPREAD_HALF_PCT = 1.0
+# Maximum percentage of total equity that can be locked in margin across all open positions.
+MAX_PORTFOLIO_MARGIN_PCT = 0.80
 # Bybit taker fee on notional, capped at 12.5% of premium per side.
 FEE_RATE = 0.0003
 FEE_CAP_PCT_OF_PREMIUM = 0.125
@@ -68,12 +69,12 @@ def dyn_size_factor(state: dict) -> float:
     return 1.0
 
 
-def realistic_size_lots(equity_usd: float, strike: float,
+def realistic_size_lots(free_margin_usd: float, equity_usd: float, strike: float,
                         premium_mid: float, state: dict) -> int:
     """How many 0.1-ETH lots fit in our margin budget at this signal.
 
     Bybit IM ≈ (IM_RATE·strike + premium_mid)·lot_size_eth (per contract).
-    Budget = MARGIN_PCT_PER_TRADE · equity · dyn_factor.
+    Budget = MARGIN_PCT_PER_TRADE · equity · dyn_factor, capped by free_margin.
     Returns 0 if even one lot doesn't fit — caller should skip the signal.
     """
     if strike <= 0 or premium_mid <= 0 or equity_usd <= 0:
@@ -81,7 +82,8 @@ def realistic_size_lots(equity_usd: float, strike: float,
     margin_per_lot = (IM_RATE * strike + premium_mid) * LOT_MIN_ETH
     if margin_per_lot <= 0:
         return 0
-    budget = equity_usd * MARGIN_PCT_PER_TRADE * dyn_size_factor(state)
+    trade_budget = equity_usd * MARGIN_PCT_PER_TRADE * dyn_size_factor(state)
+    budget = min(trade_budget, free_margin_usd)
     return max(0, int(budget // margin_per_lot))
 
 

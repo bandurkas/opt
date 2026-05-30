@@ -204,12 +204,12 @@ def compute_equity(state: dict, spot: float, atm_chain_quotes: dict[str, dict] |
 
 # ───────────────────── position open / close ───────────────────────
 
-def open_paper_position(signal: dict, spot: float, equity_usd: float, state: dict) -> int | None:
+def open_paper_position(signal: dict, spot: float, equity_usd: float, free_margin_usd: float, state: dict) -> int | None:
     """Open a paper position for a signal — Bybit-realistic sizing/friction.
 
     Sizing: pick the largest whole number of 0.1-ETH lots whose Bybit Cross-
     Margin IM fits in MARGIN_PCT_PER_TRADE × equity. Skip the signal if even
-    one lot doesn't fit.
+    one lot doesn't fit or free_margin_usd is exceeded.
 
     Entry friction: receive premium at bid = mid·(1 − half-spread), then
     deduct 0.03%·notional taker fee (capped at 12.5% of premium). The stored
@@ -237,7 +237,7 @@ def open_paper_position(signal: dict, spot: float, equity_usd: float, state: dic
         entry_source = "bs_fallback"
         symbol = f"ETH-?-{int(strike)}-C"
 
-    n_lots = realistic_size_lots(equity_usd, strike, premium_mid, state)
+    n_lots = realistic_size_lots(free_margin_usd, equity_usd, strike, premium_mid, state)
     if n_lots < 1:
         m_per_lot = margin_per_lot(strike, premium_mid)
         print(f"[paper] open skipped — insufficient margin "
@@ -451,13 +451,6 @@ async def loop():
                                        last_signal_check_ms) / 3_600_000
                     print(f"[paper] CB cooldown active ({cb_remaining_h:.1f}h left), no signals",
                           flush=True)
-                elif open_pos_now:
-                    # Single-position discipline: never open a 2nd while 1st is alive.
-                    # Avoids overlapping-margin scenarios that would break on real Bybit.
-                    print(f"[paper] skip signal check — already 1 open position "
-                          f"(#{open_pos_now[0]['id']}, age "
-                          f"{(int(time.time()*1000) - int(open_pos_now[0]['opened_at_ms']))/3_600_000:.1f}h)",
-                          flush=True)
                 else:
                     k5, k15, k1h = load_klines_for_generator()
                     if len(k5) < 300:
@@ -467,9 +460,18 @@ async def loop():
                         sig = check_new_signal(k5, k15, k1h)
                         if sig:
                             eq = compute_equity(state, spot, chain_dict)
-                            open_paper_position(sig, spot, eq["equity"], state)
+                            from services.paper_strategy import MAX_PORTFOLIO_MARGIN_PCT
+                            locked_margin = sum(float(p["size_usd"]) for p in open_pos_now)
+                            free_margin = (eq["equity"] * MAX_PORTFOLIO_MARGIN_PCT) - locked_margin
+                            
+                            if free_margin <= 0:
+                                print(f"[paper] skip signal — portfolio margin maxed out "
+                                      f"(locked ${locked_margin:.2f} >= limit ${eq['equity']*MAX_PORTFOLIO_MARGIN_PCT:.2f})", 
+                                      flush=True)
+                            else:
+                                open_paper_position(sig, spot, eq["equity"], free_margin, state)
                         else:
-                            print(f"[paper] tick: no signal (spot=${spot:.2f}, open=0)",
+                            print(f"[paper] tick: no signal (spot=${spot:.2f}, open={len(open_pos_now)})",
                                   flush=True)
 
             # 3) Equity snapshot — every iteration
