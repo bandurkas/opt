@@ -18,27 +18,14 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from services.backtest import simulate_signal_set
+from services.strategy_config import (
+    DEFAULT_SIGMA,
+    EXPIRY_TARGET_HOURS,
+    SPREAD_HALF_PCT,
+    WINNER_EXIT,
+    WINNER_GEN_KWARGS,
+)
 from services.strategy_registry import gen_sell_premium_iv_high
-
-# Live paper strategy params (mirror paper_strategy.py — no DB import)
-WINNER_GEN_KWARGS = {
-    "vol_threshold": 0.60,
-    "regime_filter": ["range", "transition"],
-    "side": "C",
-    "adx_max": None,
-    "mtf_direction_filter": "down",
-    "bull_market_ratio_max": 1.05,
-    "cooldown_bars": 6,
-}
-WINNER_EXIT = {
-    "tp1_pct": 0.30,
-    "tp2_pct": 0.50,
-    "sl_pct": 0.50,
-    "hold_h": 24,
-}
-DEFAULT_SIGMA = 0.6
-EXPIRY_TARGET_HOURS = 168
-SPREAD_HALF_PCT = 1.0
 
 _IV_MAP = {"5": "5m", "15": "15m", "60": "1h"}
 

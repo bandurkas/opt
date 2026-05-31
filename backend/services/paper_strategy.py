@@ -9,36 +9,14 @@ import time
 
 from db import paper_repo
 
-WINNER_GEN_KWARGS = {
-    # 365d local sweep (2026-05-31): sell ATM Put in MTF-up + high-vol range beats
-    # the old sell-Call MTF-down config (+14.8% vs +3.7% avg/trade full-year BS sim).
-    # See sweep_results/validation.json and local_opt_iter1.json.
-    "vol_threshold": 0.50,
-    "regime_filter": ["range"],
-    "side": "P",
-    "adx_max": None,
-    "mtf_direction_filter": "up",
-    "bull_market_ratio_max": 1.05,
-    "cooldown_bars": 12,
-}
-
-WINNER_EXIT = {
-    "tp1_pct": 0.50,
-    "tp2_pct": 0.70,
-    "sl_pct": 1.50,
-    "hold_h": 72,
-}
-
-# Alternate (more trades, similar edge): cooldown_bars=6 → ~488 signals/yr, +13.3% avg
-WINNER_GEN_KWARGS_ALT = {
-    **WINNER_GEN_KWARGS,
-    "cooldown_bars": 6,
-}
-
-# Sigma constant used to price fallbacks. Bybit live IV will be used when
-# available; this is only for the BS fallback path.
-DEFAULT_SIGMA = 0.6
-EXPIRY_TARGET_HOURS = 168  # ~7 days
+from .strategy_config import (
+    DEFAULT_SIGMA,
+    EXPIRY_TARGET_HOURS,
+    SPREAD_HALF_PCT,
+    WINNER_EXIT,
+    WINNER_GEN_KWARGS,
+    WINNER_GEN_KWARGS_ALT,
+)
 
 # ───────────── Bybit-realistic sizing / friction model ─────────────
 # Starting equity sized so the minimum 0.1-ETH lot fits in budget.
@@ -52,8 +30,7 @@ LOT_MIN_ETH = 0.1
 # Bybit Cross-Margin IM rate for short ETH options ≈ 10% of strike-notional.
 # Effective IM per lot ≈ (0.10·strike + premium)·0.1 ≈ $20-30 at strike $2000.
 IM_RATE = 0.10
-# Half of round-trip spread. 1.0%·2 = 2% total slippage. Realistic for weekly ETH options.
-SPREAD_HALF_PCT = 1.0
+# Half of round-trip spread imported from strategy_config (1.0 → 2.0% round-trip).
 # Maximum percentage of total equity that can be locked in margin across all open positions.
 MAX_PORTFOLIO_MARGIN_PCT = 0.80
 # Bybit taker fee on notional, capped at 12.5% of premium per side.
