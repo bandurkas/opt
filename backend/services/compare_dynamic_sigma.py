@@ -52,7 +52,8 @@ def main() -> None:
     )
     print(f"  n_signals={len(signals)} ({time.time()-t0:.1f}s)", flush=True)
 
-    exit_kwargs = {"tp1": 0.30, "tp2": 0.80, "sl": 0.50, "hold_h": 24}
+    # Match STRATEGY.md iter5 winner exactly: TP1=30% TP2=50% SL=50% time-stop=24h
+    exit_kwargs = {"tp1": 0.30, "tp2": 0.50, "sl": 0.50, "hold_h": 24}
 
     print(f"\n=== Baseline: constant σ={args.sigma}, spread={args.spread}% ===",
           flush=True)
@@ -89,10 +90,15 @@ def main() -> None:
               f"WR {b.get('wr'):.3f} → {d.get('wr'):.3f}  "
               f"sharpe {b.get('sharpe')} → {d.get('sharpe')}")
 
-    out_path = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-        "sweep_results", "dynamic_sigma_compare.json",
-    )
+    # Try repo-relative path first; fall back to /tmp inside containers
+    candidates = [
+        os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__)))), "sweep_results"),
+        "/app/sweep_results",
+        "/tmp",
+    ]
+    out_dir = next((d for d in candidates if os.path.isdir(d)), "/tmp")
+    out_path = os.path.join(out_dir, "dynamic_sigma_compare.json")
     with open(out_path, "w") as f:
         json.dump({"baseline": base, "dynamic": dyn,
                    "params": vars(args), "n_signals": len(signals)}, f, indent=2)
