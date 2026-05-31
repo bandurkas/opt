@@ -10,24 +10,29 @@ import time
 from db import paper_repo
 
 WINNER_GEN_KWARGS = {
-    # vol_threshold lowered 0.70 → 0.60 after 21-day replay showed:
-    # 27 additional signals (92.6% WR, 0 SL hits, +$428 P&L) without changing
-    # drawdown. 0.70 was overly strict — gated out the "moderate-vol range"
-    # setups that this strategy was actually designed to catch.
-    "vol_threshold": 0.60,
-    "regime_filter": ["range", "transition"],
-    "side": "C",
+    # 365d local sweep (2026-05-31): sell ATM Put in MTF-up + high-vol range beats
+    # the old sell-Call MTF-down config (+14.8% vs +3.7% avg/trade full-year BS sim).
+    # See sweep_results/validation.json and local_opt_iter1.json.
+    "vol_threshold": 0.50,
+    "regime_filter": ["range"],
+    "side": "P",
     "adx_max": None,
-    "mtf_direction_filter": "down",
+    "mtf_direction_filter": "up",
     "bull_market_ratio_max": 1.05,
-    "cooldown_bars": 6,
+    "cooldown_bars": 12,
 }
 
 WINNER_EXIT = {
-    "tp1_pct": 0.30,   # close half at -30% from entry credit (premium decayed 30%)
-    "tp2_pct": 0.50,   # close remainder at -50% decay
-    "sl_pct": 0.50,    # stop at +50% growth from entry credit
-    "hold_h": 24,      # time stop — 24h gives 7-day options enough theta to hit TP
+    "tp1_pct": 0.50,
+    "tp2_pct": 0.70,
+    "sl_pct": 1.50,
+    "hold_h": 72,
+}
+
+# Alternate (more trades, similar edge): cooldown_bars=6 → ~488 signals/yr, +13.3% avg
+WINNER_GEN_KWARGS_ALT = {
+    **WINNER_GEN_KWARGS,
+    "cooldown_bars": 6,
 }
 
 # Sigma constant used to price fallbacks. Bybit live IV will be used when
@@ -121,11 +126,14 @@ def evaluate_conditions(k5: list, k15: list, k1h: list) -> dict:
     from .momentum_mtf import analyze_tf, consensus
     from .regime import detect_regime
 
+    mtf_filter = WINNER_GEN_KWARGS.get("mtf_direction_filter")
     out = {
         "ready": False,
         "vol_high": False,
         "regime_ok": False,
         "mtf_down_aligned": False,
+        "mtf_up_aligned": False,
+        "mtf_direction_ok": False,
         "bull_filter_ok": False,
         "spot": None,
         "vol_pctile": None,
@@ -179,6 +187,13 @@ def evaluate_conditions(k5: list, k15: list, k1h: list) -> dict:
     out["mtf_direction"] = mtf["direction"]
     out["mtf_aligned_count"] = mtf["tfs_aligned"]
     out["mtf_down_aligned"] = (mtf["direction"] == "down" and mtf["tfs_aligned"] >= 2)
+    out["mtf_up_aligned"] = (mtf["direction"] == "up" and mtf["tfs_aligned"] >= 2)
+    if mtf_filter == "up":
+        out["mtf_direction_ok"] = out["mtf_up_aligned"]
+    elif mtf_filter == "down":
+        out["mtf_direction_ok"] = out["mtf_down_aligned"]
+    else:
+        out["mtf_direction_ok"] = True
 
     # 4) Bull-market filter (EMA50_1h / EMA200_1h < 1.05)
     ema50 = ema(closes_1h, 50)
@@ -189,7 +204,7 @@ def evaluate_conditions(k5: list, k15: list, k1h: list) -> dict:
         out["bull_filter_ok"] = ratio <= WINNER_GEN_KWARGS["bull_market_ratio_max"]
 
     out["ready"] = (out["vol_high"] and out["regime_ok"]
-                    and out["mtf_down_aligned"] and out["bull_filter_ok"])
+                    and out["mtf_direction_ok"] and out["bull_filter_ok"])
     return out
 
 

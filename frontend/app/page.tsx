@@ -20,7 +20,8 @@ function whyBlocked(c: PaperConditions): string[] {
   if (!c.regime_ok) {
     reasons.push(`Режим рынка «${c.regime ?? "?"}» не подходит — нужно ${regimeList} (то есть не сильный тренд)`);
   }
-  if (!c.mtf_down_aligned) {
+  const mtfOk = c.mtf_direction_ok ?? c.mtf_down_aligned;
+  if (!mtfOk) {
     reasons.push(
       `MTF тренд не ${mtfDir} — сейчас ${c.mtf_direction ?? "?"} с согласием ${c.mtf_aligned_count ?? 0}/3 ТФ; нужно ${mtfDir} И ≥ ${mtfMin}/3`,
     );
@@ -162,7 +163,7 @@ export default function Home() {
             />
             <ConditionPill
               label={`Тренд ${conditions.thresholds?.mtf_direction_filter ?? "down"} (MTF)`}
-              ok={conditions.mtf_down_aligned}
+              ok={conditions.mtf_direction_ok ?? conditions.mtf_down_aligned}
               detail={`${conditions.mtf_direction ?? "—"} · ${conditions.mtf_aligned_count ?? 0}/3 TF`}
               need={`${conditions.thresholds?.mtf_direction_filter ?? "down"} + ${conditions.thresholds?.mtf_min_aligned ?? 2}/3`}
             />

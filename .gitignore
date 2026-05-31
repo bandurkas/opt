@@ -24,6 +24,7 @@ next-env.d.ts
 *.swp
 
 # Local
+data/
 .streamlit/
 *.log
 # Scratch / debug files

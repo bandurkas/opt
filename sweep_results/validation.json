@@ -1,0 +1,184 @@
+[
+  {
+    "name": "baseline_live",
+    "gen": {
+      "vol_threshold": 0.6,
+      "regime_filter": [
+        "range",
+        "transition"
+      ],
+      "side": "C",
+      "adx_max": null,
+      "mtf_direction_filter": "down",
+      "bull_market_ratio_max": 1.05,
+      "cooldown_bars": 6
+    },
+    "exit": {
+      "tp1": 0.3,
+      "tp2": 0.5,
+      "sl": 0.5,
+      "hold_h": 24
+    },
+    "n_signals": 837,
+    "train": {
+      "n": 585,
+      "wr": 0.557,
+      "avg": 3.24,
+      "median": 5.09,
+      "stdev": 41.51,
+      "sharpe": 0.08,
+      "total": 1895.8
+    },
+    "test": {
+      "n": 252,
+      "wr": 0.599,
+      "avg": 4.8,
+      "median": 14.08,
+      "stdev": 36.23,
+      "sharpe": 0.13,
+      "total": 1210.6
+    },
+    "full": {
+      "n": 837,
+      "avg": 3.71,
+      "wr": 0.57
+    },
+    "elapsed_s": 226.7
+  },
+  {
+    "name": "best_C_oos",
+    "gen": {
+      "vol_threshold": 0.65,
+      "regime_filter": [
+        "range",
+        "transition"
+      ],
+      "side": "C",
+      "adx_max": null,
+      "mtf_direction_filter": "down",
+      "bull_market_ratio_max": null,
+      "cooldown_bars": 6
+    },
+    "exit": {
+      "tp1": 0.3,
+      "tp2": 0.5,
+      "sl": 0.5,
+      "hold_h": 24
+    },
+    "n_signals": 780,
+    "train": {
+      "n": 546,
+      "wr": 0.515,
+      "avg": -0.77,
+      "median": 1.52,
+      "stdev": 41.74,
+      "sharpe": -0.02,
+      "total": -418.3
+    },
+    "test": {
+      "n": 234,
+      "wr": 0.62,
+      "avg": 7.56,
+      "median": 17.87,
+      "stdev": 37.02,
+      "sharpe": 0.2,
+      "total": 1769.1
+    },
+    "full": {
+      "n": 780,
+      "avg": 1.73,
+      "wr": 0.546
+    },
+    "elapsed_s": 236.3
+  },
+  {
+    "name": "best_P_oos",
+    "gen": {
+      "vol_threshold": 0.5,
+      "regime_filter": [
+        "range"
+      ],
+      "side": "P",
+      "adx_max": null,
+      "mtf_direction_filter": "up",
+      "bull_market_ratio_max": 1.05,
+      "cooldown_bars": 12
+    },
+    "exit": {
+      "tp1": 0.5,
+      "tp2": 0.7,
+      "sl": 1.5,
+      "hold_h": 72
+    },
+    "n_signals": 268,
+    "train": {
+      "n": 187,
+      "wr": 0.604,
+      "avg": 14.39,
+      "median": 44.94,
+      "stdev": 69.09,
+      "sharpe": 0.21,
+      "total": 2690.6
+    },
+    "test": {
+      "n": 81,
+      "wr": 0.63,
+      "avg": 15.84,
+      "median": 9.69,
+      "stdev": 49.34,
+      "sharpe": 0.32,
+      "total": 1283.2
+    },
+    "full": {
+      "n": 268,
+      "avg": 14.83,
+      "wr": 0.612
+    },
+    "elapsed_s": 260.0
+  },
+  {
+    "name": "best_P_cd6",
+    "gen": {
+      "vol_threshold": 0.5,
+      "regime_filter": [
+        "range"
+      ],
+      "side": "P",
+      "adx_max": null,
+      "mtf_direction_filter": "up",
+      "bull_market_ratio_max": 1.05,
+      "cooldown_bars": 6
+    },
+    "exit": {
+      "tp1": 0.5,
+      "tp2": 0.7,
+      "sl": 1.5,
+      "hold_h": 72
+    },
+    "n_signals": 488,
+    "train": {
+      "n": 341,
+      "wr": 0.587,
+      "avg": 13.31,
+      "median": 41.57,
+      "stdev": 68.48,
+      "sharpe": 0.19,
+      "total": 4537.4
+    },
+    "test": {
+      "n": 147,
+      "wr": 0.585,
+      "avg": 13.4,
+      "median": 6.83,
+      "stdev": 48.73,
+      "sharpe": 0.28,
+      "total": 1969.9
+    },
+    "full": {
+      "n": 488,
+      "avg": 13.33,
+      "wr": 0.586
+    },
+    "elapsed_s": 260.0
+  }
+]

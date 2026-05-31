@@ -66,13 +66,17 @@ def load_klines_for_generator(window_5m: int = 600) -> tuple[list, list, list]:
 
 # ───────────────────── option pricing (live + fallback) ─────────────
 
-def pick_bybit_atm_call(chain: list[dict], spot: float, target_expiry_h: int) -> dict | None:
-    """From live Bybit chain, pick the ATM call closest to target_expiry_h."""
+def pick_bybit_atm_option(chain: list[dict], spot: float, target_expiry_h: int,
+                          option_side: str = "C") -> dict | None:
+    """From live Bybit chain, pick ATM call or put closest to target_expiry_h."""
+    option_side = (option_side or "C").upper()
+    if option_side not in ("C", "P"):
+        option_side = "C"
     now_ms = int(time.time() * 1000)
     target_ms = now_ms + target_expiry_h * 3_600_000
     candidates = [
         o for o in chain
-        if o.get("side") == "C"
+        if o.get("side") == option_side
         and o.get("expiry_ms", 0) > now_ms + 6 * 3_600_000  # at least 6h to expiry
         and (o.get("bid") or 0) > 0
     ]
@@ -86,6 +90,10 @@ def pick_bybit_atm_call(chain: list[dict], spot: float, target_expiry_h: int) ->
     target_strike = round(spot / STRIKE_GRID) * STRIKE_GRID
     same_expiry.sort(key=lambda o: abs((o.get("strike") or 0) - target_strike))
     return same_expiry[0] if same_expiry else None
+
+
+def pick_bybit_atm_call(chain: list[dict], spot: float, target_expiry_h: int) -> dict | None:
+    return pick_bybit_atm_option(chain, spot, target_expiry_h, "C")
 
 
 def price_option_live(symbol: str, side: str) -> dict | None:
@@ -216,8 +224,9 @@ def open_paper_position(signal: dict, spot: float, equity_usd: float, free_margi
     entry_credit_usd is per-contract NET of entry fee, so all downstream
     P&L math (close, equity) is correct without schema changes.
     """
+    option_side = str(WINNER_GEN_KWARGS.get("side") or "C").upper()
     chain = bybit_client.get_options_tickers(BASE_COIN)
-    pick = pick_bybit_atm_call(chain, spot, EXPIRY_TARGET_HOURS)
+    pick = pick_bybit_atm_option(chain, spot, EXPIRY_TARGET_HOURS, option_side)
 
     if pick and pick.get("bid", 0) > 0 and pick.get("ask", 0) > 0:
         strike = float(pick["strike"])
@@ -230,12 +239,12 @@ def open_paper_position(signal: dict, spot: float, equity_usd: float, free_margi
     else:
         strike = round(spot / STRIKE_GRID) * STRIKE_GRID
         expiry_ms = int(time.time() * 1000) + EXPIRY_TARGET_HOURS * 3_600_000
-        premium_mid = price_option_bs("C", spot, strike, expiry_ms, DEFAULT_SIGMA)
+        premium_mid = price_option_bs(option_side, spot, strike, expiry_ms, DEFAULT_SIGMA)
         if premium_mid <= 0:
             print(f"[paper] open skipped — could not price option", flush=True)
             return None
         entry_source = "bs_fallback"
-        symbol = f"ETH-?-{int(strike)}-C"
+        symbol = f"ETH-?-{int(strike)}-{option_side}"
 
     n_lots = realistic_size_lots(free_margin_usd, equity_usd, strike, premium_mid, state)
     if n_lots < 1:
@@ -263,7 +272,7 @@ def open_paper_position(signal: dict, spot: float, equity_usd: float, free_margi
     pid = paper_repo.open_position(
         opened_at_ms=int(time.time() * 1000),
         underlying_at_open=spot,
-        side="C",
+        side=option_side,
         strike=strike,
         expiry_ms=expiry_ms,
         contracts=contracts,
@@ -288,7 +297,7 @@ def open_paper_position(signal: dict, spot: float, equity_usd: float, free_margi
           f"margin=${margin_locked:.2f}  fee=${entry_fee:.3f}  source={entry_source}",
           flush=True)
     telegram_notify.notify_open(
-        pid=pid, symbol=symbol, side="C", strike=strike, spot=spot,
+        pid=pid, symbol=symbol, side=option_side, strike=strike, spot=spot,
         n_lots=n_lots, contracts=contracts,
         premium_recv=premium_received_total,
         margin_locked=margin_locked, entry_fee=entry_fee, source=entry_source,
