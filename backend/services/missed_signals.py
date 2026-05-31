@@ -23,12 +23,11 @@ from services.paper_strategy import (
     LOT_MIN_ETH,
     SPREAD_HALF_PCT,
     START_EQUITY_USD,
-    WINNER_EXIT,
-    WINNER_GEN_KWARGS,
     fee_per_side,
     margin_per_lot,
     realistic_size_lots,
 )
+from services.strategy_config import active_exit, active_gen_kwargs
 from services.strategy_registry import gen_sell_premium_iv_high
 
 STRIKE_GRID = 25.0
@@ -70,7 +69,9 @@ def compute_missed_signals(lookback_days: int = 14, force_refresh: bool = False)
     now_ms = int(time.time() * 1000)
     cutoff_ms = now_ms - lookback_days * 86_400_000
 
-    raw_signals = gen_sell_premium_iv_high(k5, k15, k1h, **WINNER_GEN_KWARGS)
+    gen_kw = active_gen_kwargs()
+    exit_kw = active_exit()
+    raw_signals = gen_sell_premium_iv_high(k5, k15, k1h, **gen_kw)
     raw_signals = [s for s in raw_signals if s["ts_ms"] >= cutoff_ms]
     raw_signals.sort(key=lambda s: s["ts_ms"])
 
@@ -80,10 +81,10 @@ def compute_missed_signals(lookback_days: int = 14, force_refresh: bool = False)
     sims = simulate_signal_set(
         raw_signals, k5,
         sigma=DEFAULT_SIGMA, expiry_hours=EXPIRY_TARGET_HOURS,
-        tp1_pct=WINNER_EXIT["tp1_pct"],
-        tp2_pct=WINNER_EXIT["tp2_pct"],
-        sl_pct=WINNER_EXIT["sl_pct"],
-        option_horizon_h=WINNER_EXIT["hold_h"],
+        tp1_pct=exit_kw["tp1_pct"],
+        tp2_pct=exit_kw["tp2_pct"],
+        sl_pct=exit_kw["sl_pct"],
+        option_horizon_h=exit_kw["hold_h"],
         spread_pct=SPREAD_PCT_TOTAL,
     )
 
@@ -170,7 +171,7 @@ def compute_missed_signals(lookback_days: int = 14, force_refresh: bool = False)
             consec_losses = 0
 
         bars_held = int(opt.get("bars_held") or 0)
-        held_ms = min(bars_held * 5 * 60 * 1000, WINNER_EXIT["hold_h"] * 3_600_000)
+        held_ms = min(bars_held * 5 * 60 * 1000, exit_kw["hold_h"] * 3_600_000)
         active_positions.append({"exit_ms": ts + held_ms, "margin_locked": margin_locked})
 
         equity_before = equity

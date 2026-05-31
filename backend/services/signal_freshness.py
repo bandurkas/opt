@@ -13,7 +13,7 @@ from __future__ import annotations
 import time
 
 from db.repository import recent_klines
-from services.paper_strategy import WINNER_GEN_KWARGS
+from services.strategy_config import active_gen_kwargs
 from services.strategy_registry import gen_sell_premium_iv_high
 
 _CACHE: dict[str, tuple[float, dict]] = {}
@@ -42,7 +42,7 @@ def compute_freshness(symbol: str = "ETHUSDT") -> dict:
         _CACHE[symbol] = (now, out)
         return out
 
-    sigs = gen_sell_premium_iv_high(k5, k15, k1h, **WINNER_GEN_KWARGS)
+    sigs = gen_sell_premium_iv_high(k5, k15, k1h, **active_gen_kwargs())
     now_ms = int(now * 1000)
     day_ago = now_ms - 24 * 3600 * 1000
 

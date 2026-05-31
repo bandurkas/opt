@@ -28,14 +28,12 @@ from db.engine import apply_schema  # noqa: E402
 from db.repository import recent_klines  # noqa: E402
 from services import backtest_bs as bs  # noqa: E402
 from services.bybit_client import bybit_client  # noqa: E402
-from services.strategy_config import active_gen_kwargs  # noqa: E402
+from services.strategy_config import active_exit, active_gen_kwargs  # noqa: E402
 from services.paper_strategy import (  # noqa: E402
     DEFAULT_SIGMA,
     EXPIRY_TARGET_HOURS,
     LOT_MIN_ETH,
     START_EQUITY_USD,
-    WINNER_EXIT,
-    WINNER_GEN_KWARGS,
     apply_entry_spread,
     apply_exit_spread,
     fee_per_side,
@@ -225,7 +223,9 @@ def open_paper_position(signal: dict, spot: float, equity_usd: float, free_margi
     entry_credit_usd is per-contract NET of entry fee, so all downstream
     P&L math (close, equity) is correct without schema changes.
     """
-    option_side = str(active_gen_kwargs().get("side") or "C").upper()
+    gen_kw = active_gen_kwargs()
+    exit_kw = active_exit()
+    option_side = str(gen_kw.get("side") or "C").upper()
     chain = bybit_client.get_options_tickers(BASE_COIN)
     pick = pick_bybit_atm_option(chain, spot, EXPIRY_TARGET_HOURS, option_side)
 
@@ -281,10 +281,10 @@ def open_paper_position(signal: dict, spot: float, equity_usd: float, free_margi
         entry_credit_usd=entry_credit_per_contract_net,
         entry_credit_pct=entry_credit_pct,
         entry_source=entry_source,
-        tp1_pct=WINNER_EXIT["tp1_pct"],
-        tp2_pct=WINNER_EXIT["tp2_pct"],
-        sl_pct=WINNER_EXIT["sl_pct"],
-        hold_h=WINNER_EXIT["hold_h"],
+        tp1_pct=exit_kw["tp1_pct"],
+        tp2_pct=exit_kw["tp2_pct"],
+        sl_pct=exit_kw["sl_pct"],
+        hold_h=exit_kw["hold_h"],
         signal_payload={
             "symbol": symbol, "signal": signal,
             "n_lots": n_lots, "margin_locked": round(margin_locked, 2),
@@ -424,6 +424,13 @@ async def loop():
     state = paper_repo.ensure_state(START_EQUITY_USD)
     print(f"[paper] schema ready, start_equity=${state['start_equity_usd']}, "
           f"poll={POLL_INTERVAL_S}s", flush=True)
+    _gen = active_gen_kwargs()
+    _ex = active_exit()
+    print(f"[paper] active variant: side={_gen['side']} mtf={_gen['mtf_direction_filter']} "
+          f"vol={_gen['vol_threshold']} regime={_gen['regime_filter']} "
+          f"cd={_gen['cooldown_bars']} bull={_gen.get('bull_market_ratio_max')} "
+          f"exit(tp1={_ex['tp1_pct']},tp2={_ex['tp2_pct']},sl={_ex['sl_pct']},hold={_ex['hold_h']}h) "
+          f"PAPER_VARIANT={__import__('os').getenv('PAPER_VARIANT', '')!r}", flush=True)
 
     last_signal_check_ms = 0
 

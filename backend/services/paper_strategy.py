@@ -12,9 +12,6 @@ from services.strategy_config import (
     DEFAULT_SIGMA,
     EXPIRY_TARGET_HOURS,
     SPREAD_HALF_PCT,
-    WINNER_EXIT,
-    WINNER_GEN_KWARGS,
-    WINNER_GEN_KWARGS_ALT,
     active_gen_kwargs,
 )
 
@@ -173,7 +170,7 @@ def evaluate_conditions(k5: list, k15: list, k1h: list) -> dict:
     else:
         out["mtf_direction_ok"] = True
 
-    # 4) Bull-market filter (EMA50_1h / EMA200_1h < 1.05)
+    # 4) Bull-market filter (EMA50_1h / EMA200_1h ≤ bull_market_ratio_max)
     ema50 = ema(closes_1h, 50)
     ema200 = ema(closes_1h, 200)
     bull_max = kw.get("bull_market_ratio_max")

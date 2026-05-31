@@ -32,11 +32,6 @@ LIVE_GEN_KWARGS_ALT = {
     "cooldown_bars": 6,
 }
 
-# Back-compat aliases for scripts that import WINNER_* statically
-WINNER_GEN_KWARGS = LIVE_GEN_KWARGS
-WINNER_GEN_KWARGS_ALT = LIVE_GEN_KWARGS_ALT
-WINNER_EXIT = LIVE_EXIT
-
 # Pre-6be2fbc baseline for A/B validation scripts
 BASELINE_CALL_GEN_KWARGS = {
     "vol_threshold": 0.60,
