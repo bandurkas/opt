@@ -2,25 +2,33 @@
 
 Kept dependency-free so ``local_backtest.py`` can import without psycopg2.
 
-Winner (proper-holdout protocol, finalize_best 2026-06-01):
-  side=P · mtf_up · range · vol≥0.50 · cooldown=6 · NO bull-filter
-  holdout-90d: n=148 +13.78%/trade, sharpe=0.40 → ≈+$54/month on $400.
+Winner (54-cell parallel sweep on proper-holdout, 2026-06-01):
+  side=P · mtf_up · range · vol≥0.50 · cooldown=4 · hold=96h · NO bull-filter
+  holdout-90d: n=275 +14.93%/trade, sharpe=0.25 → +$114/month theoretical,
+  ~$85-95/month realistic after $400 margin cap.
 
-Why no bull-filter: across all 6 cd × bull cells, holdout PnL is identical
-within the cooldown group (cd=12 → +15.84%, cd=6 → +13.78%) — the filter
-adds no edge on unseen data; dropping it just keeps more signals.
+Key sweep findings (sweep_results/parallel_cd_vol_hold.json):
+- hold_h=96 beats hold=72 by ~+44% on $/month across all cd values (more
+  theta captured per trade).
+- cd=3 has highest theoretical $ ($143/mo) but ~12.7 avg concurrent positions
+  vs $400 budget's ~8.4 lot capacity → ~30% signals dropped to margin.
+- cd=4 sits at the sweet spot: $114/mo theoretical, ~12 concurrent (some
+  margin clipping), still 1.6× current cd=6/h=72 winner.
 
-Why cd=6 over cd=12: cd=6 produces ~1.83× more holdout signals (148 vs 81)
-at -13% per-trade edge — net ~+58% monthly $ on the same $400 base.
-Test-sharpe also higher (0.40 vs 0.35). cd=12 is kept as the conservative
-ALT (PAPER_VARIANT=alt) for low-volume preference.
+Phase 4 hybrid test (Put+Call combo) → REJECTED.
+Sell-Call MTF-down on 2025-2026 ETH data has NEGATIVE edge (-31.74%/trade,
+-$126/mo) due to persistent ETH up-drift. Merging Call signals destroys
+the Put edge (-$72/mo merged).
+
+cd=6/h=72 (the previous LIVE) kept as PAPER_VARIANT=alt — lower frequency,
+no margin contention, sharpe 0.28, +$54/mo.
 """
 from __future__ import annotations
 
 import copy
 import os
 
-# LIVE: max-monthly-$ config selected by user after finalize_best 2026-06-01.
+# LIVE: max-$/month config from 54-cell sweep, 2026-06-01.
 LIVE_GEN_KWARGS = {
     "vol_threshold": 0.50,
     "regime_filter": ["range"],
@@ -28,20 +36,21 @@ LIVE_GEN_KWARGS = {
     "adx_max": None,
     "mtf_direction_filter": "up",
     "bull_market_ratio_max": None,
-    "cooldown_bars": 6,
+    "cooldown_bars": 4,
 }
 
 LIVE_EXIT = {
     "tp1_pct": 0.50,
     "tp2_pct": 0.70,
     "sl_pct": 1.50,
-    "hold_h": 72,
+    "hold_h": 96,
 }
 
-# Conservative variant: half the signal rate, +15% per-trade edge. PAPER_VARIANT=alt
+# Conservative variant: pre-sweep LIVE — half the signals, no margin contention.
+# PAPER_VARIANT=alt selects this preset.
 LIVE_GEN_KWARGS_ALT = {
     **LIVE_GEN_KWARGS,
-    "cooldown_bars": 12,
+    "cooldown_bars": 6,
 }
 
 # Pre-6be2fbc baseline for A/B validation scripts

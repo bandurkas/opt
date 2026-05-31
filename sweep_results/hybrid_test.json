@@ -1,0 +1,36 @@
+{
+  "put_only": {
+    "n": 148,
+    "wr": 0.588,
+    "avg": 13.78,
+    "median": 7.23,
+    "stdev": 48.78,
+    "sharpe": 0.283,
+    "total": 2039.9,
+    "monthly_dollar_400": 54.4
+  },
+  "call_only": {
+    "n": 149,
+    "wr": 0.497,
+    "avg": -31.74,
+    "median": -1.09,
+    "stdev": 86.49,
+    "sharpe": -0.367,
+    "total": -4729.6,
+    "monthly_dollar_400": -126.12
+  },
+  "hybrid": {
+    "n": 297,
+    "wr": 0.542,
+    "avg": -9.06,
+    "median": 5.18,
+    "stdev": 73.77,
+    "sharpe": -0.123,
+    "total": -2689.7,
+    "monthly_dollar_400": -71.73
+  },
+  "n_put_total": 528,
+  "n_call_total": 510,
+  "n_hybrid_total": 1038,
+  "elapsed_s": 677.4
+}
