@@ -156,3 +156,16 @@ def realized_vol(closes: Sequence[float], lookback: int = 24) -> float | None:
     std = math.sqrt(var)
     # annualize: hourly → sqrt(24*365)
     return std * math.sqrt(24 * 365)
+
+
+def realized_vol_at_idx_1h(closes_1h: Sequence[float], idx_1h: int,
+                            lookback_h: int = 168) -> float | None:
+    """Annualized RV ending at `closes_1h[idx_1h]`, using last `lookback_h` 1h bars.
+    Used by the backtest to estimate σ_t at each historical signal moment, so the
+    BS-implied premium reflects the actual volatility regime instead of a constant.
+    Calibrated against live Bybit IV: IV ≈ 1.0–1.1 × RV_168h for ATM ETH weeklies
+    (May 2026), so callers typically multiply by ~1.05."""
+    if idx_1h < lookback_h or idx_1h >= len(closes_1h):
+        return None
+    window = closes_1h[idx_1h - lookback_h:idx_1h + 1]
+    return realized_vol(window, lookback=lookback_h)

@@ -50,7 +50,9 @@ def stats(sims: list[dict]) -> dict | None:
 
 
 def evaluate_signals(signals, k5, *, sigma, expiry_h, tp1, tp2, sl, hold_h,
-                     spread, tsl_t=0.0, tsl_o=0.0) -> dict:
+                     spread, tsl_t=0.0, tsl_o=0.0,
+                     k1h=None, dynamic_sigma=False,
+                     iv_rv_multiplier=1.05) -> dict:
     """Run signals through simulate_signal_set + split into train/test."""
     if not signals:
         return {"train": None, "test": None, "all": None}
@@ -62,6 +64,8 @@ def evaluate_signals(signals, k5, *, sigma, expiry_h, tp1, tp2, sl, hold_h,
             tp1_pct=tp1, tp2_pct=tp2, sl_pct=sl,
             option_horizon_h=hold_h, spread_pct=spread,
             tsl_trigger_pct=tsl_t, tsl_offset_pct=tsl_o,
+            klines_1h=k1h, dynamic_sigma=dynamic_sigma,
+            iv_rv_multiplier=iv_rv_multiplier,
         )
 
     return {

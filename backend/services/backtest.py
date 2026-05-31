@@ -340,12 +340,65 @@ def simulate_signal_set(
     tsl_offset_pct: float = 0.0,
     adaptive_side_lookback_bars_5m: int | None = None,  # if set, 7d=2016 etc.
     adaptive_side_threshold_pct: float = 1.5,           # only Put if past return < -X%, etc.
+    klines_1h: list[dict] | None = None,                # required if dynamic_sigma=True
+    dynamic_sigma: bool = False,                        # σ_t from 168h RV × multiplier
+    iv_rv_multiplier: float = 1.05,                     # calibrated 2026-05: live IV / RV_168h ≈ 1.03
+    sigma_clamp: tuple[float, float] = (0.20, 1.50),    # safety bounds
 ) -> list[dict]:
     out = []
     skipped_adaptive = 0
+    n_dyn_sigma_used = 0
+    n_dyn_sigma_missing = 0
+    sigmas_used: list[float] = []
+
+    # Pre-build a (ts_ms_open → idx_1h) map if we'll need σ_t per-signal lookup.
+    ts_to_idx_1h: dict[int, int] = {}
+    closes_1h: list[float] = []
+    if dynamic_sigma and klines_1h:
+        ts_to_idx_1h = {int(k["start_ms"]): i for i, k in enumerate(klines_1h)}
+        closes_1h = [k["close"] for k in klines_1h]
+
     for sig in signals:
         idx = sig["idx_5m"]
         future = klines_5m[idx + 1:]
+
+        # Time-varying σ from realized vol of past 168h, calibrated to ATM IV.
+        # Replaces the constant σ=0.6 backtest assumption, which inflates premium
+        # by ~50% vs current Bybit ETH weekly IV (~0.40).
+        sigma_t = sigma
+        if dynamic_sigma and closes_1h:
+            from services.indicators import realized_vol_at_idx_1h
+            sig_ts = int(sig["ts_ms"])
+            # Find the 1h bar whose CLOSE timestamp is ≤ sig_ts (we ended the 5m
+            # signal candle at sig_ts; use the latest fully-closed 1h bar at or
+            # before that moment).
+            # 1h bar i covers [start_ms, start_ms+3600s); it's "closed" once we
+            # pass start_ms + 3600s. So find latest i s.t. start_ms+3600_000 ≤ sig_ts.
+            # Simpler: binary search by ts_ms_open. But we keep it linear cheap:
+            i_1h = -1
+            # 1h kline start is aligned to the hour; sig_ts is end of a 5m bar.
+            # The 1h bar containing sig_ts has start = (sig_ts // 3600_000) * 3600_000.
+            # We want the bar BEFORE that to be fully closed.
+            hour_start = (sig_ts // 3_600_000) * 3_600_000
+            i_1h = ts_to_idx_1h.get(hour_start, -1)
+            if i_1h <= 0:
+                # Fallback — find by linear scan (rare).
+                for j, k in enumerate(klines_1h):
+                    if int(k["start_ms"]) > sig_ts:
+                        i_1h = j - 1
+                        break
+            if i_1h >= 168:
+                rv168 = realized_vol_at_idx_1h(closes_1h, i_1h, lookback_h=168)
+                if rv168 is not None:
+                    s = rv168 * iv_rv_multiplier
+                    s = max(sigma_clamp[0], min(sigma_clamp[1], s))
+                    sigma_t = s
+                    sigmas_used.append(s)
+                    n_dyn_sigma_used += 1
+                else:
+                    n_dyn_sigma_missing += 1
+            else:
+                n_dyn_sigma_missing += 1
 
         # Adaptive side filter: only trade in direction of recent underlying trend
         if adaptive_side_lookback_bars_5m and idx >= adaptive_side_lookback_bars_5m:
@@ -370,7 +423,7 @@ def simulate_signal_set(
                 ret_pct = -ret_pct
             urets[f"{h}h"] = round(ret_pct, 3)
         option = _simulate_option_trade(
-            side=sig["side"], entry_spot=sig["close"], sigma=sigma,
+            side=sig["side"], entry_spot=sig["close"], sigma=sigma_t,
             expiry_hours=expiry_hours, bars_5m_forward=future,
             tp1_pct=tp1_pct, tp2_pct=tp2_pct, sl_pct=sl_pct,
             horizon_hours=option_horizon_h, spread_pct=spread_pct,
@@ -378,9 +431,19 @@ def simulate_signal_set(
             position=sig.get("position", "long_premium"),
         )
         out.append({**sig, "underlying_returns": urets, "option": option,
-                    "side": sig["side"], "ts_iso": datetime.fromtimestamp(sig["ts_ms"] / 1000, tz=timezone.utc).isoformat()})
+                    "side": sig["side"], "sigma_used": round(sigma_t, 4),
+                    "ts_iso": datetime.fromtimestamp(sig["ts_ms"] / 1000, tz=timezone.utc).isoformat()})
     if skipped_adaptive:
         print(f"[simulate] adaptive_side skipped {skipped_adaptive} signals", flush=True)
+    if dynamic_sigma:
+        if sigmas_used:
+            avg_s = sum(sigmas_used) / len(sigmas_used)
+            mn, mx = min(sigmas_used), max(sigmas_used)
+            print(f"[simulate] dynamic σ used: n={n_dyn_sigma_used} missing={n_dyn_sigma_missing} "
+                  f"avg={avg_s:.3f} min={mn:.3f} max={mx:.3f}", flush=True)
+        else:
+            print(f"[simulate] dynamic σ requested but ALL fell back to constant σ={sigma} "
+                  f"(klines_1h missing or too short)", flush=True)
     return out
 
 
