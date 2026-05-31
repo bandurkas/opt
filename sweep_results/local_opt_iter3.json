@@ -1,0 +1,3987 @@
+{
+  "round": "put_refine",
+  "sigma": 0.6,
+  "spread": 2.0,
+  "elapsed_s": 10092.3,
+  "n_combos": 108,
+  "results": [
+    {
+      "gen": {
+        "vol_threshold": 0.5,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.08,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.5,
+        "tp2": 0.7,
+        "sl": 1.5,
+        "hold_h": 72,
+        "lbl": "decay_72h_widest"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 506,
+      "train": null,
+      "test": {
+        "n": 152,
+        "wr": 0.599,
+        "avg": 15.26,
+        "median": 8.25,
+        "stdev": 48.97,
+        "sharpe": 0.31,
+        "total": 2319.9
+      },
+      "label": "put.v0.5.cd6.bull1.08.range.decay_72h_widest",
+      "score": 15.384
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.5,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.08,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.5,
+        "tp2": 0.7,
+        "sl": 1.5,
+        "hold_h": 72,
+        "lbl": "decay_72h_widest"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 278,
+      "train": null,
+      "test": {
+        "n": 84,
+        "wr": 0.643,
+        "avg": 17.78,
+        "median": 11.34,
+        "stdev": 49.48,
+        "sharpe": 0.36,
+        "total": 1493.2
+      },
+      "label": "put.v0.5.cd12.bull1.08.range.decay_72h_widest",
+      "score": 15.0792
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.5,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.05,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.5,
+        "tp2": 0.7,
+        "sl": 1.5,
+        "hold_h": 72,
+        "lbl": "decay_72h_widest"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 488,
+      "train": null,
+      "test": {
+        "n": 147,
+        "wr": 0.585,
+        "avg": 13.4,
+        "median": 6.83,
+        "stdev": 48.73,
+        "sharpe": 0.28,
+        "total": 1969.9
+      },
+      "label": "put.v0.5.cd6.bull1.05.range.decay_72h_widest",
+      "score": 13.512
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.5,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.05,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.5,
+        "tp2": 0.7,
+        "sl": 1.5,
+        "hold_h": 72,
+        "lbl": "decay_72h_widest"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 268,
+      "train": null,
+      "test": {
+        "n": 81,
+        "wr": 0.63,
+        "avg": 15.84,
+        "median": 9.69,
+        "stdev": 49.34,
+        "sharpe": 0.32,
+        "total": 1283.2
+      },
+      "label": "put.v0.5.cd12.bull1.05.range.decay_72h_widest",
+      "score": 12.958400000000001
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.5,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.08,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.4,
+        "tp2": 0.6,
+        "sl": 1.0,
+        "hold_h": 48,
+        "lbl": "decay_48h_wide"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 506,
+      "train": null,
+      "test": {
+        "n": 152,
+        "wr": 0.612,
+        "avg": 12.19,
+        "median": 38.53,
+        "stdev": 55.39,
+        "sharpe": 0.22,
+        "total": 1853.6
+      },
+      "label": "put.v0.5.cd6.bull1.08.range.decay_48h_wide",
+      "score": 12.277999999999999
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.5,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": null,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.5,
+        "tp2": 0.7,
+        "sl": 1.5,
+        "hold_h": 72,
+        "lbl": "decay_72h_widest"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 528,
+      "train": null,
+      "test": {
+        "n": 159,
+        "wr": 0.579,
+        "avg": 11.98,
+        "median": 6.83,
+        "stdev": 53.23,
+        "sharpe": 0.23,
+        "total": 1904.5
+      },
+      "label": "put.v0.5.cd6.bullNone.range.decay_72h_widest",
+      "score": 12.072000000000001
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.55,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.05,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.5,
+        "tp2": 0.7,
+        "sl": 1.5,
+        "hold_h": 72,
+        "lbl": "decay_72h_widest"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 386,
+      "train": null,
+      "test": {
+        "n": 116,
+        "wr": 0.595,
+        "avg": 11.96,
+        "median": 6.38,
+        "stdev": 48.97,
+        "sharpe": 0.24,
+        "total": 1387.9
+      },
+      "label": "put.v0.55.cd6.bull1.05.range.decay_72h_widest",
+      "score": 12.056000000000001
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.5,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.08,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.4,
+        "tp2": 0.6,
+        "sl": 1.0,
+        "hold_h": 48,
+        "lbl": "decay_48h_wide"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 278,
+      "train": null,
+      "test": {
+        "n": 84,
+        "wr": 0.631,
+        "avg": 14.06,
+        "median": 40.6,
+        "stdev": 54.62,
+        "sharpe": 0.26,
+        "total": 1180.7
+      },
+      "label": "put.v0.5.cd12.bull1.08.range.decay_48h_wide",
+      "score": 11.914399999999999
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.45,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": null,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.5,
+        "tp2": 0.7,
+        "sl": 1.5,
+        "hold_h": 72,
+        "lbl": "decay_72h_widest"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 339,
+      "train": null,
+      "test": {
+        "n": 102,
+        "wr": 0.598,
+        "avg": 11.5,
+        "median": 9.06,
+        "stdev": 56.54,
+        "sharpe": 0.2,
+        "total": 1173.0
+      },
+      "label": "put.v0.45.cd12.bullNone.range.decay_72h_widest",
+      "score": 11.58
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.55,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.08,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.5,
+        "tp2": 0.7,
+        "sl": 1.5,
+        "hold_h": 72,
+        "lbl": "decay_72h_widest"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 404,
+      "train": null,
+      "test": {
+        "n": 122,
+        "wr": 0.566,
+        "avg": 11.04,
+        "median": 4.99,
+        "stdev": 47.92,
+        "sharpe": 0.23,
+        "total": 1347.3
+      },
+      "label": "put.v0.55.cd6.bull1.08.range.decay_72h_widest",
+      "score": 11.132
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.5,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.05,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.4,
+        "tp2": 0.6,
+        "sl": 1.0,
+        "hold_h": 48,
+        "lbl": "decay_48h_wide"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 488,
+      "train": null,
+      "test": {
+        "n": 147,
+        "wr": 0.599,
+        "avg": 10.57,
+        "median": 37.31,
+        "stdev": 55.61,
+        "sharpe": 0.19,
+        "total": 1553.6
+      },
+      "label": "put.v0.5.cd6.bull1.05.range.decay_48h_wide",
+      "score": 10.646
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.55,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": null,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.5,
+        "tp2": 0.7,
+        "sl": 1.5,
+        "hold_h": 72,
+        "lbl": "decay_72h_widest"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 426,
+      "train": null,
+      "test": {
+        "n": 128,
+        "wr": 0.555,
+        "avg": 10.43,
+        "median": 3.56,
+        "stdev": 46.87,
+        "sharpe": 0.22,
+        "total": 1334.5
+      },
+      "label": "put.v0.55.cd6.bullNone.range.decay_72h_widest",
+      "score": 10.517999999999999
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.5,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": null,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.5,
+        "tp2": 0.7,
+        "sl": 1.5,
+        "hold_h": 72,
+        "lbl": "decay_72h_widest"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 289,
+      "train": null,
+      "test": {
+        "n": 87,
+        "wr": 0.621,
+        "avg": 11.99,
+        "median": 9.69,
+        "stdev": 57.54,
+        "sharpe": 0.21,
+        "total": 1043.2
+      },
+      "label": "put.v0.5.cd12.bullNone.range.decay_72h_widest",
+      "score": 10.5153
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.5,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.05,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.4,
+        "tp2": 0.6,
+        "sl": 1.0,
+        "hold_h": 48,
+        "lbl": "decay_48h_wide"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 268,
+      "train": null,
+      "test": {
+        "n": 81,
+        "wr": 0.617,
+        "avg": 12.35,
+        "median": 37.31,
+        "stdev": 54.89,
+        "sharpe": 0.23,
+        "total": 1000.7
+      },
+      "label": "put.v0.5.cd12.bull1.05.range.decay_48h_wide",
+      "score": 10.095500000000001
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.5,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": null,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.4,
+        "tp2": 0.6,
+        "sl": 1.0,
+        "hold_h": 48,
+        "lbl": "decay_48h_wide"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 528,
+      "train": null,
+      "test": {
+        "n": 159,
+        "wr": 0.591,
+        "avg": 9.25,
+        "median": 37.31,
+        "stdev": 57.2,
+        "sharpe": 0.16,
+        "total": 1470.1
+      },
+      "label": "put.v0.5.cd6.bullNone.range.decay_48h_wide",
+      "score": 9.314
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.45,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.08,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.5,
+        "tp2": 0.7,
+        "sl": 1.5,
+        "hold_h": 72,
+        "lbl": "decay_72h_widest"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 324,
+      "train": null,
+      "test": {
+        "n": 98,
+        "wr": 0.582,
+        "avg": 9.11,
+        "median": 7.85,
+        "stdev": 56.41,
+        "sharpe": 0.16,
+        "total": 893.0
+      },
+      "label": "put.v0.45.cd12.bull1.08.range.decay_72h_widest",
+      "score": 8.9918
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.45,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.08,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.4,
+        "tp2": 0.6,
+        "sl": 1.0,
+        "hold_h": 48,
+        "lbl": "decay_48h_wide"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 324,
+      "train": null,
+      "test": {
+        "n": 98,
+        "wr": 0.592,
+        "avg": 9.05,
+        "median": 36.69,
+        "stdev": 55.77,
+        "sharpe": 0.16,
+        "total": 886.7
+      },
+      "label": "put.v0.45.cd12.bull1.08.range.decay_48h_wide",
+      "score": 8.933
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.5,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": null,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.4,
+        "tp2": 0.6,
+        "sl": 1.0,
+        "hold_h": 48,
+        "lbl": "decay_48h_wide"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 289,
+      "train": null,
+      "test": {
+        "n": 87,
+        "wr": 0.609,
+        "avg": 10.12,
+        "median": 37.31,
+        "stdev": 57.6,
+        "sharpe": 0.18,
+        "total": 880.7
+      },
+      "label": "put.v0.5.cd12.bullNone.range.decay_48h_wide",
+      "score": 8.876399999999999
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.45,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.08,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.4,
+        "tp2": 0.6,
+        "sl": 1.0,
+        "hold_h": 48,
+        "lbl": "decay_48h_wide"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 594,
+      "train": null,
+      "test": {
+        "n": 179,
+        "wr": 0.581,
+        "avg": 8.33,
+        "median": 36.8,
+        "stdev": 56.1,
+        "sharpe": 0.15,
+        "total": 1490.4
+      },
+      "label": "put.v0.45.cd6.bull1.08.range.decay_48h_wide",
+      "score": 8.39
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.45,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": null,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.5,
+        "tp2": 0.7,
+        "sl": 1.5,
+        "hold_h": 72,
+        "lbl": "decay_72h_widest"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 623,
+      "train": null,
+      "test": {
+        "n": 187,
+        "wr": 0.556,
+        "avg": 8.32,
+        "median": 5.18,
+        "stdev": 56.67,
+        "sharpe": 0.15,
+        "total": 1555.5
+      },
+      "label": "put.v0.45.cd6.bullNone.range.decay_72h_widest",
+      "score": 8.38
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.45,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": null,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.4,
+        "tp2": 0.6,
+        "sl": 1.0,
+        "hold_h": 48,
+        "lbl": "decay_48h_wide"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 339,
+      "train": null,
+      "test": {
+        "n": 102,
+        "wr": 0.588,
+        "avg": 7.91,
+        "median": 36.69,
+        "stdev": 57.21,
+        "sharpe": 0.14,
+        "total": 806.7
+      },
+      "label": "put.v0.45.cd12.bullNone.range.decay_48h_wide",
+      "score": 7.966
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.45,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.05,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.4,
+        "tp2": 0.6,
+        "sl": 1.0,
+        "hold_h": 48,
+        "lbl": "decay_48h_wide"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 574,
+      "train": null,
+      "test": {
+        "n": 173,
+        "wr": 0.572,
+        "avg": 7.46,
+        "median": 36.58,
+        "stdev": 55.77,
+        "sharpe": 0.13,
+        "total": 1290.4
+      },
+      "label": "put.v0.45.cd6.bull1.05.range.decay_48h_wide",
+      "score": 7.512
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.45,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": null,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.4,
+        "tp2": 0.6,
+        "sl": 1.0,
+        "hold_h": 48,
+        "lbl": "decay_48h_wide"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 623,
+      "train": null,
+      "test": {
+        "n": 187,
+        "wr": 0.578,
+        "avg": 7.11,
+        "median": 36.8,
+        "stdev": 57.62,
+        "sharpe": 0.12,
+        "total": 1330.4
+      },
+      "label": "put.v0.45.cd6.bullNone.range.decay_48h_wide",
+      "score": 7.158
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.55,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.05,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.4,
+        "tp2": 0.6,
+        "sl": 1.0,
+        "hold_h": 48,
+        "lbl": "decay_48h_wide"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 386,
+      "train": null,
+      "test": {
+        "n": 116,
+        "wr": 0.586,
+        "avg": 7.02,
+        "median": 36.79,
+        "stdev": 57.9,
+        "sharpe": 0.12,
+        "total": 814.4
+      },
+      "label": "put.v0.55.cd6.bull1.05.range.decay_48h_wide",
+      "score": 7.068
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.55,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.05,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.5,
+        "tp2": 0.7,
+        "sl": 1.5,
+        "hold_h": 72,
+        "lbl": "decay_72h_widest"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 212,
+      "train": null,
+      "test": {
+        "n": 64,
+        "wr": 0.641,
+        "avg": 10.58,
+        "median": 8.87,
+        "stdev": 55.6,
+        "sharpe": 0.19,
+        "total": 677.4
+      },
+      "label": "put.v0.55.cd12.bull1.05.range.decay_72h_widest",
+      "score": 6.8472
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.55,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.08,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.5,
+        "tp2": 0.7,
+        "sl": 1.5,
+        "hold_h": 72,
+        "lbl": "decay_72h_widest"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 222,
+      "train": null,
+      "test": {
+        "n": 67,
+        "wr": 0.612,
+        "avg": 9.82,
+        "median": 7.64,
+        "stdev": 54.43,
+        "sharpe": 0.18,
+        "total": 658.1
+      },
+      "label": "put.v0.55.cd12.bull1.08.range.decay_72h_widest",
+      "score": 6.651400000000001
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.45,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.05,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.4,
+        "tp2": 0.6,
+        "sl": 1.0,
+        "hold_h": 48,
+        "lbl": "decay_48h_wide"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 313,
+      "train": null,
+      "test": {
+        "n": 94,
+        "wr": 0.574,
+        "avg": 6.88,
+        "median": 33.96,
+        "stdev": 55.93,
+        "sharpe": 0.12,
+        "total": 646.7
+      },
+      "label": "put.v0.45.cd12.bull1.05.range.decay_48h_wide",
+      "score": 6.515199999999999
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.55,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": null,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.5,
+        "tp2": 0.7,
+        "sl": 1.5,
+        "hold_h": 72,
+        "lbl": "decay_72h_widest"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 233,
+      "train": null,
+      "test": {
+        "n": 70,
+        "wr": 0.586,
+        "avg": 9.2,
+        "median": 6.38,
+        "stdev": 53.32,
+        "sharpe": 0.17,
+        "total": 644.2
+      },
+      "label": "put.v0.55.cd12.bullNone.range.decay_72h_widest",
+      "score": 6.507999999999999
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.45,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.05,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.5,
+        "tp2": 0.7,
+        "sl": 1.5,
+        "hold_h": 72,
+        "lbl": "decay_72h_widest"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 313,
+      "train": null,
+      "test": {
+        "n": 94,
+        "wr": 0.564,
+        "avg": 6.52,
+        "median": 5.33,
+        "stdev": 56.15,
+        "sharpe": 0.12,
+        "total": 613.0
+      },
+      "label": "put.v0.45.cd12.bull1.05.range.decay_72h_widest",
+      "score": 6.176799999999999
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.55,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.05,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.4,
+        "tp2": 0.6,
+        "sl": 1.0,
+        "hold_h": 48,
+        "lbl": "decay_48h_wide"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 212,
+      "train": null,
+      "test": {
+        "n": 64,
+        "wr": 0.609,
+        "avg": 8.8,
+        "median": 37.89,
+        "stdev": 58.0,
+        "sharpe": 0.15,
+        "total": 563.5
+      },
+      "label": "put.v0.55.cd12.bull1.05.range.decay_48h_wide",
+      "score": 5.692
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.45,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.08,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.5,
+        "tp2": 0.7,
+        "sl": 1.5,
+        "hold_h": 72,
+        "lbl": "decay_72h_widest"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 594,
+      "train": null,
+      "test": {
+        "n": 179,
+        "wr": 0.536,
+        "avg": 5.56,
+        "median": 2.46,
+        "stdev": 56.37,
+        "sharpe": 0.1,
+        "total": 995.5
+      },
+      "label": "put.v0.45.cd6.bull1.08.range.decay_72h_widest",
+      "score": 5.6
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.55,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.08,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.4,
+        "tp2": 0.6,
+        "sl": 1.0,
+        "hold_h": 48,
+        "lbl": "decay_48h_wide"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 404,
+      "train": null,
+      "test": {
+        "n": 122,
+        "wr": 0.557,
+        "avg": 5.15,
+        "median": 27.47,
+        "stdev": 57.08,
+        "sharpe": 0.09,
+        "total": 627.8
+      },
+      "label": "put.v0.55.cd6.bull1.08.range.decay_48h_wide",
+      "score": 5.186
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.55,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.08,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.4,
+        "tp2": 0.6,
+        "sl": 1.0,
+        "hold_h": 48,
+        "lbl": "decay_48h_wide"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 222,
+      "train": null,
+      "test": {
+        "n": 67,
+        "wr": 0.582,
+        "avg": 7.11,
+        "median": 36.58,
+        "stdev": 57.25,
+        "sharpe": 0.12,
+        "total": 476.5
+      },
+      "label": "put.v0.55.cd12.bull1.08.range.decay_48h_wide",
+      "score": 4.811700000000001
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.55,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": null,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.4,
+        "tp2": 0.6,
+        "sl": 1.0,
+        "hold_h": 48,
+        "lbl": "decay_48h_wide"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 233,
+      "train": null,
+      "test": {
+        "n": 70,
+        "wr": 0.557,
+        "avg": 5.33,
+        "median": 27.47,
+        "stdev": 56.63,
+        "sharpe": 0.09,
+        "total": 373.3
+      },
+      "label": "put.v0.55.cd12.bullNone.range.decay_48h_wide",
+      "score": 3.767
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.45,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.05,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.5,
+        "tp2": 0.7,
+        "sl": 1.5,
+        "hold_h": 72,
+        "lbl": "decay_72h_widest"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 574,
+      "train": null,
+      "test": {
+        "n": 173,
+        "wr": 0.52,
+        "avg": 3.33,
+        "median": 1.6,
+        "stdev": 56.02,
+        "sharpe": 0.06,
+        "total": 575.5
+      },
+      "label": "put.v0.45.cd6.bull1.05.range.decay_72h_widest",
+      "score": 3.354
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.55,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": null,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.4,
+        "tp2": 0.6,
+        "sl": 1.0,
+        "hold_h": 48,
+        "lbl": "decay_48h_wide"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 426,
+      "train": null,
+      "test": {
+        "n": 128,
+        "wr": 0.531,
+        "avg": 3.23,
+        "median": 10.73,
+        "stdev": 56.4,
+        "sharpe": 0.06,
+        "total": 413.5
+      },
+      "label": "put.v0.55.cd6.bullNone.range.decay_48h_wide",
+      "score": 3.254
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.45,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.05,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.25,
+        "tp2": 0.45,
+        "sl": 0.4,
+        "hold_h": 18,
+        "lbl": "tight_18h"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 313,
+      "train": null,
+      "test": {
+        "n": 94,
+        "wr": 0.479,
+        "avg": -0.89,
+        "median": -1.44,
+        "stdev": 29.97,
+        "sharpe": -0.03,
+        "total": -83.9
+      },
+      "label": "put.v0.45.cd12.bull1.05.range.tight_18h",
+      "score": -0.8486
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.45,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.05,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.5,
+        "tp2": 0.7,
+        "sl": 1.5,
+        "hold_h": 72,
+        "lbl": "decay_72h_widest"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 587,
+      "train": null,
+      "test": {
+        "n": 177,
+        "wr": 0.531,
+        "avg": -1.26,
+        "median": 2.81,
+        "stdev": 60.77,
+        "sharpe": -0.02,
+        "total": -223.8
+      },
+      "label": "put.v0.45.cd12.bull1.05.range+transition.decay_72h_widest",
+      "score": -1.268
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.45,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.08,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.25,
+        "tp2": 0.45,
+        "sl": 0.4,
+        "hold_h": 18,
+        "lbl": "tight_18h"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 324,
+      "train": null,
+      "test": {
+        "n": 98,
+        "wr": 0.469,
+        "avg": -1.62,
+        "median": -1.62,
+        "stdev": 30.49,
+        "sharpe": -0.05,
+        "total": -158.9
+      },
+      "label": "put.v0.45.cd12.bull1.08.range.tight_18h",
+      "score": -1.6076000000000001
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.45,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.05,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.25,
+        "tp2": 0.45,
+        "sl": 0.4,
+        "hold_h": 18,
+        "lbl": "tight_18h"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 574,
+      "train": null,
+      "test": {
+        "n": 173,
+        "wr": 0.486,
+        "avg": -1.94,
+        "median": -1.33,
+        "stdev": 29.45,
+        "sharpe": -0.07,
+        "total": -335.2
+      },
+      "label": "put.v0.45.cd6.bull1.05.range.tight_18h",
+      "score": -1.968
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.45,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.08,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.25,
+        "tp2": 0.45,
+        "sl": 0.4,
+        "hold_h": 18,
+        "lbl": "tight_18h"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 594,
+      "train": null,
+      "test": {
+        "n": 179,
+        "wr": 0.48,
+        "avg": -2.26,
+        "median": -1.54,
+        "stdev": 29.92,
+        "sharpe": -0.08,
+        "total": -405.2
+      },
+      "label": "put.v0.45.cd6.bull1.08.range.tight_18h",
+      "score": -2.292
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.45,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.08,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.5,
+        "tp2": 0.7,
+        "sl": 1.5,
+        "hold_h": 72,
+        "lbl": "decay_72h_widest"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 620,
+      "train": null,
+      "test": {
+        "n": 186,
+        "wr": 0.532,
+        "avg": -2.55,
+        "median": 3.64,
+        "stdev": 64.24,
+        "sharpe": -0.04,
+        "total": -473.8
+      },
+      "label": "put.v0.45.cd12.bull1.08.range+transition.decay_72h_widest",
+      "score": -2.566
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.45,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": null,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.25,
+        "tp2": 0.45,
+        "sl": 0.4,
+        "hold_h": 18,
+        "lbl": "tight_18h"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 339,
+      "train": null,
+      "test": {
+        "n": 102,
+        "wr": 0.451,
+        "avg": -3.13,
+        "median": -2.08,
+        "stdev": 30.81,
+        "sharpe": -0.1,
+        "total": -318.9
+      },
+      "label": "put.v0.45.cd12.bullNone.range.tight_18h",
+      "score": -3.17
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.45,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.05,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.4,
+        "tp2": 0.6,
+        "sl": 1.0,
+        "hold_h": 48,
+        "lbl": "decay_48h_wide"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 587,
+      "train": null,
+      "test": {
+        "n": 177,
+        "wr": 0.497,
+        "avg": -3.32,
+        "median": -1.82,
+        "stdev": 58.17,
+        "sharpe": -0.06,
+        "total": -588.5
+      },
+      "label": "put.v0.45.cd12.bull1.05.range+transition.decay_48h_wide",
+      "score": -3.344
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.45,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.08,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.5,
+        "tp2": 0.7,
+        "sl": 1.5,
+        "hold_h": 72,
+        "lbl": "decay_72h_widest"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 1140,
+      "train": null,
+      "test": {
+        "n": 342,
+        "wr": 0.503,
+        "avg": -3.9,
+        "median": 0.71,
+        "stdev": 62.75,
+        "sharpe": -0.06,
+        "total": -1333.3
+      },
+      "label": "put.v0.45.cd6.bull1.08.range+transition.decay_72h_widest",
+      "score": -3.924
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.45,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": null,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.25,
+        "tp2": 0.45,
+        "sl": 0.4,
+        "hold_h": 18,
+        "lbl": "tight_18h"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 623,
+      "train": null,
+      "test": {
+        "n": 187,
+        "wr": 0.46,
+        "avg": -3.88,
+        "median": -2.84,
+        "stdev": 30.25,
+        "sharpe": -0.13,
+        "total": -725.2
+      },
+      "label": "put.v0.45.cd6.bullNone.range.tight_18h",
+      "score": -3.932
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.5,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.05,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.25,
+        "tp2": 0.45,
+        "sl": 0.4,
+        "hold_h": 18,
+        "lbl": "tight_18h"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 268,
+      "train": null,
+      "test": {
+        "n": 81,
+        "wr": 0.457,
+        "avg": -4.89,
+        "median": -4.02,
+        "stdev": 32.55,
+        "sharpe": -0.15,
+        "total": -396.4
+      },
+      "label": "put.v0.5.cd12.bull1.05.range.tight_18h",
+      "score": -4.0209
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.45,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": null,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.5,
+        "tp2": 0.7,
+        "sl": 1.5,
+        "hold_h": 72,
+        "lbl": "decay_72h_widest"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 643,
+      "train": null,
+      "test": {
+        "n": 193,
+        "wr": 0.513,
+        "avg": -4.39,
+        "median": 1.6,
+        "stdev": 64.85,
+        "sharpe": -0.07,
+        "total": -848.1
+      },
+      "label": "put.v0.45.cd12.bullNone.range+transition.decay_72h_widest",
+      "score": -4.417999999999999
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.5,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.05,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.25,
+        "tp2": 0.45,
+        "sl": 0.4,
+        "hold_h": 18,
+        "lbl": "tight_18h"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 488,
+      "train": null,
+      "test": {
+        "n": 147,
+        "wr": 0.49,
+        "avg": -4.48,
+        "median": -1.54,
+        "stdev": 31.82,
+        "sharpe": -0.14,
+        "total": -658.3
+      },
+      "label": "put.v0.5.cd6.bull1.05.range.tight_18h",
+      "score": -4.5360000000000005
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.45,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.08,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.4,
+        "tp2": 0.6,
+        "sl": 1.0,
+        "hold_h": 48,
+        "lbl": "decay_48h_wide"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 620,
+      "train": null,
+      "test": {
+        "n": 186,
+        "wr": 0.495,
+        "avg": -4.56,
+        "median": -2.56,
+        "stdev": 59.64,
+        "sharpe": -0.08,
+        "total": -848.5
+      },
+      "label": "put.v0.45.cd12.bull1.08.range+transition.decay_48h_wide",
+      "score": -4.592
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.45,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.08,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.4,
+        "tp2": 0.6,
+        "sl": 1.0,
+        "hold_h": 48,
+        "lbl": "decay_48h_wide"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 1140,
+      "train": null,
+      "test": {
+        "n": 342,
+        "wr": 0.485,
+        "avg": -4.72,
+        "median": -4.04,
+        "stdev": 59.18,
+        "sharpe": -0.08,
+        "total": -1614.5
+      },
+      "label": "put.v0.45.cd6.bull1.08.range+transition.decay_48h_wide",
+      "score": -4.752
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.45,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.05,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.4,
+        "tp2": 0.6,
+        "sl": 1.0,
+        "hold_h": 48,
+        "lbl": "decay_48h_wide"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 1079,
+      "train": null,
+      "test": {
+        "n": 324,
+        "wr": 0.478,
+        "avg": -4.86,
+        "median": -5.42,
+        "stdev": 57.95,
+        "sharpe": -0.08,
+        "total": -1574.5
+      },
+      "label": "put.v0.45.cd6.bull1.05.range+transition.decay_48h_wide",
+      "score": -4.892
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.45,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.05,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.25,
+        "tp2": 0.45,
+        "sl": 0.4,
+        "hold_h": 18,
+        "lbl": "tight_18h"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 587,
+      "train": null,
+      "test": {
+        "n": 177,
+        "wr": 0.429,
+        "avg": -4.86,
+        "median": -4.91,
+        "stdev": 28.24,
+        "sharpe": -0.17,
+        "total": -861.0
+      },
+      "label": "put.v0.45.cd12.bull1.05.range+transition.tight_18h",
+      "score": -4.928
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.45,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.05,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.25,
+        "tp2": 0.45,
+        "sl": 0.4,
+        "hold_h": 18,
+        "lbl": "tight_18h"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 1079,
+      "train": null,
+      "test": {
+        "n": 324,
+        "wr": 0.432,
+        "avg": -4.91,
+        "median": -5.15,
+        "stdev": 27.65,
+        "sharpe": -0.18,
+        "total": -1590.6
+      },
+      "label": "put.v0.45.cd6.bull1.05.range+transition.tight_18h",
+      "score": -4.982
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.5,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.08,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.25,
+        "tp2": 0.45,
+        "sl": 0.4,
+        "hold_h": 18,
+        "lbl": "tight_18h"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 278,
+      "train": null,
+      "test": {
+        "n": 84,
+        "wr": 0.44,
+        "avg": -6.15,
+        "median": -6.05,
+        "stdev": 32.62,
+        "sharpe": -0.19,
+        "total": -516.4
+      },
+      "label": "put.v0.5.cd12.bull1.08.range.tight_18h",
+      "score": -5.242
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.5,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.08,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.25,
+        "tp2": 0.45,
+        "sl": 0.4,
+        "hold_h": 18,
+        "lbl": "tight_18h"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 506,
+      "train": null,
+      "test": {
+        "n": 152,
+        "wr": 0.474,
+        "avg": -5.65,
+        "median": -4.22,
+        "stdev": 31.93,
+        "sharpe": -0.18,
+        "total": -858.3
+      },
+      "label": "put.v0.5.cd6.bull1.08.range.tight_18h",
+      "score": -5.722
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.5,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.05,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.5,
+        "tp2": 0.7,
+        "sl": 1.5,
+        "hold_h": 72,
+        "lbl": "decay_72h_widest"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 514,
+      "train": null,
+      "test": {
+        "n": 155,
+        "wr": 0.51,
+        "avg": -5.78,
+        "median": 1.15,
+        "stdev": 62.77,
+        "sharpe": -0.09,
+        "total": -896.0
+      },
+      "label": "put.v0.5.cd12.bull1.05.range+transition.decay_72h_widest",
+      "score": -5.816
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.45,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.05,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.5,
+        "tp2": 0.7,
+        "sl": 1.5,
+        "hold_h": 72,
+        "lbl": "decay_72h_widest"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 1079,
+      "train": null,
+      "test": {
+        "n": 324,
+        "wr": 0.485,
+        "avg": -5.97,
+        "median": -1.73,
+        "stdev": 60.83,
+        "sharpe": -0.1,
+        "total": -1933.3
+      },
+      "label": "put.v0.45.cd6.bull1.05.range+transition.decay_72h_widest",
+      "score": -6.01
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.55,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.05,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.25,
+        "tp2": 0.45,
+        "sl": 0.4,
+        "hold_h": 18,
+        "lbl": "tight_18h"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 212,
+      "train": null,
+      "test": {
+        "n": 64,
+        "wr": 0.406,
+        "avg": -9.64,
+        "median": -17.91,
+        "stdev": 32.88,
+        "sharpe": -0.29,
+        "total": -616.7
+      },
+      "label": "put.v0.55.cd12.bull1.05.range.tight_18h",
+      "score": -6.2856000000000005
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.5,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": null,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.25,
+        "tp2": 0.45,
+        "sl": 0.4,
+        "hold_h": 18,
+        "lbl": "tight_18h"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 289,
+      "train": null,
+      "test": {
+        "n": 87,
+        "wr": 0.425,
+        "avg": -7.31,
+        "median": -7.73,
+        "stdev": 32.64,
+        "sharpe": -0.22,
+        "total": -636.4
+      },
+      "label": "put.v0.5.cd12.bullNone.range.tight_18h",
+      "score": -6.447699999999999
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.45,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.08,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.25,
+        "tp2": 0.45,
+        "sl": 0.4,
+        "hold_h": 18,
+        "lbl": "tight_18h"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 620,
+      "train": null,
+      "test": {
+        "n": 186,
+        "wr": 0.409,
+        "avg": -6.56,
+        "median": -7.83,
+        "stdev": 28.56,
+        "sharpe": -0.23,
+        "total": -1221.0
+      },
+      "label": "put.v0.45.cd12.bull1.08.range+transition.tight_18h",
+      "score": -6.651999999999999
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.45,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": null,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.5,
+        "tp2": 0.7,
+        "sl": 1.5,
+        "hold_h": 72,
+        "lbl": "decay_72h_widest"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 1185,
+      "train": null,
+      "test": {
+        "n": 356,
+        "wr": 0.483,
+        "avg": -6.66,
+        "median": -1.73,
+        "stdev": 64.35,
+        "sharpe": -0.1,
+        "total": -2372.3
+      },
+      "label": "put.v0.45.cd6.bullNone.range+transition.decay_72h_widest",
+      "score": -6.7
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.5,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.05,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.5,
+        "tp2": 0.7,
+        "sl": 1.5,
+        "hold_h": 72,
+        "lbl": "decay_72h_widest"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 941,
+      "train": null,
+      "test": {
+        "n": 283,
+        "wr": 0.477,
+        "avg": -6.75,
+        "median": -2.22,
+        "stdev": 60.68,
+        "sharpe": -0.11,
+        "total": -1909.1
+      },
+      "label": "put.v0.5.cd6.bull1.05.range+transition.decay_72h_widest",
+      "score": -6.794
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.45,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.08,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.25,
+        "tp2": 0.45,
+        "sl": 0.4,
+        "hold_h": 18,
+        "lbl": "tight_18h"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 1140,
+      "train": null,
+      "test": {
+        "n": 342,
+        "wr": 0.409,
+        "avg": -6.76,
+        "median": -7.88,
+        "stdev": 28.04,
+        "sharpe": -0.24,
+        "total": -2310.6
+      },
+      "label": "put.v0.45.cd6.bull1.08.range+transition.tight_18h",
+      "score": -6.856
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.45,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": null,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.4,
+        "tp2": 0.6,
+        "sl": 1.0,
+        "hold_h": 48,
+        "lbl": "decay_48h_wide"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 643,
+      "train": null,
+      "test": {
+        "n": 193,
+        "wr": 0.477,
+        "avg": -6.83,
+        "median": -8.43,
+        "stdev": 60.14,
+        "sharpe": -0.11,
+        "total": -1318.4
+      },
+      "label": "put.v0.45.cd12.bullNone.range+transition.decay_48h_wide",
+      "score": -6.874
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.5,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": null,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.25,
+        "tp2": 0.45,
+        "sl": 0.4,
+        "hold_h": 18,
+        "lbl": "tight_18h"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 528,
+      "train": null,
+      "test": {
+        "n": 159,
+        "wr": 0.453,
+        "avg": -7.16,
+        "median": -7.73,
+        "stdev": 32.01,
+        "sharpe": -0.22,
+        "total": -1138.3
+      },
+      "label": "put.v0.5.cd6.bullNone.range.tight_18h",
+      "score": -7.248
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.45,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": null,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.4,
+        "tp2": 0.6,
+        "sl": 1.0,
+        "hold_h": 48,
+        "lbl": "decay_48h_wide"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 1185,
+      "train": null,
+      "test": {
+        "n": 356,
+        "wr": 0.466,
+        "avg": -7.22,
+        "median": -9.98,
+        "stdev": 59.76,
+        "sharpe": -0.12,
+        "total": -2572.1
+      },
+      "label": "put.v0.45.cd6.bullNone.range+transition.decay_48h_wide",
+      "score": -7.268
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.55,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.08,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.25,
+        "tp2": 0.45,
+        "sl": 0.4,
+        "hold_h": 18,
+        "lbl": "tight_18h"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 222,
+      "train": null,
+      "test": {
+        "n": 67,
+        "wr": 0.388,
+        "avg": -10.99,
+        "median": -40.0,
+        "stdev": 32.74,
+        "sharpe": -0.34,
+        "total": -736.7
+      },
+      "label": "put.v0.55.cd12.bull1.08.range.tight_18h",
+      "score": -7.499300000000001
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.45,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": null,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.25,
+        "tp2": 0.45,
+        "sl": 0.4,
+        "hold_h": 18,
+        "lbl": "tight_18h"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 643,
+      "train": null,
+      "test": {
+        "n": 193,
+        "wr": 0.394,
+        "avg": -7.78,
+        "median": -8.13,
+        "stdev": 28.73,
+        "sharpe": -0.27,
+        "total": -1501.0
+      },
+      "label": "put.v0.45.cd12.bullNone.range+transition.tight_18h",
+      "score": -7.888
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.5,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.08,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.5,
+        "tp2": 0.7,
+        "sl": 1.5,
+        "hold_h": 72,
+        "lbl": "decay_72h_widest"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 545,
+      "train": null,
+      "test": {
+        "n": 164,
+        "wr": 0.482,
+        "avg": -7.88,
+        "median": -2.88,
+        "stdev": 63.08,
+        "sharpe": -0.12,
+        "total": -1292.8
+      },
+      "label": "put.v0.5.cd12.bull1.08.range+transition.decay_72h_widest",
+      "score": -7.928
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.5,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.05,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.4,
+        "tp2": 0.6,
+        "sl": 1.0,
+        "hold_h": 48,
+        "lbl": "decay_48h_wide"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 514,
+      "train": null,
+      "test": {
+        "n": 155,
+        "wr": 0.465,
+        "avg": -7.88,
+        "median": -10.71,
+        "stdev": 58.99,
+        "sharpe": -0.13,
+        "total": -1221.6
+      },
+      "label": "put.v0.5.cd12.bull1.05.range+transition.decay_48h_wide",
+      "score": -7.9319999999999995
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.55,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": null,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.25,
+        "tp2": 0.45,
+        "sl": 0.4,
+        "hold_h": 18,
+        "lbl": "tight_18h"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 233,
+      "train": null,
+      "test": {
+        "n": 70,
+        "wr": 0.371,
+        "avg": -11.26,
+        "median": -20.93,
+        "stdev": 32.06,
+        "sharpe": -0.35,
+        "total": -788.1
+      },
+      "label": "put.v0.55.cd12.bullNone.range.tight_18h",
+      "score": -8.022
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.45,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": null,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.25,
+        "tp2": 0.45,
+        "sl": 0.4,
+        "hold_h": 18,
+        "lbl": "tight_18h"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 1185,
+      "train": null,
+      "test": {
+        "n": 356,
+        "wr": 0.393,
+        "avg": -8.06,
+        "median": -8.43,
+        "stdev": 28.23,
+        "sharpe": -0.29,
+        "total": -2870.6
+      },
+      "label": "put.v0.45.cd6.bullNone.range+transition.tight_18h",
+      "score": -8.176
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.5,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": null,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.5,
+        "tp2": 0.7,
+        "sl": 1.5,
+        "hold_h": 72,
+        "lbl": "decay_72h_widest"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 564,
+      "train": null,
+      "test": {
+        "n": 170,
+        "wr": 0.471,
+        "avg": -8.55,
+        "median": -2.88,
+        "stdev": 62.92,
+        "sharpe": -0.14,
+        "total": -1453.9
+      },
+      "label": "put.v0.5.cd12.bullNone.range+transition.decay_72h_widest",
+      "score": -8.606
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.5,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.05,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.25,
+        "tp2": 0.45,
+        "sl": 0.4,
+        "hold_h": 18,
+        "lbl": "tight_18h"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 941,
+      "train": null,
+      "test": {
+        "n": 283,
+        "wr": 0.382,
+        "avg": -8.53,
+        "median": -9.02,
+        "stdev": 29.07,
+        "sharpe": -0.29,
+        "total": -2413.3
+      },
+      "label": "put.v0.5.cd6.bull1.05.range+transition.tight_18h",
+      "score": -8.645999999999999
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.5,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.05,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.4,
+        "tp2": 0.6,
+        "sl": 1.0,
+        "hold_h": 48,
+        "lbl": "decay_48h_wide"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 941,
+      "train": null,
+      "test": {
+        "n": 283,
+        "wr": 0.449,
+        "avg": -8.68,
+        "median": -11.23,
+        "stdev": 58.36,
+        "sharpe": -0.15,
+        "total": -2457.8
+      },
+      "label": "put.v0.5.cd6.bull1.05.range+transition.decay_48h_wide",
+      "score": -8.74
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.5,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.05,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.25,
+        "tp2": 0.45,
+        "sl": 0.4,
+        "hold_h": 18,
+        "lbl": "tight_18h"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 514,
+      "train": null,
+      "test": {
+        "n": 155,
+        "wr": 0.368,
+        "avg": -9.24,
+        "median": -9.73,
+        "stdev": 29.54,
+        "sharpe": -0.31,
+        "total": -1432.8
+      },
+      "label": "put.v0.5.cd12.bull1.05.range+transition.tight_18h",
+      "score": -9.364
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.55,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.05,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.25,
+        "tp2": 0.45,
+        "sl": 0.4,
+        "hold_h": 18,
+        "lbl": "tight_18h"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 386,
+      "train": null,
+      "test": {
+        "n": 116,
+        "wr": 0.44,
+        "avg": -9.42,
+        "median": -13.97,
+        "stdev": 32.2,
+        "sharpe": -0.29,
+        "total": -1093.2
+      },
+      "label": "put.v0.55.cd6.bull1.05.range.tight_18h",
+      "score": -9.536
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.5,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": null,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.5,
+        "tp2": 0.7,
+        "sl": 1.5,
+        "hold_h": 72,
+        "lbl": "decay_72h_widest"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 1036,
+      "train": null,
+      "test": {
+        "n": 311,
+        "wr": 0.441,
+        "avg": -9.67,
+        "median": -6.16,
+        "stdev": 61.18,
+        "sharpe": -0.16,
+        "total": -3006.7
+      },
+      "label": "put.v0.5.cd6.bullNone.range+transition.decay_72h_widest",
+      "score": -9.734
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.5,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.08,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.5,
+        "tp2": 0.7,
+        "sl": 1.5,
+        "hold_h": 72,
+        "lbl": "decay_72h_widest"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 998,
+      "train": null,
+      "test": {
+        "n": 300,
+        "wr": 0.45,
+        "avg": -9.9,
+        "median": -6.53,
+        "stdev": 62.28,
+        "sharpe": -0.16,
+        "total": -2969.4
+      },
+      "label": "put.v0.5.cd6.bull1.08.range+transition.decay_72h_widest",
+      "score": -9.964
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.55,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.05,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.5,
+        "tp2": 0.7,
+        "sl": 1.5,
+        "hold_h": 72,
+        "lbl": "decay_72h_widest"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 434,
+      "train": null,
+      "test": {
+        "n": 131,
+        "wr": 0.481,
+        "avg": -9.91,
+        "median": -1.82,
+        "stdev": 61.87,
+        "sharpe": -0.16,
+        "total": -1297.9
+      },
+      "label": "put.v0.55.cd12.bull1.05.range+transition.decay_72h_widest",
+      "score": -9.974
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.5,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.08,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.4,
+        "tp2": 0.6,
+        "sl": 1.0,
+        "hold_h": 48,
+        "lbl": "decay_48h_wide"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 545,
+      "train": null,
+      "test": {
+        "n": 164,
+        "wr": 0.439,
+        "avg": -10.34,
+        "median": -12.34,
+        "stdev": 58.79,
+        "sharpe": -0.18,
+        "total": -1695.1
+      },
+      "label": "put.v0.5.cd12.bull1.08.range+transition.decay_48h_wide",
+      "score": -10.411999999999999
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.5,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.08,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.25,
+        "tp2": 0.45,
+        "sl": 0.4,
+        "hold_h": 18,
+        "lbl": "tight_18h"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 998,
+      "train": null,
+      "test": {
+        "n": 300,
+        "wr": 0.36,
+        "avg": -10.31,
+        "median": -11.75,
+        "stdev": 29.16,
+        "sharpe": -0.35,
+        "total": -3093.3
+      },
+      "label": "put.v0.5.cd6.bull1.08.range+transition.tight_18h",
+      "score": -10.450000000000001
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.55,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": null,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.25,
+        "tp2": 0.45,
+        "sl": 0.4,
+        "hold_h": 18,
+        "lbl": "tight_18h"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 426,
+      "train": null,
+      "test": {
+        "n": 128,
+        "wr": 0.406,
+        "avg": -10.58,
+        "median": -17.91,
+        "stdev": 31.19,
+        "sharpe": -0.34,
+        "total": -1353.8
+      },
+      "label": "put.v0.55.cd6.bullNone.range.tight_18h",
+      "score": -10.716
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.5,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": null,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.25,
+        "tp2": 0.45,
+        "sl": 0.4,
+        "hold_h": 18,
+        "lbl": "tight_18h"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 1036,
+      "train": null,
+      "test": {
+        "n": 311,
+        "wr": 0.35,
+        "avg": -10.57,
+        "median": -11.8,
+        "stdev": 28.78,
+        "sharpe": -0.37,
+        "total": -3288.7
+      },
+      "label": "put.v0.5.cd6.bullNone.range+transition.tight_18h",
+      "score": -10.718
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.55,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.08,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.25,
+        "tp2": 0.45,
+        "sl": 0.4,
+        "hold_h": 18,
+        "lbl": "tight_18h"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 404,
+      "train": null,
+      "test": {
+        "n": 122,
+        "wr": 0.418,
+        "avg": -10.6,
+        "median": -20.91,
+        "stdev": 31.89,
+        "sharpe": -0.33,
+        "total": -1293.1
+      },
+      "label": "put.v0.55.cd6.bull1.08.range.tight_18h",
+      "score": -10.732
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.5,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.08,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.25,
+        "tp2": 0.45,
+        "sl": 0.4,
+        "hold_h": 18,
+        "lbl": "tight_18h"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 545,
+      "train": null,
+      "test": {
+        "n": 164,
+        "wr": 0.348,
+        "avg": -10.93,
+        "median": -13.18,
+        "stdev": 29.56,
+        "sharpe": -0.37,
+        "total": -1792.9
+      },
+      "label": "put.v0.5.cd12.bull1.08.range+transition.tight_18h",
+      "score": -11.078
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.5,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": null,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.25,
+        "tp2": 0.45,
+        "sl": 0.4,
+        "hold_h": 18,
+        "lbl": "tight_18h"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 564,
+      "train": null,
+      "test": {
+        "n": 170,
+        "wr": 0.335,
+        "avg": -11.23,
+        "median": -13.62,
+        "stdev": 29.14,
+        "sharpe": -0.39,
+        "total": -1908.5
+      },
+      "label": "put.v0.5.cd12.bullNone.range+transition.tight_18h",
+      "score": -11.386000000000001
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.55,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.05,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.5,
+        "tp2": 0.7,
+        "sl": 1.5,
+        "hold_h": 72,
+        "lbl": "decay_72h_widest"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 794,
+      "train": null,
+      "test": {
+        "n": 239,
+        "wr": 0.452,
+        "avg": -11.38,
+        "median": -6.16,
+        "stdev": 60.79,
+        "sharpe": -0.19,
+        "total": -2720.6
+      },
+      "label": "put.v0.55.cd6.bull1.05.range+transition.decay_72h_widest",
+      "score": -11.456000000000001
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.5,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": null,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.4,
+        "tp2": 0.6,
+        "sl": 1.0,
+        "hold_h": 48,
+        "lbl": "decay_48h_wide"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 564,
+      "train": null,
+      "test": {
+        "n": 170,
+        "wr": 0.424,
+        "avg": -11.51,
+        "median": -14.93,
+        "stdev": 58.27,
+        "sharpe": -0.2,
+        "total": -1957.2
+      },
+      "label": "put.v0.5.cd12.bullNone.range+transition.decay_48h_wide",
+      "score": -11.59
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.5,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.08,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.4,
+        "tp2": 0.6,
+        "sl": 1.0,
+        "hold_h": 48,
+        "lbl": "decay_48h_wide"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 998,
+      "train": null,
+      "test": {
+        "n": 300,
+        "wr": 0.423,
+        "avg": -11.74,
+        "median": -12.45,
+        "stdev": 58.66,
+        "sharpe": -0.2,
+        "total": -3522.5
+      },
+      "label": "put.v0.5.cd6.bull1.08.range+transition.decay_48h_wide",
+      "score": -11.82
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.55,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.05,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.25,
+        "tp2": 0.45,
+        "sl": 0.4,
+        "hold_h": 18,
+        "lbl": "tight_18h"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 794,
+      "train": null,
+      "test": {
+        "n": 239,
+        "wr": 0.339,
+        "avg": -12.18,
+        "median": -13.93,
+        "stdev": 29.01,
+        "sharpe": -0.42,
+        "total": -2911.4
+      },
+      "label": "put.v0.55.cd6.bull1.05.range+transition.tight_18h",
+      "score": -12.347999999999999
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.5,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": null,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.4,
+        "tp2": 0.6,
+        "sl": 1.0,
+        "hold_h": 48,
+        "lbl": "decay_48h_wide"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 1036,
+      "train": null,
+      "test": {
+        "n": 311,
+        "wr": 0.408,
+        "avg": -12.44,
+        "median": -14.76,
+        "stdev": 57.74,
+        "sharpe": -0.22,
+        "total": -3867.4
+      },
+      "label": "put.v0.5.cd6.bullNone.range+transition.decay_48h_wide",
+      "score": -12.527999999999999
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.55,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": null,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.25,
+        "tp2": 0.45,
+        "sl": 0.4,
+        "hold_h": 18,
+        "lbl": "tight_18h"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 883,
+      "train": null,
+      "test": {
+        "n": 265,
+        "wr": 0.328,
+        "avg": -12.58,
+        "median": -12.87,
+        "stdev": 28.11,
+        "sharpe": -0.45,
+        "total": -3333.6
+      },
+      "label": "put.v0.55.cd6.bullNone.range+transition.tight_18h",
+      "score": -12.76
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.55,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.05,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.25,
+        "tp2": 0.45,
+        "sl": 0.4,
+        "hold_h": 18,
+        "lbl": "tight_18h"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 434,
+      "train": null,
+      "test": {
+        "n": 131,
+        "wr": 0.321,
+        "avg": -12.66,
+        "median": -15.21,
+        "stdev": 29.25,
+        "sharpe": -0.43,
+        "total": -1658.1
+      },
+      "label": "put.v0.55.cd12.bull1.05.range+transition.tight_18h",
+      "score": -12.832
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.55,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.08,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.25,
+        "tp2": 0.45,
+        "sl": 0.4,
+        "hold_h": 18,
+        "lbl": "tight_18h"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 845,
+      "train": null,
+      "test": {
+        "n": 254,
+        "wr": 0.323,
+        "avg": -13.05,
+        "median": -16.07,
+        "stdev": 28.6,
+        "sharpe": -0.46,
+        "total": -3315.1
+      },
+      "label": "put.v0.55.cd6.bull1.08.range+transition.tight_18h",
+      "score": -13.234
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.55,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": null,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.25,
+        "tp2": 0.45,
+        "sl": 0.4,
+        "hold_h": 18,
+        "lbl": "tight_18h"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 481,
+      "train": null,
+      "test": {
+        "n": 145,
+        "wr": 0.31,
+        "avg": -13.35,
+        "median": -15.21,
+        "stdev": 28.45,
+        "sharpe": -0.47,
+        "total": -1935.3
+      },
+      "label": "put.v0.55.cd12.bullNone.range+transition.tight_18h",
+      "score": -13.538
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.55,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.08,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.25,
+        "tp2": 0.45,
+        "sl": 0.4,
+        "hold_h": 18,
+        "lbl": "tight_18h"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 462,
+      "train": null,
+      "test": {
+        "n": 139,
+        "wr": 0.302,
+        "avg": -13.86,
+        "median": -17.26,
+        "stdev": 28.94,
+        "sharpe": -0.48,
+        "total": -1926.4
+      },
+      "label": "put.v0.55.cd12.bull1.08.range+transition.tight_18h",
+      "score": -14.052
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.55,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.05,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.4,
+        "tp2": 0.6,
+        "sl": 1.0,
+        "hold_h": 48,
+        "lbl": "decay_48h_wide"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 434,
+      "train": null,
+      "test": {
+        "n": 131,
+        "wr": 0.42,
+        "avg": -14.36,
+        "median": -16.42,
+        "stdev": 59.43,
+        "sharpe": -0.24,
+        "total": -1881.0
+      },
+      "label": "put.v0.55.cd12.bull1.05.range+transition.decay_48h_wide",
+      "score": -14.456
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.55,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": null,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.5,
+        "tp2": 0.7,
+        "sl": 1.5,
+        "hold_h": 72,
+        "lbl": "decay_72h_widest"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 883,
+      "train": null,
+      "test": {
+        "n": 265,
+        "wr": 0.449,
+        "avg": -14.65,
+        "median": -6.16,
+        "stdev": 62.64,
+        "sharpe": -0.23,
+        "total": -3883.2
+      },
+      "label": "put.v0.55.cd6.bullNone.range+transition.decay_72h_widest",
+      "score": -14.742
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.55,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": null,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.5,
+        "tp2": 0.7,
+        "sl": 1.5,
+        "hold_h": 72,
+        "lbl": "decay_72h_widest"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 481,
+      "train": null,
+      "test": {
+        "n": 145,
+        "wr": 0.476,
+        "avg": -14.9,
+        "median": -3.93,
+        "stdev": 65.32,
+        "sharpe": -0.23,
+        "total": -2160.3
+      },
+      "label": "put.v0.55.cd12.bullNone.range+transition.decay_72h_widest",
+      "score": -14.992
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.55,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.08,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.5,
+        "tp2": 0.7,
+        "sl": 1.5,
+        "hold_h": 72,
+        "lbl": "decay_72h_widest"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 845,
+      "train": null,
+      "test": {
+        "n": 254,
+        "wr": 0.433,
+        "avg": -15.51,
+        "median": -6.92,
+        "stdev": 63.8,
+        "sharpe": -0.24,
+        "total": -3940.4
+      },
+      "label": "put.v0.55.cd6.bull1.08.range+transition.decay_72h_widest",
+      "score": -15.606
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.55,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.08,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.5,
+        "tp2": 0.7,
+        "sl": 1.5,
+        "hold_h": 72,
+        "lbl": "decay_72h_widest"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 462,
+      "train": null,
+      "test": {
+        "n": 139,
+        "wr": 0.46,
+        "avg": -15.83,
+        "median": -6.16,
+        "stdev": 66.52,
+        "sharpe": -0.24,
+        "total": -2200.5
+      },
+      "label": "put.v0.55.cd12.bull1.08.range+transition.decay_72h_widest",
+      "score": -15.926
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.55,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.05,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.4,
+        "tp2": 0.6,
+        "sl": 1.0,
+        "hold_h": 48,
+        "lbl": "decay_48h_wide"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 794,
+      "train": null,
+      "test": {
+        "n": 239,
+        "wr": 0.402,
+        "avg": -16.29,
+        "median": -16.07,
+        "stdev": 59.54,
+        "sharpe": -0.27,
+        "total": -3894.0
+      },
+      "label": "put.v0.55.cd6.bull1.05.range+transition.decay_48h_wide",
+      "score": -16.398
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.55,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.08,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.4,
+        "tp2": 0.6,
+        "sl": 1.0,
+        "hold_h": 48,
+        "lbl": "decay_48h_wide"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 462,
+      "train": null,
+      "test": {
+        "n": 139,
+        "wr": 0.396,
+        "avg": -18.38,
+        "median": -20.27,
+        "stdev": 60.31,
+        "sharpe": -0.3,
+        "total": -2555.3
+      },
+      "label": "put.v0.55.cd12.bull1.08.range+transition.decay_48h_wide",
+      "score": -18.5
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.55,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.08,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.4,
+        "tp2": 0.6,
+        "sl": 1.0,
+        "hold_h": 48,
+        "lbl": "decay_48h_wide"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 845,
+      "train": null,
+      "test": {
+        "n": 254,
+        "wr": 0.378,
+        "avg": -19.46,
+        "median": -21.5,
+        "stdev": 59.65,
+        "sharpe": -0.33,
+        "total": -4942.6
+      },
+      "label": "put.v0.55.cd6.bull1.08.range+transition.decay_48h_wide",
+      "score": -19.592000000000002
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.55,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": null,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.4,
+        "tp2": 0.6,
+        "sl": 1.0,
+        "hold_h": 48,
+        "lbl": "decay_48h_wide"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 481,
+      "train": null,
+      "test": {
+        "n": 145,
+        "wr": 0.379,
+        "avg": -21.47,
+        "median": -23.86,
+        "stdev": 60.98,
+        "sharpe": -0.35,
+        "total": -3113.5
+      },
+      "label": "put.v0.55.cd12.bullNone.range+transition.decay_48h_wide",
+      "score": -21.61
+    },
+    {
+      "gen": {
+        "vol_threshold": 0.55,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "adx_max": null,
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": null,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.4,
+        "tp2": 0.6,
+        "sl": 1.0,
+        "hold_h": 48,
+        "lbl": "decay_48h_wide"
+      },
+      "sigma": 0.6,
+      "spread": 2.0,
+      "dynamic_sigma": false,
+      "n_signals": 883,
+      "train": null,
+      "test": {
+        "n": 265,
+        "wr": 0.362,
+        "avg": -22.59,
+        "median": -24.82,
+        "stdev": 60.35,
+        "sharpe": -0.37,
+        "total": -5985.3
+      },
+      "label": "put.v0.55.cd6.bullNone.range+transition.decay_48h_wide",
+      "score": -22.738
+    }
+  ],
+  "best": {
+    "gen": {
+      "vol_threshold": 0.5,
+      "regime_filter": [
+        "range"
+      ],
+      "side": "P",
+      "adx_max": null,
+      "mtf_direction_filter": "up",
+      "bull_market_ratio_max": 1.08,
+      "cooldown_bars": 6
+    },
+    "exit": {
+      "tp1": 0.5,
+      "tp2": 0.7,
+      "sl": 1.5,
+      "hold_h": 72,
+      "lbl": "decay_72h_widest"
+    },
+    "sigma": 0.6,
+    "spread": 2.0,
+    "dynamic_sigma": false,
+    "n_signals": 506,
+    "train": null,
+    "test": {
+      "n": 152,
+      "wr": 0.599,
+      "avg": 15.26,
+      "median": 8.25,
+      "stdev": 48.97,
+      "sharpe": 0.31,
+      "total": 2319.9
+    },
+    "label": "put.v0.5.cd6.bull1.08.range.decay_72h_widest",
+    "score": 15.384
+  }
+}

@@ -11,28 +11,31 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from services.backtest import simulate_signal_set
 from services.local_optimizer import find_data_dir, get_signals, load_local, run_combo
+from services.strategy_config import (
+    BASELINE_CALL_EXIT,
+    BASELINE_CALL_GEN_KWARGS,
+    LIVE_EXIT,
+    LIVE_GEN_KWARGS,
+    LIVE_GEN_KWARGS_ALT,
+    active_exit,
+    active_gen_kwargs,
+)
+
+
+def _exit_dict(ex: dict) -> dict:
+    return {
+        "tp1": ex["tp1_pct"],
+        "tp2": ex["tp2_pct"],
+        "sl": ex["sl_pct"],
+        "hold_h": ex["hold_h"],
+    }
+
 
 CANDIDATES = [
-    ("baseline_live", {
-        "vol_threshold": 0.60, "regime_filter": ["range", "transition"],
-        "side": "C", "adx_max": None, "mtf_direction_filter": "down",
-        "bull_market_ratio_max": 1.05, "cooldown_bars": 6,
-    }, {"tp1": 0.30, "tp2": 0.50, "sl": 0.50, "hold_h": 24}),
-    ("best_C_oos", {
-        "vol_threshold": 0.65, "regime_filter": ["range", "transition"],
-        "side": "C", "adx_max": None, "mtf_direction_filter": "down",
-        "bull_market_ratio_max": None, "cooldown_bars": 6,
-    }, {"tp1": 0.30, "tp2": 0.50, "sl": 0.50, "hold_h": 24}),
-    ("best_P_oos", {
-        "vol_threshold": 0.50, "regime_filter": ["range"],
-        "side": "P", "adx_max": None, "mtf_direction_filter": "up",
-        "bull_market_ratio_max": 1.05, "cooldown_bars": 12,
-    }, {"tp1": 0.50, "tp2": 0.70, "sl": 1.50, "hold_h": 72}),
-    ("best_P_cd6", {
-        "vol_threshold": 0.50, "regime_filter": ["range"],
-        "side": "P", "adx_max": None, "mtf_direction_filter": "up",
-        "bull_market_ratio_max": 1.05, "cooldown_bars": 6,
-    }, {"tp1": 0.50, "tp2": 0.70, "sl": 1.50, "hold_h": 72}),
+    ("baseline_call", BASELINE_CALL_GEN_KWARGS, _exit_dict(BASELINE_CALL_EXIT)),
+    ("live_deployed", dict(LIVE_GEN_KWARGS), _exit_dict(LIVE_EXIT)),
+    ("live_alt_cd6", dict(LIVE_GEN_KWARGS_ALT), _exit_dict(LIVE_EXIT)),
+    ("live_env", active_gen_kwargs(), _exit_dict(active_exit())),
 ]
 
 

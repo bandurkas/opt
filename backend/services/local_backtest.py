@@ -3,7 +3,7 @@
 Usage (Mac, no Bybit needed):
     cd backend && PYTHONPATH=. python3 services/local_backtest.py
 
-    python3 services/local_backtest.py --data-dir ../data --out ../sweep_results/local_backtest.json
+    python3 services/local_backtest.py --data-dir ../data --baseline  # old sell-Call
 """
 from __future__ import annotations
 
@@ -19,11 +19,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from services.backtest import simulate_signal_set
 from services.strategy_config import (
+    BASELINE_CALL_EXIT,
+    BASELINE_CALL_GEN_KWARGS,
     DEFAULT_SIGMA,
     EXPIRY_TARGET_HOURS,
     SPREAD_HALF_PCT,
-    WINNER_EXIT,
-    WINNER_GEN_KWARGS,
+    active_exit,
+    active_gen_kwargs,
 )
 from services.strategy_registry import gen_sell_premium_iv_high
 
@@ -62,6 +64,8 @@ def main() -> None:
     ap.add_argument("--out", default=None, help="JSON output path")
     ap.add_argument("--spread-pct", type=float, default=SPREAD_HALF_PCT * 2,
                     help="round-trip spread friction (default 2%%)")
+    ap.add_argument("--baseline", action="store_true",
+                    help="run pre-6be2fbc sell-Call baseline instead of live config")
     args = ap.parse_args()
 
     data_dir = _find_data_dir(args.data_dir)
@@ -69,12 +73,26 @@ def main() -> None:
     out_path = Path(args.out) if args.out else repo_root / "sweep_results" / "local_backtest.json"
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    spread = args.spread_pct
-    ex = WINNER_EXIT
+    if args.baseline:
+        gen = BASELINE_CALL_GEN_KWARGS
+        ex = BASELINE_CALL_EXIT
+        label = "baseline_call"
+    else:
+        gen = active_gen_kwargs()
+        ex_raw = active_exit()
+        ex = {
+            "tp1_pct": ex_raw["tp1_pct"],
+            "tp2_pct": ex_raw["tp2_pct"],
+            "sl_pct": ex_raw["sl_pct"],
+            "hold_h": ex_raw["hold_h"],
+        }
+        label = "live"
 
-    print("=== Local backtest — live paper strategy ===", flush=True)
+    spread = args.spread_pct
+
+    print(f"=== Local backtest — {label} ===", flush=True)
     print(f"  data: {data_dir}", flush=True)
-    print(f"  gen:  {WINNER_GEN_KWARGS}", flush=True)
+    print(f"  gen:  {gen}", flush=True)
     print(f"  exit: tp1={ex['tp1_pct']} tp2={ex['tp2_pct']} sl={ex['sl_pct']} hold={ex['hold_h']}h", flush=True)
     print(f"  sigma={DEFAULT_SIGMA}  spread={spread}%  expiry={EXPIRY_TARGET_HOURS}h", flush=True)
     t0 = time.time()
@@ -86,7 +104,7 @@ def main() -> None:
         print(f"  range: {fmt_ts(k5[0]['start_ms'])} → {fmt_ts(k5[-1]['start_ms'])}", flush=True)
 
     print("\n[2] Generating signals...", flush=True)
-    signals = gen_sell_premium_iv_high(k5, k15, k1h, **WINNER_GEN_KWARGS)
+    signals = gen_sell_premium_iv_high(k5, k15, k1h, **gen)
     print(f"  {len(signals)} signals", flush=True)
 
     print("\n[3] Simulating...", flush=True)
@@ -177,8 +195,8 @@ def main() -> None:
 
     elapsed = round(time.time() - t0, 1)
     payload = {
-        "strategy": {"gen": WINNER_GEN_KWARGS, "exit": WINNER_EXIT,
-                     "sigma": DEFAULT_SIGMA, "spread_pct": spread},
+        "label": label,
+        "strategy": {"gen": gen, "exit": ex, "sigma": DEFAULT_SIGMA, "spread_pct": spread},
         "data_dir": str(data_dir),
         "summary": {
             "n_trades": len(trades),

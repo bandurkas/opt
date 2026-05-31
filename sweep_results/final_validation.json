@@ -1,0 +1,442 @@
+{
+  "best": {
+    "gen": {
+      "vol_threshold": 0.5,
+      "regime_filter": [
+        "range"
+      ],
+      "side": "P",
+      "mtf_direction_filter": "up",
+      "bull_market_ratio_max": 1.05,
+      "adx_max": null,
+      "cooldown_bars": 12
+    },
+    "exit": {
+      "tp1": 0.5,
+      "tp2": 0.7,
+      "sl": 1.5,
+      "hold_h": 72,
+      "lbl": "decay_72h_widest"
+    },
+    "sigma": 0.6,
+    "spread": 2.0,
+    "dynamic_sigma": false,
+    "n_signals": 268,
+    "train": {
+      "n": 187,
+      "wr": 0.604,
+      "avg": 14.39,
+      "median": 44.94,
+      "stdev": 69.09,
+      "sharpe": 0.21,
+      "total": 2690.6
+    },
+    "test": {
+      "n": 81,
+      "wr": 0.63,
+      "avg": 15.84,
+      "median": 9.69,
+      "stdev": 49.34,
+      "sharpe": 0.32,
+      "total": 1283.2
+    },
+    "name": "iter1_winner",
+    "holdout_90d": {
+      "n": 81,
+      "wr": 0.63,
+      "avg": 15.84,
+      "median": 9.69,
+      "total": 1283.2
+    },
+    "composite": 15.936,
+    "score": 12.958400000000001
+  },
+  "ranking": [
+    {
+      "name": "iter1_winner",
+      "composite": 15.936,
+      "score": 12.958400000000001,
+      "train": {
+        "n": 187,
+        "wr": 0.604,
+        "avg": 14.39,
+        "median": 44.94,
+        "stdev": 69.09,
+        "sharpe": 0.21,
+        "total": 2690.6
+      },
+      "test": {
+        "n": 81,
+        "wr": 0.63,
+        "avg": 15.84,
+        "median": 9.69,
+        "stdev": 49.34,
+        "sharpe": 0.32,
+        "total": 1283.2
+      },
+      "holdout_90d": {
+        "n": 81,
+        "wr": 0.63,
+        "avg": 15.84,
+        "median": 9.69,
+        "total": 1283.2
+      },
+      "gen": {
+        "vol_threshold": 0.5,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.05,
+        "adx_max": null,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.5,
+        "tp2": 0.7,
+        "sl": 1.5,
+        "hold_h": 72,
+        "lbl": "decay_72h_widest"
+      }
+    },
+    {
+      "name": "iter1_cd6",
+      "composite": 13.636,
+      "score": 13.512,
+      "train": {
+        "n": 341,
+        "wr": 0.587,
+        "avg": 13.31,
+        "median": 41.57,
+        "stdev": 68.48,
+        "sharpe": 0.19,
+        "total": 4537.4
+      },
+      "test": {
+        "n": 147,
+        "wr": 0.585,
+        "avg": 13.4,
+        "median": 6.83,
+        "stdev": 48.73,
+        "sharpe": 0.28,
+        "total": 1969.9
+      },
+      "holdout_90d": {
+        "n": 148,
+        "wr": 0.588,
+        "avg": 13.78,
+        "median": 7.23,
+        "total": 2039.9
+      },
+      "gen": {
+        "vol_threshold": 0.5,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.05,
+        "adx_max": null,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.5,
+        "tp2": 0.7,
+        "sl": 1.5,
+        "hold_h": 72,
+        "lbl": "decay_72h_widest"
+      }
+    },
+    {
+      "name": "bull_none_cd12",
+      "composite": 12.957,
+      "score": 8.220300000000002,
+      "train": {
+        "n": 202,
+        "wr": 0.649,
+        "avg": 21.58,
+        "median": 70.0,
+        "stdev": 64.99,
+        "sharpe": 0.33,
+        "total": 4360.0
+      },
+      "test": {
+        "n": 87,
+        "wr": 0.621,
+        "avg": 11.99,
+        "median": 9.69,
+        "stdev": 57.54,
+        "sharpe": 0.21,
+        "total": 1043.2
+      },
+      "holdout_90d": {
+        "n": 81,
+        "wr": 0.63,
+        "avg": 15.84,
+        "median": 9.69,
+        "total": 1283.2
+      },
+      "gen": {
+        "vol_threshold": 0.5,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": null,
+        "adx_max": null,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.5,
+        "tp2": 0.7,
+        "sl": 1.5,
+        "hold_h": 72,
+        "lbl": "decay_72h_widest"
+      }
+    },
+    {
+      "name": "bull_none_cd6",
+      "composite": 12.769,
+      "score": 10.587000000000002,
+      "train": {
+        "n": 369,
+        "wr": 0.634,
+        "avg": 19.95,
+        "median": 70.0,
+        "stdev": 65.98,
+        "sharpe": 0.3,
+        "total": 7362.2
+      },
+      "test": {
+        "n": 159,
+        "wr": 0.579,
+        "avg": 11.98,
+        "median": 6.83,
+        "stdev": 53.23,
+        "sharpe": 0.23,
+        "total": 1904.5
+      },
+      "holdout_90d": {
+        "n": 148,
+        "wr": 0.588,
+        "avg": 13.78,
+        "median": 7.23,
+        "total": 2039.9
+      },
+      "gen": {
+        "vol_threshold": 0.5,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": null,
+        "adx_max": null,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.5,
+        "tp2": 0.7,
+        "sl": 1.5,
+        "hold_h": 72,
+        "lbl": "decay_72h_widest"
+      }
+    },
+    {
+      "name": "decay48_cd12",
+      "composite": 12.419,
+      "score": 10.095500000000001,
+      "train": {
+        "n": 187,
+        "wr": 0.567,
+        "avg": 1.86,
+        "median": 28.04,
+        "stdev": 63.21,
+        "sharpe": 0.03,
+        "total": 348.7
+      },
+      "test": {
+        "n": 81,
+        "wr": 0.617,
+        "avg": 12.35,
+        "median": 37.31,
+        "stdev": 54.89,
+        "sharpe": 0.23,
+        "total": 1000.7
+      },
+      "holdout_90d": {
+        "n": 81,
+        "wr": 0.617,
+        "avg": 12.35,
+        "median": 37.31,
+        "total": 1000.7
+      },
+      "gen": {
+        "vol_threshold": 0.5,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.05,
+        "adx_max": null,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.4,
+        "tp2": 0.6,
+        "sl": 1.0,
+        "hold_h": 48,
+        "lbl": "decay_48h_wide"
+      }
+    },
+    {
+      "name": "vol045_cd12",
+      "composite": 8.316,
+      "score": 4.976799999999999,
+      "train": {
+        "n": 219,
+        "wr": 0.603,
+        "avg": 13.92,
+        "median": 44.94,
+        "stdev": 69.28,
+        "sharpe": 0.2,
+        "total": 3049.2
+      },
+      "test": {
+        "n": 94,
+        "wr": 0.564,
+        "avg": 6.52,
+        "median": 5.33,
+        "stdev": 56.15,
+        "sharpe": 0.12,
+        "total": 613.0
+      },
+      "holdout_90d": {
+        "n": 101,
+        "wr": 0.594,
+        "avg": 10.92,
+        "median": 8.44,
+        "total": 1103.0
+      },
+      "gen": {
+        "vol_threshold": 0.45,
+        "regime_filter": [
+          "range"
+        ],
+        "side": "P",
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.05,
+        "adx_max": null,
+        "cooldown_bars": 12
+      },
+      "exit": {
+        "tp1": 0.5,
+        "tp2": 0.7,
+        "sl": 1.5,
+        "hold_h": 72,
+        "lbl": "decay_72h_widest"
+      }
+    },
+    {
+      "name": "baseline_call",
+      "composite": 4.383,
+      "score": 4.851999999999999,
+      "train": {
+        "n": 585,
+        "wr": 0.557,
+        "avg": 3.24,
+        "median": 5.09,
+        "stdev": 41.51,
+        "sharpe": 0.08,
+        "total": 1895.8
+      },
+      "test": {
+        "n": 252,
+        "wr": 0.599,
+        "avg": 4.8,
+        "median": 14.08,
+        "stdev": 36.23,
+        "sharpe": 0.13,
+        "total": 1210.6
+      },
+      "holdout_90d": {
+        "n": 216,
+        "wr": 0.593,
+        "avg": 3.66,
+        "median": 13.0,
+        "total": 791.1
+      },
+      "gen": {
+        "vol_threshold": 0.6,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "C",
+        "mtf_direction_filter": "down",
+        "bull_market_ratio_max": 1.05,
+        "adx_max": null,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.3,
+        "tp2": 0.5,
+        "sl": 0.5,
+        "hold_h": 24,
+        "lbl": "decay_24h"
+      }
+    },
+    {
+      "name": "range_transition_cd6",
+      "composite": -6.715,
+      "score": -6.794,
+      "train": {
+        "n": 658,
+        "wr": 0.533,
+        "avg": -3.74,
+        "median": 12.74,
+        "stdev": 79.15,
+        "sharpe": -0.05,
+        "total": -2461.6
+      },
+      "test": {
+        "n": 283,
+        "wr": 0.477,
+        "avg": -6.75,
+        "median": -2.22,
+        "stdev": 60.68,
+        "sharpe": -0.11,
+        "total": -1909.1
+      },
+      "holdout_90d": {
+        "n": 275,
+        "wr": 0.473,
+        "avg": -6.58,
+        "median": -2.44,
+        "total": -1809.1
+      },
+      "gen": {
+        "vol_threshold": 0.5,
+        "regime_filter": [
+          "range",
+          "transition"
+        ],
+        "side": "P",
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": 1.05,
+        "adx_max": null,
+        "cooldown_bars": 6
+      },
+      "exit": {
+        "tp1": 0.5,
+        "tp2": 0.7,
+        "sl": 1.5,
+        "hold_h": 72,
+        "lbl": "decay_72h_widest"
+      }
+    }
+  ]
+}

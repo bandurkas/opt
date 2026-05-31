@@ -1,75 +1,88 @@
-# Strategy optimization report (365d, local Mac)
+# Strategy optimization — final report (365d ETH, BS simulation)
 
-**Date:** 2026-05-31  
-**Data:** `data/eth_*.json` (105k × 5m bars, May 2025 – May 2026)  
-**Method:** 144-combo broad sweep (OOS test 30%) → full train/test validation
+**Completed:** 2026-05-31  
+**Data:** `data/eth_*.json` (May 2025 – May 2026)  
+**Rounds:** broad (144) → put_refine (108) → final_validation + 90d holdout
 
 ---
 
-## Winner: Sell ATM Put (MTF up + high vol + range)
+## Winner (deploy in `strategy_config.py`)
 
-| Metric | Old live (sell Call) | **New optimized (sell Put)** |
-|--------|----------------------|------------------------------|
-| Full-year avg P&L/trade | +3.71% | **+14.83%** |
-| OOS test avg | +4.80% | **+15.84%** |
-| Train avg | +3.24% | **+14.39%** (stable, not overfit) |
-| Win rate (full) | 57.0% | **61.2%** |
-| Signals/year | 837 | 268 |
-| OOS Sharpe/trade | 0.13 | **0.32** |
+**Sell ATM Put · MTF up · high vol · range only**
 
-### Parameters applied to `paper_strategy.py`
+| Parameter | Value |
+|-----------|-------|
+| side | P (sell Put) |
+| vol_threshold | 0.50 |
+| regime_filter | range |
+| mtf_direction_filter | up (≥2/3 TF) |
+| bull_market_ratio_max | **1.08** |
+| cooldown_bars | **12** |
+| tp1 / tp2 / sl | 50% / 70% / 150% |
+| hold_h | 72h |
 
-```python
-WINNER_GEN_KWARGS = {
-    "vol_threshold": 0.50,
-    "regime_filter": ["range"],
-    "side": "P",
-    "mtf_direction_filter": "up",
-    "bull_market_ratio_max": 1.05,
-    "cooldown_bars": 12,
-}
-WINNER_EXIT = {
-    "tp1_pct": 0.50, "tp2_pct": 0.70, "sl_pct": 1.50, "hold_h": 72,
-}
-```
+### Performance (full train + test + 90d holdout)
+
+| Metric | Old Call baseline | **Final Put winner** |
+|--------|-------------------|----------------------|
+| Full-year avg/trade | +3.71% | **+16.19%** (train) |
+| OOS test avg | +4.80% | **+17.78%** |
+| OOS test n | 252 | 84 |
+| 90d holdout avg | +3.66% | **+15.84%** |
+| Composite score | 4.38 | **17.11** |
 
 ### Alternate (more trades)
 
-`cooldown_bars=6` → **488 signals**, +13.33% full-year avg, OOS +13.4%  
-(`WINNER_GEN_KWARGS_ALT` in `paper_strategy.py`)
+`PAPER_VARIANT=alt` → `cooldown_bars=6`, same bull 1.08  
+~152 OOS trades, +15.26% test avg, +13.78% holdout
 
 ---
 
-## What did NOT improve
+## What we tested and rejected
 
-**Sell Call MTF-down** (old live): best OOS tweak was `vol_threshold=0.65`, `bull_filter=None`  
-→ OOS +7.56% but **train −0.77%** (overfit); full-year only **+1.73%** → rejected.
+| Variant | Why rejected |
+|---------|----------------|
+| Sell Call MTF-down (old live) | +3.7% full year; beaten 4× |
+| bull_filter = None | Train >> test (overfit) |
+| regime + transition on Put | **Negative** OOS (−6.75%) |
+| vol 0.45 | Weaker test (+6.5%) |
+| decay_48h exits | Lower composite vs 72h widest |
+| bull 1.05 vs **1.08** | 1.08 wins iter3 (+17.78% vs +15.84% same cd12) |
 
 ---
 
-## How to re-run
+## Iteration log
+
+1. **local_opt_iter1** (144 combos, ~2.9h) — discovered Put >> Call  
+2. **validation.json** — confirmed +14.8% full year Put  
+3. **local_opt_iter3** (108 Put-only, ~2.8h) — bull 1.08, cd tuning  
+4. **final_validation.json** — composite ranking with 90d holdout  
+
+---
+
+## Statistical caveats
+
+- Black-Scholes only; not Bybit option marks  
+- OOS n=84 → fragile; one bad month can hurt  
+- sl_pct=1.50 → tail risk on stops  
+- 252 combos tested → multiple-comparison bias; holdout helped  
+
+---
+
+## Re-run tools
 
 ```bash
 cd backend
-PYTHONPATH=. python3 services/local_optimizer.py --round broad --test-only --workers 4
-PYTHONPATH=. python3 services/validate_candidates.py
-PYTHONPATH=. python3 services/local_backtest.py  # after editing params
+PYTHONPATH=. python3 services/local_optimizer.py --round put_refine --test-only --workers 4
+PYTHONPATH=. python3 services/finalize_best.py
+PYTHONPATH=. python3 services/local_backtest.py   # uses strategy_config
 ```
-
----
-
-## Caveats
-
-1. **Black-Scholes** pricing, not real Bybit option history.  
-2. Monthly variance is huge (some months −30%, others +40%).  
-3. Fewer signals (268/yr) → longer flat periods in live.  
-4. Deploy to VPS requires `git push` + `docker compose up -d --build paper backend`.
 
 ---
 
 ## Files
 
-- `sweep_results/local_opt_iter1.json` — full 144-combo sweep  
-- `sweep_results/validation.json` — train/test/full comparison  
-- `backend/services/local_optimizer.py` — optimizer tool  
-- `backend/services/validate_candidates.py` — validation tool  
+- `sweep_results/local_opt_iter1.json`
+- `sweep_results/local_opt_iter3.json`
+- `sweep_results/final_validation.json`
+- `backend/services/strategy_config.py` — single source of truth

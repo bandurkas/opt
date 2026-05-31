@@ -28,6 +28,7 @@ from db.engine import apply_schema  # noqa: E402
 from db.repository import recent_klines  # noqa: E402
 from services import backtest_bs as bs  # noqa: E402
 from services.bybit_client import bybit_client  # noqa: E402
+from services.strategy_config import active_gen_kwargs  # noqa: E402
 from services.paper_strategy import (  # noqa: E402
     DEFAULT_SIGMA,
     EXPIRY_TARGET_HOURS,
@@ -179,7 +180,7 @@ def check_new_signal(k5, k15, k1h) -> dict | None:
     if not k5:
         return None
     last_idx = len(k5) - 1
-    sigs = gen_sell_premium_iv_high(k5, k15, k1h, **WINNER_GEN_KWARGS)
+    sigs = gen_sell_premium_iv_high(k5, k15, k1h, **active_gen_kwargs())
     # Accept signals at the just-closed bar OR the live edge
     latest = [s for s in sigs if s.get("idx_5m") in (last_idx - 1, last_idx)]
     return latest[-1] if latest else None  # newest if both fire
@@ -224,7 +225,7 @@ def open_paper_position(signal: dict, spot: float, equity_usd: float, free_margi
     entry_credit_usd is per-contract NET of entry fee, so all downstream
     P&L math (close, equity) is correct without schema changes.
     """
-    option_side = str(WINNER_GEN_KWARGS.get("side") or "C").upper()
+    option_side = str(active_gen_kwargs().get("side") or "C").upper()
     chain = bybit_client.get_options_tickers(BASE_COIN)
     pick = pick_bybit_atm_option(chain, spot, EXPIRY_TARGET_HOURS, option_side)
 

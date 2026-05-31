@@ -8,14 +8,14 @@ from __future__ import annotations
 import time
 
 from db import paper_repo
-
-from .strategy_config import (
+from services.strategy_config import (
     DEFAULT_SIGMA,
     EXPIRY_TARGET_HOURS,
     SPREAD_HALF_PCT,
     WINNER_EXIT,
     WINNER_GEN_KWARGS,
     WINNER_GEN_KWARGS_ALT,
+    active_gen_kwargs,
 )
 
 # ───────────── Bybit-realistic sizing / friction model ─────────────
@@ -103,7 +103,8 @@ def evaluate_conditions(k5: list, k15: list, k1h: list) -> dict:
     from .momentum_mtf import analyze_tf, consensus
     from .regime import detect_regime
 
-    mtf_filter = WINNER_GEN_KWARGS.get("mtf_direction_filter")
+    kw = active_gen_kwargs()
+    mtf_filter = kw.get("mtf_direction_filter")
     out = {
         "ready": False,
         "vol_high": False,
@@ -143,7 +144,7 @@ def evaluate_conditions(k5: list, k15: list, k1h: list) -> dict:
         sorted_vols = sorted(rolling_vols)
         
         # Match generator's threshold lookup exactly
-        threshold_idx = int(len(sorted_vols) * WINNER_GEN_KWARGS["vol_threshold"])
+        threshold_idx = int(len(sorted_vols) * kw["vol_threshold"])
         threshold = sorted_vols[threshold_idx]
         
         # Rank percentile (just for UI display)
@@ -157,7 +158,7 @@ def evaluate_conditions(k5: list, k15: list, k1h: list) -> dict:
     # 2) Regime (range/transition)
     reg = detect_regime(s1h)
     out["regime"] = reg.get("regime", "unknown")
-    out["regime_ok"] = out["regime"] in WINNER_GEN_KWARGS["regime_filter"]
+    out["regime_ok"] = out["regime"] in kw["regime_filter"]
 
     # 3) MTF direction
     mtf = consensus(analyze_tf(s5), analyze_tf(s15), analyze_tf(s1h))
@@ -175,10 +176,16 @@ def evaluate_conditions(k5: list, k15: list, k1h: list) -> dict:
     # 4) Bull-market filter (EMA50_1h / EMA200_1h < 1.05)
     ema50 = ema(closes_1h, 50)
     ema200 = ema(closes_1h, 200)
+    bull_max = kw.get("bull_market_ratio_max")
     if ema50 is not None and ema200 not in (None, 0):
         ratio = ema50 / ema200
         out["ema_ratio"] = round(ratio, 4)
-        out["bull_filter_ok"] = ratio <= WINNER_GEN_KWARGS["bull_market_ratio_max"]
+        if bull_max is None:
+            out["bull_filter_ok"] = True
+        else:
+            # Cap EMA50/200 for both sides today; for sell-Put consider dropping
+            # or inverting — 1.05 blocks blow-off bull (sweep winner kept it).
+            out["bull_filter_ok"] = ratio <= bull_max
 
     out["ready"] = (out["vol_high"] and out["regime_ok"]
                     and out["mtf_direction_ok"] and out["bull_filter_ok"])

@@ -79,7 +79,7 @@ def score_row(row: dict) -> float:
     if te_avg is None or te_n < 30:
         return -999.0
     overfit_pen = max(0.0, (tr_avg - te_avg) - 5.0) * 0.5 if tr else 0.0
-    sample_bonus = min(1.0, te_n / 80.0)
+    sample_bonus = min(1.0, te_n / 100.0)
     return te_avg * sample_bonus + 0.4 * (te_sh or 0) - overfit_pen
 
 
@@ -177,6 +177,41 @@ def grid_broad() -> list[tuple[dict, dict, str]]:
     return combos
 
 
+def grid_put_refine() -> list[tuple[dict, dict, str]]:
+    """Round 3: deep refine around sell-Put MTF-up winner (~72 combos)."""
+    combos = []
+    top_exits = [EXITS_SHORT[2], EXITS_SHORT[1], EXITS_SHORT[3]]  # 72h, 48h, 36h
+    for vol, cd, bull, regimes, ex in product(
+        [0.45, 0.50, 0.55],
+        [6, 12],
+        [None, 1.05, 1.08],
+        [("range",), ("range", "transition")],
+        top_exits,
+    ):
+        gen = {
+            "vol_threshold": vol,
+            "regime_filter": list(regimes),
+            "side": "P",
+            "adx_max": None,
+            "mtf_direction_filter": "up",
+            "bull_market_ratio_max": bull,
+            "cooldown_bars": cd,
+        }
+        label = (f"put.v{vol}.cd{cd}.bull{bull}.{'+'.join(regimes)}.{ex['lbl']}")
+        combos.append((gen, ex, label))
+    return combos
+
+
+def _grid_put_refine_adx(seeds: list[dict]) -> list[tuple[dict, dict, str]]:
+    """ADX cap on top-3 put seeds only."""
+    combos = []
+    for seed in sorted(seeds, key=score_row, reverse=True)[:3]:
+        for adx in [18, 22, 25]:
+            gen = {**seed["gen"], "adx_max": adx}
+            combos.append((gen, seed["exit"], f"adx{adx}.{seed.get('label','')[:40]}"))
+    return combos
+
+
 def grid_refine(seeds: list[dict]) -> list[tuple[dict, dict, str]]:
     """Round 2+: perturb top seeds."""
     combos = []
@@ -243,7 +278,7 @@ def print_top(results: list[dict], n: int = 15) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--data-dir", default=None)
-    ap.add_argument("--round", choices=["broad", "refine", "adx", "sigma"], default="broad")
+    ap.add_argument("--round", choices=["broad", "refine", "put_refine", "adx", "sigma"], default="broad")
     ap.add_argument("--seed", default=None, help="prior results JSON for refine/adx/sigma")
     ap.add_argument("--sigma", type=float, default=0.6)
     ap.add_argument("--spread", type=float, default=2.0)
@@ -271,6 +306,8 @@ def main() -> None:
 
     if args.round == "broad":
         combos = grid_broad()
+    elif args.round == "put_refine":
+        combos = grid_put_refine()
     elif args.round == "refine":
         if not seeds:
             raise SystemExit("--seed required for refine round")
