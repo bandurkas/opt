@@ -36,7 +36,7 @@ export function MissedSignals() {
     return (
       <section className="glass-panel p-6">
         <div className="text-slate-300">
-          ⏳ Расчёт пропущенных сделок за {lookback} дней… (1–2 мин при первом запросе, потом мгновенно)
+          Расчёт проверки стратегии за {lookback} дней… (1–2 мин при первом запросе, потом мгновенно)
         </div>
       </section>
     );
@@ -67,17 +67,18 @@ export function MissedSignals() {
   const visibleTrades = expanded ? sortedTrades : sortedTrades.slice(0, 15);
 
   return (
-    <section className="glass-panel p-6 flex flex-col gap-5 border border-amber-500/30">
+    <section className="glass-panel p-6 flex flex-col gap-5 border border-cyan-500/30">
       {/* Header */}
       <header className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h2 className="text-lg font-bold text-amber-200 flex items-center gap-2">
-            <span>💸</span>
-            Пропущенные сделки (цена бага)
+          <h2 className="text-lg font-bold text-cyan-200 flex items-center gap-2">
+            Проверка стратегии на последних {lookback} днях
           </h2>
           <p className="text-xs text-slate-400 mt-1">
-            Что paper-сервис ДОЛЖЕН был открыть, но не открыл из-за off-by-one в check_new_signal.
-            Симуляция использует те же exit-rules / sizing / CB что в production.
+            Что текущая LIVE-стратегия ВЫСТРЕЛИЛА БЫ на реальных Bybit-данных
+            за выбранное окно: те же сигналы, тот же sizing, те же exit-правила
+            (TP1 50%, TP2 70%, SL 150%, hold 96h). Цены — Black-Scholes
+            (±20% vs реальный Bybit).
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -94,19 +95,19 @@ export function MissedSignals() {
                 onClick={() => setLookback(d)}
                 className={`px-3 py-1 text-xs font-bold rounded transition flex items-center gap-1 ${
                   isActive
-                    ? "bg-amber-500/30 text-amber-100"
+                    ? "bg-cyan-500/30 text-cyan-100"
                     : "bg-slate-800/60 text-slate-400 border border-slate-700/50 hover:text-white"
                 } ${loading ? "opacity-60 cursor-wait" : ""}`}
               >
                 {isRefetching && (
-                  <span className="inline-block w-2 h-2 rounded-full bg-amber-300 animate-pulse" />
+                  <span className="inline-block w-2 h-2 rounded-full bg-cyan-300 animate-pulse" />
                 )}
                 {d}д
               </button>
             );
           })}
           {loading && (
-            <span className="text-[11px] text-amber-300/80 ml-2 animate-pulse">
+            <span className="text-[11px] text-cyan-300/80 ml-2 animate-pulse">
               пересчёт ~45с…
             </span>
           )}
