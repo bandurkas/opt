@@ -10,60 +10,74 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from services.holdout_eval import eval_holdout
 from services.local_optimizer import find_data_dir, load_local, run_combo, score_row
 
-# Top distinct Put configs from iter1 + iter3 candidates
+# Proper-holdout grid: bull × cd combinatorial, vol/regime pinned at winners.
+# Each gets train(pre-cutoff 70%) / test(pre-cutoff 30%) / holdout(last 90d).
+_PUT_EXIT = {"tp1": 0.50, "tp2": 0.70, "sl": 1.50, "hold_h": 72, "lbl": "decay_72h_widest"}
+_CALL_EXIT = {"tp1": 0.30, "tp2": 0.50, "sl": 0.50, "hold_h": 24, "lbl": "decay_24h"}
+
+
+def _put(vol=0.50, regimes=("range",), bull=1.05, cd=12):
+    return {
+        "vol_threshold": vol,
+        "regime_filter": list(regimes),
+        "side": "P",
+        "mtf_direction_filter": "up",
+        "bull_market_ratio_max": bull,
+        "adx_max": None,
+        "cooldown_bars": cd,
+    }
+
+
 CANDIDATES = [
-    ("iter1_winner", {
-        "vol_threshold": 0.50, "regime_filter": ["range"], "side": "P",
-        "mtf_direction_filter": "up", "bull_market_ratio_max": 1.05,
-        "adx_max": None, "cooldown_bars": 12,
-    }, {"tp1": 0.50, "tp2": 0.70, "sl": 1.50, "hold_h": 72, "lbl": "decay_72h_widest"}),
-    ("iter1_cd6", {
-        "vol_threshold": 0.50, "regime_filter": ["range"], "side": "P",
-        "mtf_direction_filter": "up", "bull_market_ratio_max": 1.05,
-        "adx_max": None, "cooldown_bars": 6,
-    }, {"tp1": 0.50, "tp2": 0.70, "sl": 1.50, "hold_h": 72, "lbl": "decay_72h_widest"}),
-    ("bull_none_cd12", {
-        "vol_threshold": 0.50, "regime_filter": ["range"], "side": "P",
-        "mtf_direction_filter": "up", "bull_market_ratio_max": None,
-        "adx_max": None, "cooldown_bars": 12,
-    }, {"tp1": 0.50, "tp2": 0.70, "sl": 1.50, "hold_h": 72, "lbl": "decay_72h_widest"}),
-    ("bull_none_cd6", {
-        "vol_threshold": 0.50, "regime_filter": ["range"], "side": "P",
-        "mtf_direction_filter": "up", "bull_market_ratio_max": None,
-        "adx_max": None, "cooldown_bars": 6,
-    }, {"tp1": 0.50, "tp2": 0.70, "sl": 1.50, "hold_h": 72, "lbl": "decay_72h_widest"}),
-    ("range_transition_cd6", {
-        "vol_threshold": 0.50, "regime_filter": ["range", "transition"], "side": "P",
-        "mtf_direction_filter": "up", "bull_market_ratio_max": 1.05,
-        "adx_max": None, "cooldown_bars": 6,
-    }, {"tp1": 0.50, "tp2": 0.70, "sl": 1.50, "hold_h": 72, "lbl": "decay_72h_widest"}),
-    ("vol045_cd12", {
-        "vol_threshold": 0.45, "regime_filter": ["range"], "side": "P",
-        "mtf_direction_filter": "up", "bull_market_ratio_max": 1.05,
-        "adx_max": None, "cooldown_bars": 12,
-    }, {"tp1": 0.50, "tp2": 0.70, "sl": 1.50, "hold_h": 72, "lbl": "decay_72h_widest"}),
-    ("decay48_cd12", {
-        "vol_threshold": 0.50, "regime_filter": ["range"], "side": "P",
-        "mtf_direction_filter": "up", "bull_market_ratio_max": 1.05,
-        "adx_max": None, "cooldown_bars": 12,
-    }, {"tp1": 0.40, "tp2": 0.60, "sl": 1.00, "hold_h": 48, "lbl": "decay_48h_wide"}),
+    # ── core: 3 bull × 2 cd, vol=0.50, regime=range ──
+    ("put_bull105_cd12", _put(bull=1.05, cd=12), _PUT_EXIT),
+    ("put_bull108_cd12", _put(bull=1.08, cd=12), _PUT_EXIT),
+    ("put_bullNone_cd12", _put(bull=None, cd=12), _PUT_EXIT),
+    ("put_bull105_cd6", _put(bull=1.05, cd=6), _PUT_EXIT),
+    ("put_bull108_cd6", _put(bull=1.08, cd=6), _PUT_EXIT),
+    ("put_bullNone_cd6", _put(bull=None, cd=6), _PUT_EXIT),
+    # ── sanity controls ──
     ("baseline_call", {
         "vol_threshold": 0.60, "regime_filter": ["range", "transition"], "side": "C",
         "mtf_direction_filter": "down", "bull_market_ratio_max": 1.05,
         "adx_max": None, "cooldown_bars": 6,
-    }, {"tp1": 0.30, "tp2": 0.50, "sl": 0.50, "hold_h": 24, "lbl": "decay_24h"}),
+    }, _CALL_EXIT),
+    # ── lower-frequency Put variant (deployed vol→0.45 idea) ──
+    ("put_v045_bull108_cd12", _put(vol=0.45, bull=1.08, cd=12), _PUT_EXIT),
 ]
 
 
 def composite_score(row: dict, holdout: dict) -> float:
+    """Holdout-weighted score with selection-bias penalty.
+
+    Weights:
+      holdout 0.50  (true unseen 90d — most trustworthy)
+      test    0.40  (pre-cutoff 30% — used for ranking, so subject to selection)
+      sharpe  0.30  (risk-adjusted bonus)
+    Penalties:
+      overfit         (train_avg >> test_avg, gap > 5%)
+      selection_bias  (test_avg  >> holdout_avg, gap > 5%)
+    """
     te = row.get("test") or {}
     tr = row.get("train") or {}
     if not te.get("avg") or (te.get("n") or 0) < 25:
         return -999.0
     ho_avg = holdout.get("avg")
-    ho_part = (ho_avg or 0) * 0.4 if ho_avg is not None else 0
-    overfit = max(0, (tr.get("avg") or 0) - te["avg"] - 8) * 0.4 if tr else 0
-    return te["avg"] * 0.6 + ho_part + 0.3 * (te.get("sharpe") or 0) - overfit
+    ho_n = holdout.get("n") or 0
+    if ho_n < 15:
+        return -999.0
+
+    test_score = te["avg"] * 0.40
+    holdout_score = ho_avg * 0.50 if ho_avg is not None else -10.0
+    sharpe_score = (te.get("sharpe") or 0) * 0.30
+
+    overfit_pen = max(0.0, (tr.get("avg") or 0) - te["avg"] - 5.0) * 0.6 if tr else 0.0
+    selection_pen = (
+        max(0.0, te["avg"] - ho_avg - 5.0) * 0.5
+        if ho_avg is not None else 0.0
+    )
+
+    return test_score + holdout_score + sharpe_score - overfit_pen - selection_pen
 
 
 def main() -> None:

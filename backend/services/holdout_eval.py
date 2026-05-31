@@ -10,7 +10,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from services.backtest import simulate_signal_set
-from services.local_optimizer import find_data_dir, get_signals, load_local
+from services.holdout_split import HOLDOUT_DAYS, holdout_cutoff_ms, split_signals_by_holdout
+from services.local_optimizer import find_data_dir, get_full_signals, load_local
 from services.strategy_config import (
     BASELINE_CALL_EXIT,
     BASELINE_CALL_GEN_KWARGS,
@@ -26,14 +27,18 @@ def _exit_sim(ex: dict) -> dict:
     return ex
 
 
-def eval_holdout(k5, k15, k1h, gen: dict, ex: dict, holdout_days: int = 90,
+def eval_holdout(k5, k15, k1h, gen: dict, ex: dict,
+                 holdout_days: int = HOLDOUT_DAYS,
                  sigma: float = 0.6, spread: float = 2.0) -> dict:
     exs = _exit_sim(ex)
-    sigs = get_signals(k5, k15, k1h, gen)
+    sigs = get_full_signals(k5, k15, k1h, gen)
     if not k5:
         return {"n": 0}
-    cutoff = k5[-1]["start_ms"] - holdout_days * 86_400_000
-    ho = [s for s in sigs if s["ts_ms"] >= cutoff]
+    if holdout_days == HOLDOUT_DAYS:
+        cutoff = holdout_cutoff_ms(k5)
+    else:
+        cutoff = k5[-1]["start_ms"] - holdout_days * 86_400_000
+    _, ho = split_signals_by_holdout(sigs, cutoff)
     if len(ho) < 5:
         return {"n": len(ho), "avg": None, "note": "too few signals"}
     sims = simulate_signal_set(

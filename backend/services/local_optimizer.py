@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from services.backtest import simulate_signal_set
 from services.strategy_registry import gen_sell_premium_iv_high
+from services.holdout_split import HOLDOUT_DAYS, holdout_cutoff_ms, split_signals_by_holdout
 from services.strategy_sweep import split_signals
 
 _IV_MAP = {"5": "5m", "15": "15m", "60": "1h"}
@@ -62,6 +63,23 @@ def gen_key(gen: dict) -> str:
 
 
 def get_signals(k5, k15, k1h, gen: dict) -> list:
+    """Return train-pool signals (pre-holdout-cutoff) for ranking.
+
+    Full-history cache is kept for callers that need it (e.g., live backtest
+    UI); ranking paths must never see the held-out window.
+    """
+    key = gen_key(gen)
+    if key not in SIGNAL_CACHE:
+        SIGNAL_CACHE[key] = gen_sell_premium_iv_high(k5, k15, k1h, **gen)
+    full = SIGNAL_CACHE[key]
+    cutoff = holdout_cutoff_ms(k5)
+    train_pool, _ = split_signals_by_holdout(full, cutoff)
+    return train_pool
+
+
+def get_full_signals(k5, k15, k1h, gen: dict) -> list:
+    """Escape hatch — returns full-history signals incl. holdout window.
+    Use ONLY for full-period backtests/reporting, never for ranking."""
     key = gen_key(gen)
     if key not in SIGNAL_CACHE:
         SIGNAL_CACHE[key] = gen_sell_premium_iv_high(k5, k15, k1h, **gen)
@@ -76,9 +94,9 @@ def score_row(row: dict) -> float:
     te_n = te.get("n") or 0
     te_sh = te.get("sharpe") or 0
     tr_avg = tr.get("avg") or 0
-    if te_avg is None or te_n < 30:
+    if te_avg is None or te_n < 25:
         return -999.0
-    overfit_pen = max(0.0, (tr_avg - te_avg) - 5.0) * 0.5 if tr else 0.0
+    overfit_pen = max(0.0, (tr_avg - te_avg) - 4.0) * 0.6 if tr else 0.0
     sample_bonus = min(1.0, te_n / 100.0)
     return te_avg * sample_bonus + 0.4 * (te_sh or 0) - overfit_pen
 
