@@ -102,6 +102,26 @@ CREATE TABLE IF NOT EXISTS paper_equity_snapshots (
 CREATE INDEX IF NOT EXISTS paper_equity_recent
     ON paper_equity_snapshots (ts_ms DESC);
 
+-- Signal audit log — EVERY signal check is recorded for analysis.
+-- Tracks: was signal generated? accepted? rejected why?
+CREATE TABLE IF NOT EXISTS signal_audit (
+    ts_ms           BIGINT    PRIMARY KEY,
+    ret_7d          NUMERIC(10,4),                  -- 7-day return %
+    active_side     CHAR(1),                        -- 'P', 'C', or NULL (dead zone)
+    dead_zone       BOOLEAN   NOT NULL DEFAULT false,
+    signal_generated BOOLEAN  NOT NULL DEFAULT false, -- did generator emit?
+    accepted        BOOLEAN,                        -- was trade opened?
+    reject_reason   TEXT,                           -- NULL, 'cb_active', 'no_signal',
+                                                    -- 'insufficient_margin', 'no_option',
+                                                    -- 'side_mismatch'
+    spot            NUMERIC(18,4),
+    signal_payload  JSONB                           -- full signal dict if generated
+);
+CREATE INDEX IF NOT EXISTS signal_audit_recent
+    ON signal_audit (ts_ms DESC);
+CREATE INDEX IF NOT EXISTS signal_audit_by_side
+    ON signal_audit (active_side, accepted) WHERE active_side IS NOT NULL;
+
 -- Paper-trading state singleton (CB cooldown, recent WR for dynamic sizing).
 CREATE TABLE IF NOT EXISTS paper_state (
     id                       INT       PRIMARY KEY DEFAULT 1 CHECK (id = 1),

@@ -476,34 +476,64 @@ async def loop():
             # 2) Signal check — every 5 min
             if is_signal_check_time(last_signal_check_ms):
                 last_signal_check_ms = int(time.time() * 1000)
-                if is_cb_active(state, last_signal_check_ms):
+                now_ms = last_signal_check_ms
+
+                # Compute ret_7d and active side for audit
+                k5_audit, k15_audit, k1h_audit = load_klines_for_generator()
+                ret_7d_val = compute_ret_7d(k5_audit, len(k5_audit) - 1) if len(k5_audit) >= BARS_7D else 0
+                side_val = determine_side(ret_7d_val) if len(k5_audit) >= BARS_7D else None
+                dead_zone_val = side_val is None
+                spot_val = k5_audit[-1]["close"] if k5_audit else spot
+
+                if is_cb_active(state, now_ms):
                     cb_remaining_h = (int(state["cb_cooldown_until_ms"]) -
-                                       last_signal_check_ms) / 3_600_000
+                                       now_ms) / 3_600_000
                     print(f"[paper] CB cooldown active ({cb_remaining_h:.1f}h left), no signals",
                           flush=True)
+                    paper_repo.insert_signal_audit(
+                        ts_ms=now_ms, ret_7d=ret_7d_val, active_side=side_val,
+                        dead_zone=dead_zone_val, signal_generated=False,
+                        accepted=False, reject_reason="cb_active", spot=spot_val,
+                        signal_payload=None)
+                elif len(k5_audit) < BARS_7D + 50:
+                    print(f"[paper] not enough klines yet ({len(k5_audit)} 5m), skip signal check",
+                          flush=True)
+                    paper_repo.insert_signal_audit(
+                        ts_ms=now_ms, ret_7d=ret_7d_val, active_side=side_val,
+                        dead_zone=dead_zone_val, signal_generated=False,
+                        accepted=None, reject_reason="no_signal", spot=spot_val,
+                        signal_payload=None)
                 else:
-                    k5, k15, k1h = load_klines_for_generator()
-                    if len(k5) < BARS_7D + 50:
-                        print(f"[paper] not enough klines yet ({len(k5)} 5m), skip signal check",
-                              flush=True)
-                    else:
-                        sig = check_new_signal(k5, k15, k1h)
-                        if sig:
-                            eq = compute_equity(state, spot, chain_dict)
-                            locked_margin = sum(float(p["size_usd"]) for p in open_pos_now)
-                            free_margin = (eq["equity"] * MAX_PORTFOLIO_MARGIN_PCT) - locked_margin
+                    sig = check_new_signal(k5_audit, k15_audit, k1h_audit)
+                    if sig:
+                        eq = compute_equity(state, spot, chain_dict)
+                        locked_margin = sum(float(p["size_usd"]) for p in open_pos_now)
+                        free_margin = (eq["equity"] * MAX_PORTFOLIO_MARGIN_PCT) - locked_margin
 
-                            if free_margin <= 0:
-                                print(f"[paper] skip signal — portfolio margin maxed out "
-                                      f"(locked ${locked_margin:.2f} >= limit ${eq['equity']*MAX_PORTFOLIO_MARGIN_PCT:.2f})",
-                                      flush=True)
-                            else:
-                                open_paper_position(sig, spot, eq["equity"], free_margin, state)
+                        if free_margin <= 0:
+                            print(f"[paper] skip signal — portfolio margin maxed out "
+                                  f"(locked ${locked_margin:.2f} >= limit ${eq['equity']*MAX_PORTFOLIO_MARGIN_PCT:.2f})",
+                                  flush=True)
+                            paper_repo.insert_signal_audit(
+                                ts_ms=now_ms, ret_7d=ret_7d_val, active_side=sig.get("active_side"),
+                                dead_zone=False, signal_generated=True, accepted=False,
+                                reject_reason="insufficient_margin", spot=spot_val,
+                                signal_payload=sig)
                         else:
-                            ret_7d = compute_ret_7d(k5, len(k5) - 1) if len(k5) >= BARS_7D else 0
-                            side = determine_side(ret_7d) if len(k5) >= BARS_7D else "?"
-                            print(f"[paper] tick: no signal (spot=${spot:.2f}, 7d_ret={ret_7d:+.2f}%, "
-                                  f"side={side}, open={len(open_pos_now)})", flush=True)
+                            pid = open_paper_position(sig, spot, eq["equity"], free_margin, state)
+                            paper_repo.insert_signal_audit(
+                                ts_ms=now_ms, ret_7d=ret_7d_val, active_side=sig.get("active_side"),
+                                dead_zone=False, signal_generated=True, accepted=pid is not None,
+                                reject_reason=None if pid else "no_option", spot=spot_val,
+                                signal_payload=sig)
+                    else:
+                        print(f"[paper] tick: no signal (spot=${spot_val:.2f}, 7d_ret={ret_7d_val:+.2f}%, "
+                              f"side={side_val or '?'}, open={len(open_pos_now)})", flush=True)
+                        paper_repo.insert_signal_audit(
+                            ts_ms=now_ms, ret_7d=ret_7d_val, active_side=side_val,
+                            dead_zone=dead_zone_val, signal_generated=False,
+                            accepted=None, reject_reason="no_signal", spot=spot_val,
+                            signal_payload=None)
 
             # 3) Equity snapshot — every iteration
             eq = compute_equity(state, spot, chain_dict)

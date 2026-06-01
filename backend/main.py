@@ -300,6 +300,33 @@ def paper_conditions():
     return cond
 
 
+@app.get("/api/v1/paper/audit")
+def paper_audit(hours: int = Query(24, ge=1, le=168)):
+    """Signal audit log — every signal check with accept/reject reason."""
+    rows = paper_repo.recent_signal_audit(hours=hours)
+    # Compute summary stats
+    total = len(rows)
+    generated = sum(1 for r in rows if r.get("signal_generated"))
+    accepted = sum(1 for r in rows if r.get("accepted"))
+    rejected = sum(1 for r in rows if r.get("accepted") is False)
+    dead_zone = sum(1 for r in rows if r.get("dead_zone"))
+    by_reason: dict[str, int] = {}
+    for r in rows:
+        reason = r.get("reject_reason") or "accepted"
+        by_reason[reason] = by_reason.get(reason, 0) + 1
+
+    return {
+        "hours": hours,
+        "total_checks": total,
+        "signal_generated": generated,
+        "accepted": accepted,
+        "rejected": rejected,
+        "dead_zone": dead_zone,
+        "reject_reasons": by_reason,
+        "entries": rows,
+    }
+
+
 @app.get("/api/v1/paper/missed-signals")
 def paper_missed_signals(lookback_days: int = Query(14, ge=1, le=60)):
     """Return the trades paper_loop SHOULD have opened but missed due to the

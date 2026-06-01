@@ -314,3 +314,52 @@ def latest_equity() -> dict | None:
             return dict(row) if row else None
     finally:
         put_conn(conn)
+
+
+# ───────────────────────── Signal Audit ─────────────────────────
+
+def insert_signal_audit(*, ts_ms: int, ret_7d: float,
+                         active_side: str | None, dead_zone: bool,
+                         signal_generated: bool, accepted: bool | None,
+                         reject_reason: str | None, spot: float,
+                         signal_payload: dict | None) -> None:
+    """Record one signal check event."""
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO signal_audit
+                  (ts_ms, ret_7d, active_side, dead_zone, signal_generated,
+                   accepted, reject_reason, spot, signal_payload)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb)
+                ON CONFLICT (ts_ms) DO NOTHING
+                """,
+                (ts_ms, ret_7d, active_side, dead_zone, signal_generated,
+                 accepted, reject_reason, spot,
+                 json.dumps(signal_payload) if signal_payload else None),
+            )
+        conn.commit()
+    finally:
+        put_conn(conn)
+
+
+def recent_signal_audit(hours: int = 24) -> list[dict]:
+    """Return recent signal audit entries."""
+    cutoff = int(time.time() * 1000) - hours * 3_600_000
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT ts_ms, ret_7d, active_side, dead_zone, signal_generated,
+                       accepted, reject_reason, spot
+                  FROM signal_audit
+                 WHERE ts_ms >= %s
+                 ORDER BY ts_ms DESC
+                """,
+                (cutoff,),
+            )
+            return [dict(r) for r in cur.fetchall()]
+    finally:
+        put_conn(conn)
