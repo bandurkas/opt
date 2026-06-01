@@ -293,9 +293,7 @@ export type PaperConditions = {
   ret_7d: number | null;
   vol_high: boolean;
   regime_ok: boolean;
-  mtf_down_aligned: boolean;
-  mtf_up_aligned?: boolean;
-  mtf_direction_ok?: boolean;
+  mtf_direction_ok: boolean;
   bull_filter_ok: boolean;
   spot: number | null;
   vol_pctile: number | null;

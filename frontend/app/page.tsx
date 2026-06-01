@@ -5,7 +5,7 @@ import { fetchPaperState, fetchPaperConditions, fetchPaperPositions, type PaperS
 
 const REFRESH_MS = 15_000;
 
-const fmtUsd = (v: number, d = 0) => `$${v.toFixed(d)}`;
+const fmtUsd = (v: number, d = 2) => `$${v.toFixed(d)}`;
 const fmtPct = (v: number) => `${v > 0 ? "+" : ""}${v.toFixed(1)}%`;
 const fmtTime = (ms: number) => {
   const d = new Date(ms);
@@ -67,9 +67,11 @@ export default function Dashboard() {
   let distToSignal = "";
   if (deadZone) {
     if (ret7d < 0) {
-      distToSignal = `${(retPutMax - ret7d).toFixed(2)}% more drop to sell Put`;
+      const drop = Math.abs(retPutMax - ret7d);
+      distToSignal = `${drop.toFixed(2)}% more drop to sell Put`;
     } else {
-      distToSignal = `${(retCallMin - ret7d).toFixed(2)}% more rise to sell Call`;
+      const rise = Math.abs(retCallMin - ret7d);
+      distToSignal = `${rise.toFixed(2)}% more rise to sell Call`;
     }
   } else if (activeSide === "P") {
     distToSignal = `Conditions met for Put`;
