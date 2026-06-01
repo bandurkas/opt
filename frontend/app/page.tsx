@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { fetchPaperState, fetchPaperConditions, fetchPaperPositions, type PaperState, type PaperConditions, type PaperPosition } from "./lib/api";
+import { fetchPaperState, fetchPaperConditions, fetchPaperPositions, fetchRecentTrades, fetchEquityHistory, type PaperState, type PaperConditions, type PaperPosition, type EquityPoint } from "./lib/api";
 
 const REFRESH_MS = 15_000;
 
@@ -22,11 +22,18 @@ const fmtRemaining = (hold_h: number, opened_ms: number) => {
   if (remaining < 24) return `${remaining.toFixed(1)}h left`;
   return `${(remaining / 24).toFixed(1)}d left`;
 };
+const fmtDay = (ms: number) => {
+  const d = new Date(ms);
+  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  return `${days[d.getDay()]} ${d.getDate()}`;
+};
 
 export default function Dashboard() {
   const [state, setState] = useState<PaperState | null>(null);
   const [conditions, setConditions] = useState<PaperConditions | null>(null);
   const [positions, setPositions] = useState<PaperPosition[]>([]);
+  const [recentTrades, setRecentTrades] = useState<PaperPosition[]>([]);
+  const [equityHistory, setEquityHistory] = useState<EquityPoint[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
 
@@ -34,15 +41,19 @@ export default function Dashboard() {
     let cancelled = false;
     const load = async () => {
       try {
-        const [s, c, p] = await Promise.all([
+        const [s, c, p, t, eq] = await Promise.all([
           fetchPaperState(),
           fetchPaperConditions(),
           fetchPaperPositions("open"),
+          fetchRecentTrades(200),
+          fetchEquityHistory(336), // 14 days
         ]);
         if (cancelled) return;
         setState(s);
         setConditions(c);
         setPositions(p.positions);
+        setRecentTrades(t.positions.filter((pos: PaperPosition) => pos.closed_at_ms !== null));
+        setEquityHistory(eq.points);
         setLastUpdate(new Date());
         setError(null);
       } catch (e) {
@@ -63,7 +74,6 @@ export default function Dashboard() {
   const retPutMax = conditions?.thresholds?.ret_threshold_put ?? -2.5;
   const retCallMin = conditions?.thresholds?.ret_threshold_call ?? 1.0;
 
-  // Distance to next signal
   let distToSignal = "";
   if (deadZone) {
     if (ret7d < 0) {
@@ -82,6 +92,10 @@ export default function Dashboard() {
   const change = state.current_equity_usd - state.start_equity_usd;
   const isUp = change >= 0;
 
+  // Last 24h stats
+  const last24h = recentTrades.filter(t => t.closed_at_ms && (Date.now() - t.closed_at_ms) < 86400000);
+  const last24hPnl = last24h.reduce((sum, t) => sum + (t.pnl_usd || 0), 0);
+
   return (
     <main className="min-h-screen bg-slate-950 text-white">
       {/* Header */}
@@ -92,9 +106,7 @@ export default function Dashboard() {
             <p className="text-xs text-slate-500">Config B · 7d switching · Paper $400</p>
           </div>
           <div className="text-right">
-            <p className="text-xs text-slate-500">
-              {lastUpdate?.toLocaleTimeString("ru-RU")}
-            </p>
+            <p className="text-xs text-slate-500">{lastUpdate?.toLocaleTimeString("ru-RU")}</p>
             {error && <p className="text-xs text-rose-400">{error}</p>}
           </div>
         </div>
@@ -103,11 +115,9 @@ export default function Dashboard() {
       <div className="max-w-5xl mx-auto p-4 space-y-4">
         {/* Active Side Banner */}
         <div className={`rounded-xl p-4 border ${
-          deadZone
-            ? "bg-slate-900 border-slate-700"
-            : activeSide === "P"
-              ? "bg-rose-950/30 border-rose-800/50"
-              : "bg-emerald-950/30 border-emerald-800/50"
+          deadZone ? "bg-slate-900 border-slate-700"
+            : activeSide === "P" ? "bg-rose-950/30 border-rose-800/50"
+            : "bg-emerald-950/30 border-emerald-800/50"
         }`}>
           <div className="flex items-center justify-between">
             <div>
@@ -126,26 +136,17 @@ export default function Dashboard() {
               )}
             </div>
             <div className="text-right">
-              <p className="text-2xl font-mono font-bold">
-                {ret7d > 0 ? "+" : ""}{ret7d.toFixed(2)}%
-              </p>
+              <p className="text-2xl font-mono font-bold">{ret7d > 0 ? "+" : ""}{ret7d.toFixed(2)}%</p>
               <p className="text-xs text-slate-500">7d return</p>
             </div>
           </div>
-          {/* Progress bar to next threshold */}
           {deadZone && (
             <div className="mt-3">
               <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden relative">
-                {/* Markers */}
-                <div className="absolute left-0 top-0 bottom-0 w-px bg-rose-600" title="Put threshold" />
-                <div className="absolute right-0 top-0 bottom-0 w-px bg-emerald-600" title="Call threshold" />
-                {/* Current position */}
-                <div
-                  className="absolute top-0 bottom-0 w-2 bg-white rounded-full transition-all duration-500"
-                  style={{
-                    left: `${Math.max(0, Math.min(100, ((ret7d - retPutMax) / (retCallMin - retPutMax)) * 100))}%`,
-                  }}
-                />
+                <div className="absolute left-0 top-0 bottom-0 w-px bg-rose-600" />
+                <div className="absolute right-0 top-0 bottom-0 w-px bg-emerald-600" />
+                <div className="absolute top-0 bottom-0 w-2 bg-white rounded-full transition-all duration-500"
+                  style={{ left: `${Math.max(0, Math.min(100, ((ret7d - retPutMax) / (retCallMin - retPutMax)) * 100))}%` }} />
               </div>
               <div className="flex justify-between text-[10px] text-slate-600 mt-1">
                 <span>Put &lt;{retPutMax}%</span>
@@ -161,13 +162,25 @@ export default function Dashboard() {
           <StatCard label="Equity" value={fmtUsd(state.current_equity_usd)} sub={`${isUp ? "+" : ""}${fmtUsd(change)} (${fmtPct((change / state.start_equity_usd) * 100)})`} accent={isUp ? "text-emerald-300" : "text-rose-300"} />
           <StatCard label="Win Rate" value={state.win_rate ? `${(state.win_rate * 100).toFixed(0)}%` : "—"} sub={`${state.wins}W / ${state.losses}L`} />
           <StatCard label="Trades" value={`${state.n_closed}`} sub={`${state.n_open} open`} />
-          <StatCard label="Avg PnL" value={state.avg_pnl_pct ? fmtPct(state.avg_pnl_pct) : "—"} sub={fmtUsd(state.realized_usd)} />
+          <StatCard label="24h PnL" value={fmtUsd(last24hPnl)} sub={`${last24h.length} trades`} accent={last24hPnl >= 0 ? "text-emerald-300" : "text-rose-300"} />
         </div>
 
         {/* Circuit Breaker */}
         {state.cb_active && (
           <div className="bg-amber-950/30 border border-amber-800/50 rounded-xl px-4 py-3 text-sm text-amber-300">
             ⏸ Circuit breaker active · {state.consec_losses} losses · pause 48h
+          </div>
+        )}
+
+        {/* Equity Chart */}
+        {equityHistory.length > 1 && (
+          <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+            <div className="px-4 py-2 bg-slate-800/50 text-xs font-semibold text-slate-400">
+              Equity (14 days)
+            </div>
+            <div className="p-2">
+              <EquityChart points={equityHistory} startEquity={state.start_equity_usd} />
+            </div>
           </div>
         )}
 
@@ -198,11 +211,48 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* No positions */}
-        {positions.length === 0 && !state.cb_active && (
+        {/* Recent Trades (last 14 days) */}
+        {recentTrades.length > 0 && (
+          <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+            <div className="px-4 py-2 bg-slate-800/50 text-xs font-semibold text-slate-400 flex justify-between">
+              <span>Recent Trades (14 days)</span>
+              <span>{recentTrades.length} total</span>
+            </div>
+            <div className="divide-y divide-slate-800 max-h-80 overflow-y-auto">
+              {recentTrades.map((t) => {
+                const isWin = (t.pnl_usd || 0) > 0;
+                return (
+                  <div key={t.id} className="px-4 py-2.5 flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                        t.side === "P" ? "bg-rose-500/10 text-rose-300" : "bg-emerald-500/10 text-emerald-300"
+                      }`}>
+                        {t.side}
+                      </span>
+                      <span className="font-mono text-xs">${t.strike}</span>
+                      <span className="text-xs text-slate-500">{t.closed_at_ms ? fmtDay(t.closed_at_ms) : ""}</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs text-slate-500">{t.exit_reason || ""}</span>
+                      <span className={`font-mono font-bold text-xs ${isWin ? "text-emerald-400" : "text-rose-400"}`}>
+                        {fmtPct(t.pnl_pct || 0)}
+                      </span>
+                      <span className={`font-mono text-xs ${isWin ? "text-emerald-400" : "text-rose-400"}`}>
+                        {t.pnl_usd != null ? fmtUsd(t.pnl_usd) : ""}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* No positions + no trades */}
+        {positions.length === 0 && recentTrades.length === 0 && !state.cb_active && (
           <div className="bg-slate-900 border border-slate-800 rounded-xl px-4 py-6 text-center">
-            <p className="text-sm text-slate-400">No open positions</p>
-            <p className="text-xs text-slate-500 mt-1">Waiting for signal...</p>
+            <p className="text-sm text-slate-400">No activity yet</p>
+            <p className="text-xs text-slate-500 mt-1">Waiting for first signal...</p>
           </div>
         )}
       </div>
@@ -217,5 +267,39 @@ function StatCard({ label, value, sub, accent }: { label: string; value: React.R
       <p className={`text-xl font-bold font-mono mt-1 ${accent ?? "text-slate-100"}`}>{value}</p>
       {sub && <p className="text-[11px] text-slate-500 mt-0.5">{sub}</p>}
     </div>
+  );
+}
+
+function EquityChart({ points, startEquity }: { points: EquityPoint[]; startEquity: number }) {
+  if (points.length < 2) return null;
+
+  const w = 800, h = 120, pad = 4;
+  const minEq = Math.min(...points.map(p => p.equity), startEquity);
+  const maxEq = Math.max(...points.map(p => p.equity), startEquity);
+  const range = maxEq - minEq || 1;
+
+  const toX = (i: number) => pad + (i / (points.length - 1)) * (w - pad * 2);
+  const toY = (v: number) => h - pad - ((v - minEq) / range) * (h - pad * 2);
+
+  const linePath = points.map((p, i) => `${i === 0 ? "M" : "L"} ${toX(i)} ${toY(p.equity)}`).join(" ");
+  const areaPath = linePath + ` L ${toX(points.length - 1)} ${h} L ${toX(0)} ${h} Z`;
+
+  const isProfit = points[points.length - 1].equity >= startEquity;
+  const lineColor = isProfit ? "#10b981" : "#f43f5e";
+  const fillColor = isProfit ? "rgba(16,185,129,0.1)" : "rgba(244,63,94,0.1)";
+
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} className="w-full h-28" preserveAspectRatio="none">
+      {/* Start line */}
+      <line x1={toX(0)} y1={toY(startEquity)} x2={toX(points.length - 1)} y2={toY(startEquity)} stroke="#334155" strokeWidth="1" strokeDasharray="4 4" />
+      {/* Area */}
+      <path d={areaPath} fill={fillColor} />
+      {/* Line */}
+      <path d={linePath} fill="none" stroke={lineColor} strokeWidth="2" />
+      {/* Current value */}
+      <text x={toX(points.length - 1)} y={toY(points[points.length - 1].equity) - 6} fill={lineColor} fontSize="11" fontWeight="bold" textAnchor="end">
+        {fmtUsd(points[points.length - 1].equity)}
+      </text>
+    </svg>
   );
 }

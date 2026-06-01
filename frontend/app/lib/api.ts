@@ -321,6 +321,14 @@ export async function fetchPaperConditions(): Promise<PaperConditions> {
   return jget(`/paper/conditions`);
 }
 
+export async function fetchRecentTrades(limit = 100): Promise<{ positions: PaperPosition[]; count: number }> {
+  return jget(`/paper/positions?status=recent&limit=${limit}`);
+}
+
+export async function fetchEquityHistory(hours = 336): Promise<{ hours: number; points: EquityPoint[] }> {
+  return jget(`/paper/equity_history?hours=${hours}`);
+}
+
 // ───────────────────────── Missed signals (the bug cost) ─────────────────────────
 
 export type MissedTrade = {
