@@ -31,7 +31,8 @@ from db.repository import recent_klines  # noqa: E402
 from services import backtest_bs as bs  # noqa: E402
 from services.bybit_client import bybit_client  # noqa: E402
 from services.strategy_config import (  # noqa: E402
-    RET_THRESHOLD,
+    CALL_RET_MIN,
+    PUT_RET_MAX,
     get_side_gen_kwargs,
 )
 from services.paper_strategy import (  # noqa: E402
@@ -440,7 +441,7 @@ async def loop():
     apply_schema()
     state = paper_repo.ensure_state(START_EQUITY_USD)
     print(f"[paper] schema ready, start_equity=${state['start_equity_usd']}, "
-          f"poll={POLL_INTERVAL_S}s, V3 hybrid 7d_thr={RET_THRESHOLD}%", flush=True)
+          f"poll={POLL_INTERVAL_S}s, Config B asym Put<{PUT_RET_MAX}% Call>{CALL_RET_MIN}%", flush=True)
 
     last_signal_check_ms = 0
 

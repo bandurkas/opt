@@ -42,7 +42,7 @@ PUT_EXIT = {
     "tp1_pct": 0.50,
     "tp2_pct": 0.70,
     "sl_pct": 1.50,
-    "hold_h": 96,
+    "hold_h": 168,  # 7 days — max theta capture
 }
 
 CALL_GEN_KWARGS = {
@@ -56,10 +56,10 @@ CALL_GEN_KWARGS = {
 }
 
 CALL_EXIT = {
-    "tp1_pct": 0.30,
-    "tp2_pct": 0.50,
-    "sl_pct": 1.00,
-    "hold_h": 24,
+    "tp1_pct": 0.25,
+    "tp2_pct": 0.45,
+    "sl_pct": 0.75,
+    "hold_h": 12,  # quick scalp — theta + momentum
 }
 
 CB_CONSEC_LIMIT = 5       # consecutive losses before cooldown

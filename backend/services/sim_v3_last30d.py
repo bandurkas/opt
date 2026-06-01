@@ -1,17 +1,9 @@
-"""Simulate the DEPLOYED V3 hybrid `determine_side` over the last 30 days.
+"""Simulate the DEPLOYED Config B (asymmetric) over the last 30 days.
 
-Production determine_side (services/paper_strategy.py):
-    |ret_7d| < 2%  → Put
-    ret_7d > +2%   → Call
-    ret_7d < -2%   → Put
-
-This is mathematically identical to the asymmetric engine in
-check_asymmetric_thresholds.generate_signals(put_max=2.0, call_min=2.0):
-    ret < 2.0 → Put      (covers |ret|<2 AND ret<=-2)
-    ret > 2.0 → Call     (uptrend)
-
-So we reuse that validated engine and report the per-side breakdown + a
-Bybit-realistic $ equity replay (0.1-ETH lots, IM, spread, fees), starting $400.
+Config B:
+    ret < -2.5% → Put
+    ret > +1.0% → Call
+    -2.5%..+1.0% → dead zone (skip)
 
 Run:  cd backend && PYTHONPATH=. python3 services/sim_v3_last30d.py
 """
@@ -27,10 +19,6 @@ from services.local_optimizer import find_data_dir, load_local
 from services.check_asymmetric_thresholds import (
     generate_signals, PUT_EXIT, CALL_EXIT, MS_PER_DAY,
 )
-
-# NOTE: paper_strategy (sizing helpers) is intentionally NOT imported — it pulls
-# in psycopg2 which isn't installed on the local research box. Per-side % stats
-# below are dependency-free and are what we care about (Fact-2 comparison).
 
 
 def side_stats(sims, label):
@@ -54,13 +42,13 @@ def main():
     last = datetime.fromtimestamp(last_ms / 1000, tz=timezone.utc).strftime("%Y-%m-%d")
 
     print("=" * 70)
-    print("V3 HYBRID (deployed determine_side) — last 30 days")
+    print("CONFIG B (asymmetric) — last 30 days")
     print(f"Window: {cutoff} → {last}")
-    print("Rule: |ret_7d|<2%→Put · ret>+2%→Call · ret<-2%→Put")
+    print("Rule: ret<-2.5%→Put · ret>+1.0%→Call · dead zone: skip")
     print("=" * 70)
 
-    # Deployed V3 == asymmetric(put_max=2.0, call_min=2.0)
-    sigs = generate_signals(k5, k15, k1h, cutoff_ms, put_max=2.0, call_min=2.0)
+    # Config B == asymmetric(put_max=-2.5, call_min=1.0)
+    sigs = generate_signals(k5, k15, k1h, cutoff_ms, put_max=-2.5, call_min=1.0)
     ps = [s for s in sigs if s["side"] == "P"]
     cs = [s for s in sigs if s["side"] == "C"]
     print(f"\nSignals: {len(sigs)} total  (Put={len(ps)}  Call={len(cs)})\n")
@@ -76,6 +64,16 @@ def main():
     side_stats(psim, "Put")
     side_stats(csim, "Call")
     side_stats(psim + csim, "ALL")
+
+    # Compare
+    print(f"\n{'='*70}")
+    print("COMPARISON — last 30 days")
+    print("  Old V3 (symmetric |ret|<2%):  n=54 WR=57.4% avg=-6.00%")
+    all_pnls = [s["option"]["pnl_pct"] for s in psim+csim if "pnl_pct" in s.get("option",{})]
+    if all_pnls:
+        new_wr = sum(1 for p in all_pnls if p>0)/len(all_pnls)
+        new_avg = statistics.mean(all_pnls)
+        print(f"  Config B (asymmetric -2.5%/+1%): n={len(all_pnls)} WR={new_wr*100:.1f}% avg={new_avg:+.2f}%")
     print(f"\n({time.time()-t0:.1f}s)")
 
 
