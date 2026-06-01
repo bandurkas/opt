@@ -59,7 +59,7 @@ export default function Dashboard() {
             ETH Options Assistant
           </h1>
           <p className="text-slate-400 text-sm mt-1">
-            Sell-Put · paper-trading · cd=4, hold=96h, vol≥0.5, regime=range, MTF=up
+            V3 Hybrid · 7d-return switching · Put/Call · CB=5/48h
           </p>
         </div>
         <div className="text-xs text-slate-500 font-mono">
@@ -97,8 +97,26 @@ function LiveState({ state }: { state: PaperState }) {
           ? `${lastSig.toFixed(1)}h назад`
           : `${(lastSig / 24).toFixed(1)}d назад`;
 
+  // Determine active side from state (if available via conditions endpoint)
+  const activeSide = (state as any).active_side || "P";
+  const ret7d = (state as any).ret_7d;
+
   return (
     <section className="glass-panel p-6 grid grid-cols-2 md:grid-cols-4 gap-4">
+      {/* Active Side Badge */}
+      <Cell
+        label="Активная сторона"
+        value={
+          <span className={activeSide === "P" ? "text-rose-300" : "text-emerald-300"}>
+            SELL {activeSide === "P" ? "PUT" : "CALL"}
+          </span>
+        }
+        sub={
+          ret7d !== undefined
+            ? `7d ret: ${ret7d > 0 ? "+" : ""}${ret7d?.toFixed?.(2) ?? ret7d}%`
+            : ""
+        }
+      />
       <Cell
         label="Equity"
         value={fmtUsd(state.current_equity_usd)}
@@ -119,14 +137,9 @@ function LiveState({ state }: { state: PaperState }) {
         value={state.n_closed > 0 ? fmtPct(state.avg_pnl_pct) : "—"}
         sub={`realized ${fmtUsd(state.realized_usd)}`}
       />
-      <Cell
-        label="Последний сигнал"
-        value={sigLabel}
-        sub={`за 24h: ${state.signals_24h}`}
-      />
       {state.cb_active && (
         <div className="col-span-2 md:col-span-4 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs">
-          ⏸ Circuit breaker активен — пауза 12h после 5 убытков подряд.
+          ⏸ Circuit breaker активен — пауза 48h после 5 убытков подряд.
         </div>
       )}
     </section>
@@ -140,7 +153,7 @@ function Cell({
   accent = "text-slate-100",
 }: {
   label: string;
-  value: string;
+  value: React.ReactNode;
   sub?: string;
   accent?: string;
 }) {

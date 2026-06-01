@@ -56,16 +56,19 @@ def notify_open(*, pid: int, symbol: str, side: str, strike: float, spot: float,
 
 
 def notify_close(*, pid: int, side: str, strike: float, reason: str,
-                 pnl_pct: float, pnl_usd: float, equity_after: float) -> None:
+                 pnl_pct: float, pnl_usd: float, equity_after: float,
+                 hold_h: int = 0) -> None:
     side_word = "CALL" if side == "C" else "PUT"
     profit = pnl_usd > 0
     emoji = "✅" if profit else "❌"
-    reason_label = {
-        "tp1": "TP1 (50% closed)",
-        "tp2": "TP2 (full close)",
-        "sl": "STOP-LOSS",
-        "time_stop": "time-stop 24h",
-    }.get(reason, reason.upper())
+    if reason == "time_stop" and hold_h > 0:
+        reason_label = f"time-stop {hold_h}h"
+    else:
+        reason_label = {
+            "tp1": "TP1 (50% closed)",
+            "tp2": "TP2 (full close)",
+            "sl": "STOP-LOSS",
+        }.get(reason, reason.upper())
     sign = "+" if profit else ""
     text = (
         f"{emoji} <b>CLOSED #{pid}</b> · SELL {side_word} @ ${strike:.0f}\n"
@@ -88,9 +91,10 @@ def notify_skipped_margin(*, spot: float, strike: float, need_usd: float,
 
 
 def notify_cb_triggered(*, equity_after: float) -> None:
+    from services.strategy_config import CB_CONSEC_LIMIT, CB_PAUSE_HOURS
     text = (
         f"⏸ <b>Circuit-breaker activated</b>\n"
-        f"  3 losing trades in a row · pause 24h\n"
+        f"  {CB_CONSEC_LIMIT} losing trades in a row · pause {CB_PAUSE_HOURS}h\n"
         f"  Equity: ${equity_after:.2f}"
     )
     notify(text)

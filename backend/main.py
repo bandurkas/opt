@@ -251,25 +251,38 @@ def paper_positions_endpoint(
 def paper_conditions():
     """Live check: does the current 5m bar satisfy all entry conditions?
     Returns per-condition booleans + the current thresholds so the UI never
-    drifts from the actual strategy config."""
+    drifts from the actual strategy config.
+
+    V3 Hybrid: includes active_side (P/C) and 7d return.
+    """
     from services.paper_strategy import evaluate_conditions
-    from services.strategy_config import active_gen_kwargs
-    gen_kw = active_gen_kwargs()
+    from services.strategy_config import (
+        CALL_GEN_KWARGS,
+        PUT_GEN_KWARGS,
+        RET_THRESHOLD,
+    )
 
     symbol = "ETHUSDT"
-    k5 = recent_klines(symbol, "5m", limit=600)
+    # Need >= 2016 bars for 7d return computation (BARS_7D = 2016)
+    k5 = recent_klines(symbol, "5m", limit=2100)
     k15 = recent_klines(symbol, "15m", limit=220)
     k1h = recent_klines(symbol, "1h", limit=270)
     cond = evaluate_conditions(k5, k15, k1h)
     cond["checked_at_ms"] = int(time.time() * 1000)
     cond["bars_available"] = {"5m": len(k5), "15m": len(k15), "1h": len(k1h)}
-    # Surface live config so UI labels stay in sync with strategy_registry
+
+    # V3 Hybrid: show both sides' configs + active side
+    active_side = cond.get("active_side") or "P"
+    side_gen = CALL_GEN_KWARGS if active_side == "C" else PUT_GEN_KWARGS
     cond["thresholds"] = {
-        "vol_threshold": gen_kw["vol_threshold"],
-        "regime_filter": list(gen_kw["regime_filter"] or []),
-        "mtf_direction_filter": gen_kw["mtf_direction_filter"],
+        "ret_threshold": RET_THRESHOLD,
+        "ret_7d": cond.get("ret_7d"),
+        "active_side": active_side,
+        "vol_threshold": side_gen["vol_threshold"],
+        "regime_filter": list(side_gen["regime_filter"] or []),
+        "mtf_direction_filter": side_gen["mtf_direction_filter"],
         "mtf_min_aligned": 2,
-        "bull_market_ratio_max": gen_kw["bull_market_ratio_max"],
+        "bull_market_ratio_max": side_gen["bull_market_ratio_max"],
     }
     return cond
 

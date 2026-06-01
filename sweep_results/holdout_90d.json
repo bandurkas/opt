@@ -1,0 +1,87 @@
+[
+  {
+    "name": "baseline_call",
+    "gen": {
+      "vol_threshold": 0.6,
+      "regime_filter": [
+        "range",
+        "transition"
+      ],
+      "side": "C",
+      "adx_max": null,
+      "mtf_direction_filter": "down",
+      "bull_market_ratio_max": 1.05,
+      "cooldown_bars": 6
+    },
+    "exit": {
+      "tp1_pct": 0.3,
+      "tp2_pct": 0.5,
+      "sl_pct": 0.5,
+      "hold_h": 24
+    },
+    "holdout": {
+      "n": 216,
+      "wr": 0.593,
+      "avg": 3.66,
+      "median": 13.0,
+      "total": 791.1
+    },
+    "elapsed_s": 157.3
+  },
+  {
+    "name": "live_cd12",
+    "gen": {
+      "vol_threshold": 0.5,
+      "regime_filter": [
+        "range"
+      ],
+      "side": "P",
+      "adx_max": null,
+      "mtf_direction_filter": "up",
+      "bull_market_ratio_max": null,
+      "cooldown_bars": 4
+    },
+    "exit": {
+      "tp1_pct": 0.5,
+      "tp2_pct": 0.7,
+      "sl_pct": 1.5,
+      "hold_h": 96
+    },
+    "holdout": {
+      "n": 219,
+      "wr": 0.703,
+      "avg": 19.57,
+      "median": 22.3,
+      "total": 4285.6
+    },
+    "elapsed_s": 770.2
+  },
+  {
+    "name": "live_cd6",
+    "gen": {
+      "vol_threshold": 0.5,
+      "regime_filter": [
+        "range"
+      ],
+      "side": "P",
+      "adx_max": null,
+      "mtf_direction_filter": "up",
+      "bull_market_ratio_max": null,
+      "cooldown_bars": 6
+    },
+    "exit": {
+      "tp1_pct": 0.5,
+      "tp2_pct": 0.7,
+      "sl_pct": 1.5,
+      "hold_h": 96
+    },
+    "holdout": {
+      "n": 148,
+      "wr": 0.689,
+      "avg": 19.78,
+      "median": 22.46,
+      "total": 2927.9
+    },
+    "elapsed_s": 467.6
+  }
+]

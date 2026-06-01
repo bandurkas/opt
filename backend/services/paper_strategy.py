@@ -1,7 +1,13 @@
-"""Live paper-trading strategy wrapper around the validated winner.
+"""Live paper-trading strategy wrapper around the V3 hybrid strategy.
 
-Uses `gen_sell_premium_iv_high` with the iter4-confirmed config plus the
-iter5 overlays (bull-market filter, consecutive-loss CB, dynamic sizing).
+V3 Hybrid (validated 2026-06-01):
+  7d-return guided switching between Put/Call sides:
+    • |7d_ret| < 2% → sell Put (range regime, premium decay)
+    • 7d_ret > +2% → sell Call (uptrend — Put is dangerous)
+    • 7d_ret < -2% → sell Put (downtrend — Put profits)
+  Circuit breaker: 5 consecutive losses → 48h pause
+
+Previous: Put-only (cd=4, h=96) — available via PAPER_VARIANT=alt.
 """
 from __future__ import annotations
 
@@ -9,30 +15,34 @@ import time
 
 from db import paper_repo
 from services.strategy_config import (
+    CB_CONSEC_LIMIT,
+    CB_PAUSE_HOURS,
+    CALL_GEN_KWARGS,
+    CALL_EXIT,
     DEFAULT_SIGMA,
     EXPIRY_TARGET_HOURS,
+    PUT_GEN_KWARGS,
+    PUT_EXIT,
+    RET_THRESHOLD,
     SPREAD_HALF_PCT,
-    active_gen_kwargs,
 )
 
 # ───────────── Bybit-realistic sizing / friction model ─────────────
 # Starting equity sized so the minimum 0.1-ETH lot fits in budget.
 START_EQUITY_USD = 400.0
 # Per trade: up to 15% of equity goes into option margin. On $400 → $60 budget.
-# 15% covers margin_per_lot up to ~$60 (ETH ≈ $3300 strike).
-# At 15%, up to 5 concurrent trades fit in 80% portfolio limit — good balance.
 MARGIN_PCT_PER_TRADE = 0.15
 # Bybit min lot for ETH options.
 LOT_MIN_ETH = 0.1
 # Bybit Cross-Margin IM rate for short ETH options ≈ 10% of strike-notional.
-# Effective IM per lot ≈ (0.10·strike + premium)·0.1 ≈ $20-30 at strike $2000.
 IM_RATE = 0.10
-# Half of round-trip spread imported from strategy_config (1.0 → 2.0% round-trip).
 # Maximum percentage of total equity that can be locked in margin across all open positions.
 MAX_PORTFOLIO_MARGIN_PCT = 0.80
 # Bybit taker fee on notional, capped at 12.5% of premium per side.
 FEE_RATE = 0.0003
 FEE_CAP_PCT_OF_PREMIUM = 0.125
+# 7d return window in 5m bars (7 * 24 * 12 = 2016)
+BARS_7D = 2016
 
 
 def is_cb_active(state: dict, now_ms: int) -> bool:
@@ -40,7 +50,7 @@ def is_cb_active(state: dict, now_ms: int) -> bool:
 
 
 def dyn_size_factor(state: dict) -> float:
-    """Halve size when 10-trade WR < 40%. Same as the old current_size_usd."""
+    """Halve size when 10-trade WR < 40%."""
     pnls = state.get("recent_pnls_json") or []
     if len(pnls) >= 10:
         wr = sum(1 for p in pnls[-10:] if p > 0) / 10.0
@@ -51,12 +61,7 @@ def dyn_size_factor(state: dict) -> float:
 
 def realistic_size_lots(free_margin_usd: float, equity_usd: float, strike: float,
                         premium_mid: float, state: dict) -> int:
-    """How many 0.1-ETH lots fit in our margin budget at this signal.
-
-    Bybit IM ≈ (IM_RATE·strike + premium_mid)·lot_size_eth (per contract).
-    Budget = MARGIN_PCT_PER_TRADE · equity · dyn_factor, capped by free_margin.
-    Returns 0 if even one lot doesn't fit — caller should skip the signal.
-    """
+    """How many 0.1-ETH lots fit in our margin budget at this signal."""
     if strike <= 0 or premium_mid <= 0 or equity_usd <= 0:
         return 0
     margin_per_lot = (IM_RATE * strike + premium_mid) * LOT_MIN_ETH
@@ -87,49 +92,77 @@ def fee_per_side(notional_usd: float, premium_total_usd: float) -> float:
     return min(notional_usd * FEE_RATE, cap)
 
 
-def evaluate_conditions(k5: list, k15: list, k1h: list) -> dict:
-    """Check each entry condition against the LATEST bar without emitting a
-    signal. Returns a dict with per-condition booleans + summary.
+def compute_ret_7d(k5: list, idx: int) -> float:
+    """Compute 7-day return ending at k5[idx]."""
+    if idx < BARS_7D:
+        return 0.0
+    prev_close = k5[idx - BARS_7D]["close"]
+    if prev_close <= 0:
+        return 0.0
+    return (k5[idx]["close"] - prev_close) / prev_close * 100
 
-    IMPORTANT: uses the same 240-bar history window as gen_sell_premium_iv_high
-    (strategy_registry._walk_iter), so the live UI conditions match exactly
-    what the generator decides. Without this, vol_pctile / regime / mtf could
-    differ slightly and confuse the user ('UI says block but bot opened').
+
+def determine_side(ret_7d: float) -> str:
+    """Determine which side to trade based on 7d return.
+
+    Returns 'P', 'C', or None (no trade).
+    """
+    if abs(ret_7d) < RET_THRESHOLD:
+        return "P"  # range → sell Put
+    elif ret_7d > 0:
+        return "C"  # uptrend → sell Call (Put dangerous)
+    else:
+        return "P"  # downtrend → sell Put (profits from decay)
+
+
+def evaluate_conditions(k5: list, k15: list, k1h: list) -> dict:
+    """Check each entry condition for the V3 hybrid strategy.
+
+    Returns a dict with per-condition booleans + summary + which side is active.
     """
     from .indicators import ema, realized_vol
     from .momentum_mtf import analyze_tf, consensus
     from .regime import detect_regime
 
-    kw = active_gen_kwargs()
-    mtf_filter = kw.get("mtf_direction_filter")
     out = {
         "ready": False,
+        "active_side": None,  # 'P', 'C', or None
+        "ret_7d": None,
         "vol_high": False,
         "regime_ok": False,
-        "mtf_down_aligned": False,
-        "mtf_up_aligned": False,
         "mtf_direction_ok": False,
-        "bull_filter_ok": False,
         "spot": None,
         "vol_pctile": None,
         "regime": None,
         "mtf_direction": None,
         "mtf_aligned_count": None,
         "ema_ratio": None,
+        "bull_filter_ok": True,
     }
     if not k5 or not k15 or not k1h:
         return out
-    if len(k5) < 50 or len(k15) < 50 or len(k1h) < 200:
+    if len(k5) < BARS_7D or len(k15) < 50 or len(k1h) < 200:
         return out
 
-    out["spot"] = k5[-1]["close"]
-    # Match the generator's HIST=240 window so this endpoint can't drift
+    idx = len(k5) - 1
+    out["spot"] = k5[idx]["close"]
+
+    # 7d return → determine active side
+    ret_7d = compute_ret_7d(k5, idx)
+    out["ret_7d"] = round(ret_7d, 2)
+    active_side = determine_side(ret_7d)
+    out["active_side"] = active_side
+
+    # Select gen kwargs for the active side
+    gen_kw = PUT_GEN_KWARGS if active_side == "P" else CALL_GEN_KWARGS
+
+    # Use the same HIST=240 window as the generator
     HIST = 240
     s5 = k5[-HIST:] if len(k5) > HIST else k5
     s15 = k15[-HIST:] if len(k15) > HIST else k15
     s1h = k1h[-HIST:] if len(k1h) > HIST else k1h
 
-    # 1) Vol percentile (last 168h history, lookback 24h)
+    # 1) Vol percentile
     closes_1h = [c["close"] for c in s1h]
     rolling_vols: list[float] = []
     for j in range(20, len(closes_1h)):
@@ -139,71 +172,61 @@ def evaluate_conditions(k5: list, k15: list, k1h: list) -> dict:
     if len(rolling_vols) >= 30:
         current_vol = rolling_vols[-1]
         sorted_vols = sorted(rolling_vols)
-        
-        # Match generator's threshold lookup exactly
-        threshold_idx = int(len(sorted_vols) * kw["vol_threshold"])
+        threshold_idx = int(len(sorted_vols) * gen_kw["vol_threshold"])
         threshold = sorted_vols[threshold_idx]
-        
-        # Rank percentile (just for UI display)
         below = sum(1 for v in sorted_vols if v < current_vol)
         pctile = below / len(sorted_vols)
         out["vol_pctile"] = round(pctile, 3)
-        
-        # Exact logic match with generator (current_vol >= threshold)
         out["vol_high"] = current_vol >= threshold
 
-    # 2) Regime (range/transition)
+    # 2) Regime
     reg = detect_regime(s1h)
     out["regime"] = reg.get("regime", "unknown")
-    out["regime_ok"] = out["regime"] in kw["regime_filter"]
+    out["regime_ok"] = out["regime"] in gen_kw["regime_filter"]
 
     # 3) MTF direction
     mtf = consensus(analyze_tf(s5), analyze_tf(s15), analyze_tf(s1h))
     out["mtf_direction"] = mtf["direction"]
     out["mtf_aligned_count"] = mtf["tfs_aligned"]
-    out["mtf_down_aligned"] = (mtf["direction"] == "down" and mtf["tfs_aligned"] >= 2)
-    out["mtf_up_aligned"] = (mtf["direction"] == "up" and mtf["tfs_aligned"] >= 2)
+    mtf_filter = gen_kw.get("mtf_direction_filter")
     if mtf_filter == "up":
-        out["mtf_direction_ok"] = out["mtf_up_aligned"]
+        out["mtf_direction_ok"] = (mtf["direction"] == "up" and mtf["tfs_aligned"] >= 2)
     elif mtf_filter == "down":
-        out["mtf_direction_ok"] = out["mtf_down_aligned"]
+        out["mtf_direction_ok"] = (mtf["direction"] == "down" and mtf["tfs_aligned"] >= 2)
     else:
         out["mtf_direction_ok"] = True
 
-    # 4) Bull-market filter (EMA50_1h / EMA200_1h ≤ bull_market_ratio_max)
-    ema50 = ema(closes_1h, 50)
-    ema200 = ema(closes_1h, 200)
-    bull_max = kw.get("bull_market_ratio_max")
-    if ema50 is not None and ema200 not in (None, 0):
-        ratio = ema50 / ema200
-        out["ema_ratio"] = round(ratio, 4)
-        if bull_max is None:
-            out["bull_filter_ok"] = True
-        else:
-            # Cap EMA50/200 for both sides today; for sell-Put consider dropping
-            # or inverting — 1.05 blocks blow-off bull (sweep winner kept it).
-            out["bull_filter_ok"] = ratio <= bull_max
+    # 4) Bull-market filter (Put side only)
+    if active_side == "P":
+        bull_max = gen_kw.get("bull_market_ratio_max")
+        ema50 = ema(closes_1h, 50)
+        ema200 = ema(closes_1h, 200)
+        if ema50 is not None and ema200 not in (None, 0):
+            ratio = ema50 / ema200
+            out["ema_ratio"] = round(ratio, 4)
+            if bull_max is not None:
+                out["bull_filter_ok"] = ratio <= bull_max
 
+    # Summary: ready if vol + regime + mtf + bull all pass
     out["ready"] = (out["vol_high"] and out["regime_ok"]
                     and out["mtf_direction_ok"] and out["bull_filter_ok"])
     return out
 
 
 def record_trade_result(pnl_pct: float) -> dict:
-    """Update CB counters + recent_pnls list after a trade closes.
-    Returns the new state."""
+    """Update CB counters + recent_pnls list after a trade closes."""
     state = paper_repo.get_state() or paper_repo.ensure_state(START_EQUITY_USD)
     pnls = list(state.get("recent_pnls_json") or [])
     pnls.append(float(pnl_pct))
-    pnls = pnls[-50:]  # keep last 50 for analysis
+    pnls = pnls[-50:]
 
     consec = int(state.get("consec_losses") or 0)
     cb_until = int(state.get("cb_cooldown_until_ms") or 0)
 
     if pnl_pct <= 0:
         consec += 1
-        if consec >= 5:  # 5 consecutive losses → CB (was 3, too aggressive with few trades)
-            cb_until = int(time.time() * 1000) + 12 * 60 * 60 * 1000  # 12h cooldown (was 24h)
+        if consec >= CB_CONSEC_LIMIT:
+            cb_until = int(time.time() * 1000) + CB_PAUSE_HOURS * 60 * 60 * 1000
             consec = 0
     else:
         consec = 0

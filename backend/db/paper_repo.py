@@ -130,7 +130,8 @@ def mark_half_closed(position_id: int, at_ms: int) -> None:
 
 def close_position(position_id: int, *, closed_at_ms: int,
                    exit_debit_usd: float, pnl_pct: float, pnl_usd: float,
-                   exit_reason: str) -> None:
+                   exit_reason: str) -> int:
+    """Close a position. Returns rows_affected (0 if already closed)."""
     status_map = {
         "tp1": "closed_tp1",
         "tp2": "closed_tp2",
@@ -149,7 +150,7 @@ def close_position(position_id: int, *, closed_at_ms: int,
                   pnl_pct = %s,
                   pnl_usd = %s,
                   exit_reason = %s
-                WHERE id = %s
+                WHERE id = %s AND status NOT LIKE 'closed_%'
                 """,
                 (
                     status_map.get(exit_reason, "closed_time"),
@@ -157,7 +158,8 @@ def close_position(position_id: int, *, closed_at_ms: int,
                     exit_reason, position_id,
                 ),
             )
-        conn.commit()
+            conn.commit()
+            return cur.rowcount
     finally:
         put_conn(conn)
 
@@ -285,8 +287,7 @@ def exit_reason_counts() -> dict[str, int]:
 
 
 def peak_equity_since(ts_ms_floor: int) -> float | None:
-    """Highest equity recorded since `ts_ms_floor`. Used to compute running
-    max drawdown without re-reading the whole history per tick."""
+    """Highest equity recorded since `ts_ms_floor`."""
     conn = get_conn()
     try:
         with conn.cursor() as cur:

@@ -288,6 +288,8 @@ export async function fetchEquityHistory(
 
 export type PaperConditions = {
   ready: boolean;
+  active_side: "P" | "C" | null;
+  ret_7d: number | null;
   vol_high: boolean;
   regime_ok: boolean;
   mtf_down_aligned: boolean;
@@ -303,6 +305,9 @@ export type PaperConditions = {
   checked_at_ms: number;
   bars_available: { "5m": number; "15m": number; "1h": number };
   thresholds?: {
+    ret_threshold: number;
+    ret_7d: number | null;
+    active_side: "P" | "C";
     vol_threshold: number;
     regime_filter: string[];
     mtf_direction_filter: string | null;

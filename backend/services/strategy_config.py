@@ -2,34 +2,27 @@
 
 Kept dependency-free so ``local_backtest.py`` can import without psycopg2.
 
-Winner (54-cell parallel sweep on proper-holdout, 2026-06-01):
-  side=P · mtf_up · range · vol≥0.50 · cooldown=4 · hold=96h · NO bull-filter
-  holdout-90d: n=275 +14.93%/trade, sharpe=0.25 → +$114/month theoretical,
-  ~$85-95/month realistic after $400 margin cap.
+V3 Hybrid (validated 2026-06-01):
+  7d-return guided switching between Put/Call sides:
+    • |7d_ret| < 2% → sell Put (range regime, premium decay)
+    • 7d_ret > +2% → sell Call (uptrend — Put is dangerous)
+    • 7d_ret < -2% → sell Put (downtrend — Put profits)
+  Circuit breaker: 5 consecutive losses → 48h pause
+  Holdout-90d: n=125, avg +11.97%, WR 69.6%, cl=10
+  Sensitivity: 15/15 cells (σ=0.40-0.80, spread=1-4%) positive
 
-Key sweep findings (sweep_results/parallel_cd_vol_hold.json):
-- hold_h=96 beats hold=72 by ~+44% on $/month across all cd values (more
-  theta captured per trade).
-- cd=3 has highest theoretical $ ($143/mo) but ~12.7 avg concurrent positions
-  vs $400 budget's ~8.4 lot capacity → ~30% signals dropped to margin.
-- cd=4 sits at the sweet spot: $114/mo theoretical, ~12 concurrent (some
-  margin clipping), still 1.6× current cd=6/h=72 winner.
-
-Phase 4 hybrid test (Put+Call combo) → REJECTED.
-Sell-Call MTF-down on 2025-2026 ETH data has NEGATIVE edge (-31.74%/trade,
--$126/mo) due to persistent ETH up-drift. Merging Call signals destroys
-the Put edge (-$72/mo merged).
-
-cd=6/h=72 (the previous LIVE) kept as PAPER_VARIANT=alt — lower frequency,
-no margin contention, sharpe 0.28, +$54/mo.
+Previous: cd=4/h=96 (Put-only) — kept as PAPER_VARIANT=alt.
 """
 from __future__ import annotations
 
 import copy
 import os
 
-# LIVE: max-$/month config from 54-cell sweep, 2026-06-01.
-LIVE_GEN_KWARGS = {
+# ── V3 Hybrid: 7d-return switching + per-side exits ──
+
+RET_THRESHOLD = 2.0  # 7d return % threshold for side selection
+
+PUT_GEN_KWARGS = {
     "vol_threshold": 0.50,
     "regime_filter": ["range"],
     "side": "P",
@@ -39,21 +32,43 @@ LIVE_GEN_KWARGS = {
     "cooldown_bars": 4,
 }
 
-LIVE_EXIT = {
+PUT_EXIT = {
     "tp1_pct": 0.50,
     "tp2_pct": 0.70,
     "sl_pct": 1.50,
     "hold_h": 96,
 }
 
-# Conservative variant: pre-sweep LIVE — half the signals, no margin contention.
-# PAPER_VARIANT=alt selects this preset.
-LIVE_GEN_KWARGS_ALT = {
-    **LIVE_GEN_KWARGS,
+CALL_GEN_KWARGS = {
+    "vol_threshold": 0.60,
+    "regime_filter": ["range", "transition"],
+    "side": "C",
+    "adx_max": None,
+    "mtf_direction_filter": "down",
+    "bull_market_ratio_max": 1.05,
     "cooldown_bars": 6,
 }
 
-# Pre-6be2fbc baseline for A/B validation scripts
+CALL_EXIT = {
+    "tp1_pct": 0.30,
+    "tp2_pct": 0.50,
+    "sl_pct": 1.00,
+    "hold_h": 24,
+}
+
+CB_CONSEC_LIMIT = 5       # consecutive losses before cooldown
+CB_PAUSE_HOURS = 48       # cooldown duration
+
+# ── Previous Put-only config (for comparison / alt mode) ──
+LIVE_GEN_KWARGS = PUT_GEN_KWARGS  # alias for backward compat
+LIVE_EXIT = PUT_EXIT
+
+LIVE_GEN_KWARGS_ALT = {
+    **PUT_GEN_KWARGS,
+    "cooldown_bars": 6,
+}
+
+# Pre-6be2fbc baseline (Call-only)
 BASELINE_CALL_GEN_KWARGS = {
     "vol_threshold": 0.60,
     "regime_filter": ["range", "transition"],
@@ -77,14 +92,29 @@ SPREAD_HALF_PCT = 1.0
 
 
 def active_gen_kwargs() -> dict:
-    """Return live gen kwargs; PAPER_VARIANT=alt selects higher-frequency preset."""
+    """Return hybrid gen kwargs; PAPER_VARIANT=alt selects Put-only preset."""
     if os.getenv("PAPER_VARIANT", "").strip().lower() == "alt":
         return copy.deepcopy(LIVE_GEN_KWARGS_ALT)
-    return copy.deepcopy(LIVE_GEN_KWARGS)
+    return copy.deepcopy(PUT_GEN_KWARGS)
 
 
 def active_exit() -> dict:
-    return copy.deepcopy(LIVE_EXIT)
+    """Return active exit params; for hybrid, caller should use per-side exits."""
+    return copy.deepcopy(PUT_EXIT)
+
+
+def get_side_exits(side: str) -> dict:
+    """Return exit params for the given side (P or C)."""
+    if side == "C":
+        return copy.deepcopy(CALL_EXIT)
+    return copy.deepcopy(PUT_EXIT)
+
+
+def get_side_gen_kwargs(side: str) -> dict:
+    """Return gen kwargs for the given side."""
+    if side == "C":
+        return copy.deepcopy(CALL_GEN_KWARGS)
+    return copy.deepcopy(PUT_GEN_KWARGS)
 
 
 def exit_for_backtest(exit_kw: dict) -> dict:

@@ -1,15 +1,17 @@
-"""Live paper-trading background service.
+"""Live paper-trading background service — V3 Hybrid.
 
 Runs as a separate docker container. Two main responsibilities:
 
 1. **Signal check** every 5 min (right after a 5m candle closes):
-   Pull recent klines from DB, run the validated generator, check if the
-   LAST bar emits a signal. If yes (and CB not active, and we have capacity),
+   Pull recent klines from DB, compute 7d return, determine active side
+   (Put or Call), run the side-specific generator, check if the LAST bar
+   emits a signal. If yes (and CB not active, and we have capacity),
    open a paper position using current Bybit option chain (or BS fallback).
 
 2. **Position monitoring** every 30s:
    For each open position, fetch current option price, check TP1/TP2/SL/
-   time-stop. Close (or half-close) when triggered. Update equity snapshot.
+   time-stop (using per-side exit params). Close (or half-close) when
+   triggered. Update equity snapshot.
 
 State persisted in `paper_state`, `paper_positions`, `paper_equity_snapshots`.
 """
@@ -28,14 +30,25 @@ from db.engine import apply_schema  # noqa: E402
 from db.repository import recent_klines  # noqa: E402
 from services import backtest_bs as bs  # noqa: E402
 from services.bybit_client import bybit_client  # noqa: E402
-from services.strategy_config import active_exit, active_gen_kwargs  # noqa: E402
+from services.strategy_config import (  # noqa: E402
+    CALL_EXIT,
+    PUT_EXIT,
+    RET_THRESHOLD,
+    get_side_gen_kwargs,
+)
 from services.paper_strategy import (  # noqa: E402
+    BARS_7D,
+    CB_CONSEC_LIMIT,
+    CB_PAUSE_HOURS,
     DEFAULT_SIGMA,
     EXPIRY_TARGET_HOURS,
     LOT_MIN_ETH,
+    MAX_PORTFOLIO_MARGIN_PCT,
     START_EQUITY_USD,
     apply_entry_spread,
     apply_exit_spread,
+    compute_ret_7d,
+    determine_side,
     fee_per_side,
     is_cb_active,
     margin_per_lot,
@@ -55,8 +68,11 @@ STRIKE_GRID = 25.0   # Bybit ETH options use $25/$50 grid; use $25 for safety
 
 # ───────────────────── kline → generator input ─────────────────────
 
-def load_klines_for_generator(window_5m: int = 600) -> tuple[list, list, list]:
-    """Pull recent klines from DB for the generator. Returns (k5, k15, k1h)."""
+def load_klines_for_generator(window_5m: int = 2100) -> tuple[list, list, list]:
+    """Pull recent klines from DB for the generator. Returns (k5, k15, k1h).
+
+    window_5m must be >= BARS_7D (2016) so we can compute 7d return.
+    """
     k5 = recent_klines(SPOT_SYMBOL, "5m", limit=window_5m)
     k15 = recent_klines(SPOT_SYMBOL, "15m", limit=220)
     k1h = recent_klines(SPOT_SYMBOL, "1h", limit=270)
@@ -76,58 +92,21 @@ def pick_bybit_atm_option(chain: list[dict], spot: float, target_expiry_h: int,
     candidates = [
         o for o in chain
         if o.get("side") == option_side
-        and o.get("expiry_ms", 0) > now_ms + 6 * 3_600_000  # at least 6h to expiry
+        and o.get("expiry_ms", 0) > now_ms + 6 * 3_600_000
         and (o.get("bid") or 0) > 0
     ]
     if not candidates:
         return None
-    # Pick expiry closest to target
     candidates.sort(key=lambda o: abs((o.get("expiry_ms") or 0) - target_ms))
     by_expiry = candidates[0].get("expiry_ms")
     same_expiry = [o for o in candidates if o.get("expiry_ms") == by_expiry]
-    # Now pick strike closest to spot (rounded to $25)
     target_strike = round(spot / STRIKE_GRID) * STRIKE_GRID
     same_expiry.sort(key=lambda o: abs((o.get("strike") or 0) - target_strike))
     return same_expiry[0] if same_expiry else None
 
 
-def pick_bybit_atm_call(chain: list[dict], spot: float, target_expiry_h: int) -> dict | None:
-    return pick_bybit_atm_option(chain, spot, target_expiry_h, "C")
-
-
-def price_option_live(symbol: str, side: str) -> dict | None:
-    """Fetch latest ticker for a specific option symbol. Returns dict with
-    bid/ask/mark or None if unavailable."""
-    chain = bybit_client.get_options_tickers(BASE_COIN)
-    for o in chain:
-        if o.get("symbol") == symbol:
-            return o
-    return None
-
-
-def build_chain_dict(chain: list[dict]) -> dict[str, dict]:
-    """Index a Bybit option chain by (side-strike-expiry) → ticker."""
-    out: dict[str, dict] = {}
-    for o in chain:
-        side = o.get("side")
-        strike = o.get("strike")
-        expiry_ms = o.get("expiry_ms")
-        if side and strike and expiry_ms:
-            key = f"{side}-{int(strike)}-{expiry_ms}"
-            out[key] = o
-    return out
-
-
 def current_mark(p: dict, spot: float, chain_dict: dict[str, dict] | None) -> float | None:
-    """Live Bybit mark/mid for an open position.
-
-    Returns None if no live data is available. Caller MUST handle None and
-    NOT fall back to BS for TP/SL decisions — BS sigma=0.6 disagrees with
-    real Bybit IV by 30-50% and triggers spurious SLs.
-
-    BS is still used as a soft fallback for MtM display (so the equity chart
-    doesn't flat-line on a brief chain outage), but never for exit triggers.
-    """
+    """Live Bybit mark/mid for an open position."""
     if chain_dict:
         key = f"{p['side']}-{int(p['strike'])}-{p['expiry_ms']}"
         q = chain_dict.get(key)
@@ -143,9 +122,7 @@ def current_mark(p: dict, spot: float, chain_dict: dict[str, dict] | None) -> fl
 
 
 def current_mark_or_bs(p: dict, spot: float, chain_dict: dict[str, dict] | None) -> float:
-    """For MtM (equity display) only — never use this for TP/SL decisions.
-    Falls back to BS sigma=0.6 if no live data, accepting that the display
-    may briefly be inaccurate during a chain outage."""
+    """For MtM display only — never use this for TP/SL decisions."""
     live = current_mark(p, spot, chain_dict)
     if live is not None:
         return live
@@ -155,39 +132,85 @@ def current_mark_or_bs(p: dict, spot: float, chain_dict: dict[str, dict] | None)
 
 def price_option_bs(side: str, spot: float, strike: float, expiry_ms: int,
                     sigma: float = DEFAULT_SIGMA) -> float:
-    """Black-Scholes fallback pricing. Returns per-contract premium (USD)."""
+    """Black-Scholes fallback pricing."""
     now_ms = int(time.time() * 1000)
     T_years = max(1 / 365 / 24, (expiry_ms - now_ms) / 1000 / 86400 / 365)
     return bs.price(side, spot, strike, T_years, sigma)
 
 
+# ───────────────────── side-specific exit config ────────────────────
+
+def exit_for_side(side: str, raw_exit: dict | None = None) -> dict:
+    """Return TP/SL thresholds for the given side.
+
+    Uses per-side exit config from strategy_config (PUT_EXIT / CALL_EXIT).
+    """
+    if side == "C":
+        ex = CALL_EXIT
+    else:
+        ex = PUT_EXIT
+    return {
+        "tp1_pct": ex["tp1_pct"],
+        "tp2_pct": ex["tp2_pct"],
+        "sl_pct": ex["sl_pct"],
+        "hold_h": ex["hold_h"],
+    }
+
+
 # ───────────────────── signal logic ─────────────────────────────────
 
 def check_new_signal(k5, k15, k1h) -> dict | None:
-    """Run the validated generator on recent klines. If the JUST-CLOSED bar
-    (or the live edge, in case the in-progress bar isn't in DB yet) emitted a
-    signal, return its dict.
+    """Run the hybrid V3 generator. Returns signal dict if conditions met.
 
-    Why both last_idx and last_idx-1: when paper polls at a minute boundary
-    (e.g. 01:30:00), the DB may have either:
-      - k5[-1] = 01:30 bar (just opened, ~0s data) AND k5[-2] = 01:25 (closed)
-      - OR k5[-1] = 01:25 bar (closed) with no 01:30 yet (poller hadn't run)
-    Signal fires on the CLOSED 01:25 bar — which is at either idx -1 or -2
-    depending on whether the live bar got upserted yet. Accept both to be safe.
+    Logic:
+      1. Compute 7d return → determine active side (P or C)
+      2. Get side-specific gen kwargs (but use consistent cooldown=max(4,6)=6)
+      3. Run gen_sell_premium_iv_high with side kwargs
+      4. Check if last bar emitted a signal
+
+    IMPORTANT: cooldown is always max(PUT_CD, CALL_CD) = 6 to match the
+    validated backtest. Using side-specific cd would produce more Put signals
+    (cd=4) than were validated.
     """
-    if not k5:
+    if not k5 or len(k5) < BARS_7D + 1:
         return None
+
+    idx = len(k5) - 1
+    ret_7d = compute_ret_7d(k5, idx)
+    active_side = determine_side(ret_7d)
+
+    # Get gen kwargs for the active side, but OVERRIDE cooldown to be consistent
+    gen_kw = get_side_gen_kwargs(active_side)
+    gen_kw["cooldown_bars"] = max(
+        gen_kw.get("cooldown_bars", 4),
+        6,  # Call's cd — ensures same spacing as validated backtest
+    )
+
     last_idx = len(k5) - 1
-    sigs = gen_sell_premium_iv_high(k5, k15, k1h, **active_gen_kwargs())
+    sigs = gen_sell_premium_iv_high(k5, k15, k1h, **gen_kw)
     # Accept signals at the just-closed bar OR the live edge
     latest = [s for s in sigs if s.get("idx_5m") in (last_idx - 1, last_idx)]
-    return latest[-1] if latest else None  # newest if both fire
+    if not latest:
+        return None
+
+    sig = latest[-1]
+    # Verify the signal side matches the active side (safety check)
+    if sig.get("side") != active_side:
+        return None
+
+    sig["active_side"] = active_side
+    sig["ret_7d"] = round(ret_7d, 2)
+    return sig
 
 
 # ───────────────────── equity computation ──────────────────────────
 
 def compute_equity(state: dict, spot: float, atm_chain_quotes: dict[str, dict] | None = None) -> dict:
-    """Compute current equity = start + realized PnL + unrealized PnL on open positions."""
+    """Compute current equity = start + realized PnL + unrealized PnL.
+
+    For SHORT premium positions, unrealized PnL uses ASK price (the actual
+    buyback cost) when available. Falls back to mid if no live data.
+    """
     start_equity = float(state["start_equity_usd"])
     stats = paper_repo.position_stats()
     realized = float(stats["realized_usd"])
@@ -195,9 +218,32 @@ def compute_equity(state: dict, spot: float, atm_chain_quotes: dict[str, dict] |
     open_pos = paper_repo.open_positions()
     unrealized = 0.0
     for p in open_pos:
+        # Use contracts adjusted for half-close
+        contracts = float(p["contracts"])
+        if p["status"] == "half_closed_tp1":
+            contracts *= 0.5
+
+        # Get live mark for short position MtM
+        if atm_chain_quotes:
+            key = f"{p['side']}-{int(p['strike'])}-{p['expiry_ms']}"
+            q = atm_chain_quotes.get(key)
+            if q:
+                ask = float(q.get("ask", 0) or 0)
+                bid = float(q.get("bid", 0) or 0)
+                if ask > 0:
+                    # Short position: profit = entry - buyback_cost (ask)
+                    pnl_per_contract = float(p["entry_credit_usd"]) - ask
+                    unrealized += pnl_per_contract * contracts
+                    continue
+                elif bid > 0:
+                    pnl_per_contract = float(p["entry_credit_usd"]) - bid
+                    unrealized += pnl_per_contract * contracts
+                    continue
+
+        # BS fallback — use mid price
         mark = current_mark_or_bs(p, spot, atm_chain_quotes)
         pnl_per_contract = float(p["entry_credit_usd"]) - mark
-        unrealized += pnl_per_contract * float(p["contracts"])
+        unrealized += pnl_per_contract * contracts
 
     equity = start_equity + realized + unrealized
     return {
@@ -214,38 +260,29 @@ def compute_equity(state: dict, spot: float, atm_chain_quotes: dict[str, dict] |
 def open_paper_position(signal: dict, spot: float, equity_usd: float, free_margin_usd: float, state: dict) -> int | None:
     """Open a paper position for a signal — Bybit-realistic sizing/friction.
 
-    Sizing: pick the largest whole number of 0.1-ETH lots whose Bybit Cross-
-    Margin IM fits in MARGIN_PCT_PER_TRADE × equity. Skip the signal if even
-    one lot doesn't fit or free_margin_usd is exceeded.
-
-    Entry friction: receive premium at bid = mid·(1 − half-spread), then
-    deduct 0.03%·notional taker fee (capped at 12.5% of premium). The stored
-    entry_credit_usd is per-contract NET of entry fee, so all downstream
-    P&L math (close, equity) is correct without schema changes.
+    Uses per-side exit params (PUT_EXIT for P, CALL_EXIT for C).
     """
-    gen_kw = active_gen_kwargs()
-    exit_kw = active_exit()
-    option_side = str(gen_kw.get("side") or "C").upper()
+    active_side = signal.get("active_side", signal.get("side", "P"))
+    ex_kw = exit_for_side(active_side)
+
     chain = bybit_client.get_options_tickers(BASE_COIN)
-    pick = pick_bybit_atm_option(chain, spot, EXPIRY_TARGET_HOURS, option_side)
+    pick = pick_bybit_atm_option(chain, spot, EXPIRY_TARGET_HOURS, active_side)
 
     if pick and pick.get("bid", 0) > 0 and pick.get("ask", 0) > 0:
         strike = float(pick["strike"])
         expiry_ms = int(pick["expiry_ms"])
-        # Bybit's posted bid/ask already include market spread; use mid as
-        # the reference and apply our model haircut on top to be conservative.
         premium_mid = (float(pick["bid"]) + float(pick["ask"])) / 2.0
         entry_source = "bybit"
         symbol = pick["symbol"]
     else:
         strike = round(spot / STRIKE_GRID) * STRIKE_GRID
         expiry_ms = int(time.time() * 1000) + EXPIRY_TARGET_HOURS * 3_600_000
-        premium_mid = price_option_bs(option_side, spot, strike, expiry_ms, DEFAULT_SIGMA)
+        premium_mid = price_option_bs(active_side, spot, strike, expiry_ms, DEFAULT_SIGMA)
         if premium_mid <= 0:
             print(f"[paper] open skipped — could not price option", flush=True)
             return None
         entry_source = "bs_fallback"
-        symbol = f"ETH-?-{int(strike)}-{option_side}"
+        symbol = f"ETH-?-{int(strike)}-{active_side}"
 
     n_lots = realistic_size_lots(free_margin_usd, equity_usd, strike, premium_mid, state)
     if n_lots < 1:
@@ -260,20 +297,18 @@ def open_paper_position(signal: dict, spot: float, equity_usd: float, free_margi
     contracts = n_lots * LOT_MIN_ETH
     notional = strike * contracts
 
-    # Entry-side friction
-    entry_credit_per_contract_gross = apply_entry_spread(premium_mid)  # we sell at bid
+    entry_credit_per_contract_gross = apply_entry_spread(premium_mid)
     premium_received_total = entry_credit_per_contract_gross * contracts
     entry_fee = fee_per_side(notional, premium_received_total)
     entry_credit_per_contract_net = entry_credit_per_contract_gross - (entry_fee / max(contracts, 1e-9))
 
-    # size_usd now means MARGIN locked, not premium budget
     margin_locked = margin_per_lot(strike, premium_mid) * n_lots
     entry_credit_pct = entry_credit_per_contract_net / spot * 100
 
     pid = paper_repo.open_position(
         opened_at_ms=int(time.time() * 1000),
         underlying_at_open=spot,
-        side=option_side,
+        side=active_side,
         strike=strike,
         expiry_ms=expiry_ms,
         contracts=contracts,
@@ -281,24 +316,27 @@ def open_paper_position(signal: dict, spot: float, equity_usd: float, free_margi
         entry_credit_usd=entry_credit_per_contract_net,
         entry_credit_pct=entry_credit_pct,
         entry_source=entry_source,
-        tp1_pct=exit_kw["tp1_pct"],
-        tp2_pct=exit_kw["tp2_pct"],
-        sl_pct=exit_kw["sl_pct"],
-        hold_h=exit_kw["hold_h"],
+        tp1_pct=ex_kw["tp1_pct"],
+        tp2_pct=ex_kw["tp2_pct"],
+        sl_pct=ex_kw["sl_pct"],
+        hold_h=ex_kw["hold_h"],
         signal_payload={
             "symbol": symbol, "signal": signal,
             "n_lots": n_lots, "margin_locked": round(margin_locked, 2),
             "premium_mid": round(premium_mid, 4),
             "entry_fee_usd": round(entry_fee, 4),
+            "active_side": active_side,
+            "ret_7d": signal.get("ret_7d", 0),
         },
     )
     print(f"[paper] OPENED #{pid}: SELL {symbol} "
           f"lots={n_lots} contracts={contracts:.2f}ETH  "
           f"credit_net=${entry_credit_per_contract_net:.2f}/ETH "
-          f"margin=${margin_locked:.2f}  fee=${entry_fee:.3f}  source={entry_source}",
+          f"margin=${margin_locked:.2f}  fee=${entry_fee:.3f}  source={entry_source}  "
+          f"side={active_side} 7d_ret={signal.get('ret_7d', 0):+.2f}%",
           flush=True)
     telegram_notify.notify_open(
-        pid=pid, symbol=symbol, side=option_side, strike=strike, spot=spot,
+        pid=pid, symbol=symbol, side=active_side, strike=strike, spot=spot,
         n_lots=n_lots, contracts=contracts,
         premium_recv=premium_received_total,
         margin_locked=margin_locked, entry_fee=entry_fee, source=entry_source,
@@ -308,36 +346,26 @@ def open_paper_position(signal: dict, spot: float, equity_usd: float, free_margi
 
 def check_and_close_position(p: dict, spot: float,
                               chain_dict: dict[str, dict] | None = None) -> bool:
-    """Check exit conditions on one position. Returns True if state changed.
-
-    SAFETY: TP/SL evaluation requires LIVE Bybit mark. If chain is unavailable
-    (network outage / API error), only the time_stop check still runs — BS-
-    fallback for TP/SL would cause spurious SL hits due to BS vs Bybit IV
-    divergence (~30-50%).
-    """
+    """Check exit conditions on one position. Uses per-side exit params."""
     now_ms = int(time.time() * 1000)
     age_h = (now_ms - int(p["opened_at_ms"])) / 3_600_000
 
-    entry_credit = float(p["entry_credit_usd"])  # NET per contract, post entry-side friction
+    entry_credit = float(p["entry_credit_usd"])
 
-    # Time-stop ALWAYS runs — independent of mark price.
+    # Time-stop ALWAYS runs
     if age_h >= float(p["hold_h"]):
-        # Need a mark to compute exit P&L. Use BS fallback ONLY here (after
-        # 24h, paying realistic transaction cost via BS is acceptable vs not
-        # closing at all). In live, this branch should ideally trigger a
-        # Bybit market-close order.
         premium_mid = current_mark_or_bs(p, spot, chain_dict)
         return _do_close(p, premium_mid, "time_stop", now_ms)
 
-    # All other exits (TP1, TP2, SL) require LIVE mark.
+    # TP/SL: prefer live Bybit mark. For BS-fallback positions (no Bybit data),
+    # use BS as a soft fallback for TP/SL too — this is less ideal (BS IV may
+    # diverge from real IV) but better than keeping a dead position open forever.
     premium_mid = current_mark(p, spot, chain_dict)
     if premium_mid is None:
-        # No live data — safest is to keep position open and wait for next tick.
-        # Log once per minute to avoid log spam.
-        if int(now_ms / 60_000) % 2 == 0:  # every ~2 min
-            print(f"[paper] #{p['id']} no live mark — skipping TP/SL check this tick",
-                  flush=True)
-        return False
+        # BS fallback for TP/SL — log once per hour to avoid spam
+        if int(now_ms / 3_600_000) % 1 == 0:
+            print(f"[paper] #{p['id']} no live mark — using BS for TP/SL check", flush=True)
+        premium_mid = current_mark_or_bs(p, spot, chain_dict)
 
     tp1_threshold = entry_credit * (1 - float(p["tp1_pct"]))
     tp2_threshold = entry_credit * (1 - float(p["tp2_pct"]))
@@ -349,9 +377,15 @@ def check_and_close_position(p: dict, spot: float,
     elif premium_mid <= tp2_threshold:
         reason = "tp2"
     elif p["status"] == "open" and premium_mid <= tp1_threshold:
+        # TP1: half-close — record partial PnL for 50% of contracts
+        half_contracts = float(p["contracts"]) * 0.5
+        half_pnl_per_contract = entry_credit - premium_mid  # approximate at mid
+        half_pnl_usd = half_pnl_per_contract * half_contracts
+        half_pnl_pct = (half_pnl_per_contract / entry_credit) * 100 if entry_credit > 0 else 0
+
         paper_repo.mark_half_closed(int(p["id"]), now_ms)
-        print(f"[paper] #{p['id']} TP1 marked @ mid ${premium_mid:.2f} (entry ${entry_credit:.2f})",
-              flush=True)
+        print(f"[paper] #{p['id']} TP1 @ mid ${premium_mid:.2f} (entry ${entry_credit:.2f}) "
+              f"half_pnl={half_pnl_pct:+.2f}% (${half_pnl_usd:+.2f})", flush=True)
         return True
 
     if reason is None:
@@ -361,14 +395,20 @@ def check_and_close_position(p: dict, spot: float,
 
 
 def _do_close(p: dict, premium_mid: float, reason: str, now_ms: int) -> bool:
-    """Apply exit-side friction (spread + fee), record close, notify."""
+    """Apply exit-side friction, record close, notify.
+
+    Handles half-closed positions: if status is half_closed_tp1, only 50%
+    of contracts remain, so PnL is halved accordingly.
+    """
     entry_credit = float(p["entry_credit_usd"])
 
+    # Adjust contracts for half-close
     contracts = float(p["contracts"])
+    if p.get("status") == "half_closed_tp1":
+        contracts *= 0.5
+
     notional = float(p["strike"]) * contracts
 
-    # Exit-side friction: we buy back at ask = mid·(1 + half-spread), then
-    # pay 0.03%·notional taker fee (capped at 12.5% of premium handled).
     exit_debit_gross = apply_exit_spread(premium_mid)
     premium_paid_total = exit_debit_gross * contracts
     exit_fee = fee_per_side(notional, premium_paid_total)
@@ -391,9 +431,6 @@ def _do_close(p: dict, premium_mid: float, reason: str, now_ms: int) -> bool:
           f"mid=${premium_mid:.2f} debit_net=${exit_debit_net:.2f} fee=${exit_fee:.3f}  "
           f"pnl={pnl_pct:+.2f}% (${pnl_usd:+.2f})", flush=True)
 
-    # Telegram notify — close event + CB-triggered alert if it just fired.
-    # Use DB-stored start equity (not module constant) so the right number
-    # carries through if anyone manually resets the paper account later.
     stats_after = paper_repo.position_stats()
     state_now = paper_repo.get_state() or {}
     start_eq = float(state_now.get("start_equity_usd") or START_EQUITY_USD)
@@ -402,6 +439,7 @@ def _do_close(p: dict, premium_mid: float, reason: str, now_ms: int) -> bool:
         pid=int(p["id"]), side=p["side"], strike=float(p["strike"]),
         reason=reason, pnl_pct=pnl_pct, pnl_usd=pnl_usd,
         equity_after=equity_after,
+        hold_h=int(p.get("hold_h") or 0),
     )
     if int(res.get("cb_cooldown_until_ms") or 0) > now_ms:
         telegram_notify.notify_cb_triggered(equity_after=equity_after)
@@ -415,7 +453,6 @@ def is_signal_check_time(last_check_ms: int) -> bool:
     now = datetime.now(timezone.utc)
     if (now.minute % SIGNAL_CHECK_EVERY_MIN) != 0:
         return False
-    # Avoid double-check inside the same minute
     return (int(time.time() * 1000) - last_check_ms) >= 4 * 60 * 1000
 
 
@@ -423,14 +460,7 @@ async def loop():
     apply_schema()
     state = paper_repo.ensure_state(START_EQUITY_USD)
     print(f"[paper] schema ready, start_equity=${state['start_equity_usd']}, "
-          f"poll={POLL_INTERVAL_S}s", flush=True)
-    _gen = active_gen_kwargs()
-    _ex = active_exit()
-    print(f"[paper] active variant: side={_gen['side']} mtf={_gen['mtf_direction_filter']} "
-          f"vol={_gen['vol_threshold']} regime={_gen['regime_filter']} "
-          f"cd={_gen['cooldown_bars']} bull={_gen.get('bull_market_ratio_max')} "
-          f"exit(tp1={_ex['tp1_pct']},tp2={_ex['tp2_pct']},sl={_ex['sl_pct']},hold={_ex['hold_h']}h) "
-          f"PAPER_VARIANT={__import__('os').getenv('PAPER_VARIANT', '')!r}", flush=True)
+          f"poll={POLL_INTERVAL_S}s, V3 hybrid 7d_thr={RET_THRESHOLD}%", flush=True)
 
     last_signal_check_ms = 0
 
@@ -444,15 +474,17 @@ async def loop():
 
             state = paper_repo.get_state() or state
 
-            # Fetch the Bybit option chain ONCE per tick. Pass it to both the
-            # position-monitor and equity-MtM paths so live marks (not stale BS)
-            # are used. Skip if no open positions to save the API call.
+            # Fetch option chain ONCE per tick
             open_pos_now = paper_repo.open_positions()
             chain_dict: dict[str, dict] | None = None
             if open_pos_now:
                 try:
                     chain = bybit_client.get_options_tickers(BASE_COIN)
-                    chain_dict = build_chain_dict(chain)
+                    chain_dict = {
+                        f"{o.get('side')}-{int(o.get('strike'))}-{o.get('expiry_ms')}": o
+                        for o in chain
+                        if o.get('side') and o.get('strike') and o.get('expiry_ms')
+                    }
                 except Exception as e:  # noqa: BLE001
                     print(f"[paper] WARN: chain fetch failed: {e!r}", flush=True)
 
@@ -470,31 +502,30 @@ async def loop():
                           flush=True)
                 else:
                     k5, k15, k1h = load_klines_for_generator()
-                    if len(k5) < 300:
+                    if len(k5) < BARS_7D + 50:
                         print(f"[paper] not enough klines yet ({len(k5)} 5m), skip signal check",
                               flush=True)
                     else:
                         sig = check_new_signal(k5, k15, k1h)
                         if sig:
                             eq = compute_equity(state, spot, chain_dict)
-                            from services.paper_strategy import MAX_PORTFOLIO_MARGIN_PCT
                             locked_margin = sum(float(p["size_usd"]) for p in open_pos_now)
                             free_margin = (eq["equity"] * MAX_PORTFOLIO_MARGIN_PCT) - locked_margin
-                            
+
                             if free_margin <= 0:
                                 print(f"[paper] skip signal — portfolio margin maxed out "
-                                      f"(locked ${locked_margin:.2f} >= limit ${eq['equity']*MAX_PORTFOLIO_MARGIN_PCT:.2f})", 
+                                      f"(locked ${locked_margin:.2f} >= limit ${eq['equity']*MAX_PORTFOLIO_MARGIN_PCT:.2f})",
                                       flush=True)
                             else:
                                 open_paper_position(sig, spot, eq["equity"], free_margin, state)
                         else:
-                            print(f"[paper] tick: no signal (spot=${spot:.2f}, open={len(open_pos_now)})",
-                                  flush=True)
+                            ret_7d = compute_ret_7d(k5, len(k5) - 1) if len(k5) >= BARS_7D else 0
+                            side = determine_side(ret_7d) if len(k5) >= BARS_7D else "?"
+                            print(f"[paper] tick: no signal (spot=${spot:.2f}, 7d_ret={ret_7d:+.2f}%, "
+                                  f"side={side}, open={len(open_pos_now)})", flush=True)
 
             # 3) Equity snapshot — every iteration
             eq = compute_equity(state, spot, chain_dict)
-            # Running max drawdown from session start. Pulls peak equity since
-            # `started_at_ms` and computes (peak - current) / peak.
             started_at = int(state.get("started_at_ms") or 0)
             peak = paper_repo.peak_equity_since(started_at) or eq["equity"]
             peak_eff = max(peak, eq["equity"], float(state.get("start_equity_usd") or 0))
