@@ -147,17 +147,17 @@ def exit_for_side(side: str) -> dict:
 # ───────────────────── signal logic ─────────────────────────────────
 
 def check_new_signal(k5, k15, k1h) -> dict | None:
-    """Run the hybrid V3 generator. Returns signal dict if conditions met.
+    """Run the hybrid V3 generator with asymmetric thresholds (Config B).
 
     Logic:
-      1. Compute 7d return → determine active side (P or C)
-      2. Get side-specific gen kwargs (but use consistent cooldown=max(4,6)=6)
-      3. Run gen_sell_premium_iv_high with side kwargs
-      4. Check if last bar emitted a signal
+      1. Compute 7d return → determine active side (P, C, or None=dead zone)
+      2. If dead zone → skip (no trade)
+      3. Get side-specific gen kwargs
+      4. Run gen_sell_premium_iv_high
+      5. Check if last bar emitted a signal
 
     IMPORTANT: cooldown is always max(PUT_CD, CALL_CD) = 6 to match the
-    validated backtest. Using side-specific cd would produce more Put signals
-    (cd=4) than were validated.
+    validated backtest.
     """
     if not k5 or len(k5) < BARS_7D + 1:
         return None
@@ -165,6 +165,9 @@ def check_new_signal(k5, k15, k1h) -> dict | None:
     idx = len(k5) - 1
     ret_7d = compute_ret_7d(k5, idx)
     active_side = determine_side(ret_7d)
+
+    if active_side is None:
+        return None  # dead zone — don't trade
 
     # Get gen kwargs for the active side, but OVERRIDE cooldown to be consistent
     gen_kw = get_side_gen_kwargs(active_side)

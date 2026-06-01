@@ -115,23 +115,34 @@ function LiveState({ state, conditions }: { state: PaperState; conditions: Paper
           : `${(lastSig / 24).toFixed(1)}d назад`;
 
   // Active side from conditions endpoint (where it actually lives)
-  const activeSide = conditions?.active_side || "P";
+  const activeSide = conditions?.active_side || null;
+  const deadZone = conditions?.dead_zone || false;
   const ret7d = conditions?.ret_7d;
+  const retPutMax = conditions?.thresholds?.ret_threshold_put;
+  const retCallMin = conditions?.thresholds?.ret_threshold_call;
 
   return (
     <section className="glass-panel p-6 grid grid-cols-2 md:grid-cols-4 gap-4">
-      {/* Active Side Badge */}
+      {/* Active Side Badge — now shows dead zone */}
       <Cell
         label="Активная сторона"
         value={
-          <span className={activeSide === "P" ? "text-rose-300" : "text-emerald-300"}>
-            SELL {activeSide === "P" ? "PUT" : "CALL"}
-          </span>
+          deadZone ? (
+            <span className="text-slate-400">⏸ Мёртвая зона</span>
+          ) : activeSide === "P" ? (
+            <span className="text-rose-300">SELL PUT</span>
+          ) : activeSide === "C" ? (
+            <span className="text-emerald-300">SELL CALL</span>
+          ) : (
+            <span className="text-slate-400">—</span>
+          )
         }
         sub={
-          ret7d != null
-            ? `7d ret: ${ret7d > 0 ? "+" : ""}${ret7d.toFixed(2)}%`
-            : ""
+          ret7d != null && retPutMax != null && retCallMin != null
+            ? `7d ret: ${ret7d > 0 ? "+" : ""}${ret7d.toFixed(2)}% (Put<${retPutMax}%, Call>${retCallMin}%)`
+            : ret7d != null
+              ? `7d ret: ${ret7d > 0 ? "+" : ""}${ret7d.toFixed(2)}%`
+              : ""
         }
       />
       <Cell

@@ -34,3 +34,4 @@ verify.py
 backtest_*.py
 __pycache__/
 *.pyc
+docker_images/

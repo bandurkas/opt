@@ -259,7 +259,8 @@ def paper_conditions():
     from services.strategy_config import (
         CALL_GEN_KWARGS,
         PUT_GEN_KWARGS,
-        RET_THRESHOLD,
+        PUT_RET_MAX as RET_THRESHOLD_PUT,
+        CALL_RET_MIN as RET_THRESHOLD_CALL,
     )
 
     symbol = "ETHUSDT"
@@ -271,19 +272,31 @@ def paper_conditions():
     cond["checked_at_ms"] = int(time.time() * 1000)
     cond["bars_available"] = {"5m": len(k5), "15m": len(k15), "1h": len(k1h)}
 
-    # V3 Hybrid: show both sides' configs + active side
-    active_side = cond.get("active_side") or "P"
-    side_gen = CALL_GEN_KWARGS if active_side == "C" else PUT_GEN_KWARGS
-    cond["thresholds"] = {
-        "ret_threshold": RET_THRESHOLD,
-        "ret_7d": cond.get("ret_7d"),
-        "active_side": active_side,
-        "vol_threshold": side_gen["vol_threshold"],
-        "regime_filter": list(side_gen["regime_filter"] or []),
-        "mtf_direction_filter": side_gen["mtf_direction_filter"],
-        "mtf_min_aligned": 2,
-        "bull_market_ratio_max": side_gen["bull_market_ratio_max"],
-    }
+    # V3 Hybrid: show both sides' configs + active side + dead zone
+    active_side = cond.get("active_side")
+    dead_zone = cond.get("dead_zone", False)
+    if dead_zone:
+        cond["thresholds"] = {
+            "ret_threshold_put": RET_THRESHOLD_PUT,
+            "ret_threshold_call": RET_THRESHOLD_CALL,
+            "ret_7d": cond.get("ret_7d"),
+            "active_side": None,
+            "dead_zone": True,
+        }
+    else:
+        side_gen = CALL_GEN_KWARGS if active_side == "C" else PUT_GEN_KWARGS
+        cond["thresholds"] = {
+            "ret_threshold_put": RET_THRESHOLD_PUT,
+            "ret_threshold_call": RET_THRESHOLD_CALL,
+            "ret_7d": cond.get("ret_7d"),
+            "active_side": active_side,
+            "dead_zone": False,
+            "vol_threshold": side_gen["vol_threshold"],
+            "regime_filter": list(side_gen["regime_filter"] or []),
+            "mtf_direction_filter": side_gen["mtf_direction_filter"],
+            "mtf_min_aligned": 2,
+            "bull_market_ratio_max": side_gen["bull_market_ratio_max"],
+        }
     return cond
 
 

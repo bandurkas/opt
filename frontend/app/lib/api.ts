@@ -289,6 +289,7 @@ export async function fetchEquityHistory(
 export type PaperConditions = {
   ready: boolean;
   active_side: "P" | "C" | null;
+  dead_zone: boolean;
   ret_7d: number | null;
   vol_high: boolean;
   regime_ok: boolean;
@@ -305,14 +306,16 @@ export type PaperConditions = {
   checked_at_ms: number;
   bars_available: { "5m": number; "15m": number; "1h": number };
   thresholds?: {
-    ret_threshold: number;
+    ret_threshold_put: number;
+    ret_threshold_call: number;
     ret_7d: number | null;
-    active_side: "P" | "C";
-    vol_threshold: number;
-    regime_filter: string[];
-    mtf_direction_filter: string | null;
-    mtf_min_aligned: number;
-    bull_market_ratio_max: number | null;
+    active_side: "P" | "C" | null;
+    dead_zone: boolean;
+    vol_threshold?: number;
+    regime_filter?: string[];
+    mtf_direction_filter?: string | null;
+    mtf_min_aligned?: number;
+    bull_market_ratio_max?: number | null;
   };
 };
 

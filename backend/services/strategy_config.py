@@ -19,8 +19,14 @@ import copy
 import os
 
 # ── V3 Hybrid: 7d-return switching + per-side exits ──
+# Config B (validated 2026-06-01): asymmetric thresholds with dead zone.
+#   ret < -2.5%  → sell Put  (strong downtrend — Put profits)
+#   ret > +1.0%  → sell Call (uptrend — Call profits, Put is dangerous)
+#   -2.5%..+1.0% → dead zone (don't trade — slow bleed kills both sides)
 
-RET_THRESHOLD = 2.0  # 7d return % threshold for side selection
+PUT_RET_MAX = -2.5   # sell Put only when 7d ret < -2.5%
+CALL_RET_MIN = 1.0   # sell Call only when 7d ret > +1.0%
+# Dead zone: -2.5% ≤ ret ≤ +1.0% → no trade
 
 PUT_GEN_KWARGS = {
     "vol_threshold": 0.50,
@@ -29,7 +35,7 @@ PUT_GEN_KWARGS = {
     "adx_max": None,
     "mtf_direction_filter": "up",
     "bull_market_ratio_max": None,
-    "cooldown_bars": 4,
+    "cooldown_bars": 6,
 }
 
 PUT_EXIT = {

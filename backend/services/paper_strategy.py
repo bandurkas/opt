@@ -19,11 +19,12 @@ from services.strategy_config import (
     CB_PAUSE_HOURS,
     CALL_GEN_KWARGS,
     CALL_EXIT,
+    CALL_RET_MIN,
     DEFAULT_SIGMA,
     EXPIRY_TARGET_HOURS,
     PUT_GEN_KWARGS,
     PUT_EXIT,
-    RET_THRESHOLD,
+    PUT_RET_MAX,
     SPREAD_HALF_PCT,
 )
 
@@ -102,17 +103,21 @@ def compute_ret_7d(k5: list, idx: int) -> float:
     return (k5[idx]["close"] - prev_close) / prev_close * 100
 
 
-def determine_side(ret_7d: float) -> str:
-    """Determine which side to trade based on 7d return.
+def determine_side(ret_7d: float) -> str | None:
+    """Determine which side to trade based on asymmetric 7d return thresholds.
 
-    Returns 'P' for Put or 'C' for Call — there is always an active side.
+    Returns 'P', 'C', or None (dead zone — don't trade).
+
+    Config B (validated 2026-06-01):
+      ret < -2.5% → Put  (strong downtrend)
+      ret > +1.0% → Call (uptrend)
+      -2.5%..+1.0% → None (dead zone, slow bleed)
     """
-    if abs(ret_7d) < RET_THRESHOLD:
-        return "P"  # range → sell Put
-    elif ret_7d > 0:
-        return "C"  # uptrend → sell Call (Put dangerous)
-    else:
-        return "P"  # downtrend → sell Put (profits from decay)
+    if ret_7d < PUT_RET_MAX:
+        return "P"
+    elif ret_7d > CALL_RET_MIN:
+        return "C"
+    return None
 
 
 def evaluate_conditions(k5: list, k15: list, k1h: list) -> dict:
@@ -126,7 +131,8 @@ def evaluate_conditions(k5: list, k15: list, k1h: list) -> dict:
 
     out = {
         "ready": False,
-        "active_side": None,  # 'P', 'C', or None
+        "active_side": None,    # 'P', 'C', or None (dead zone)
+        "dead_zone": False,
         "ret_7d": None,
         "vol_high": False,
         "regime_ok": False,
@@ -147,11 +153,15 @@ def evaluate_conditions(k5: list, k15: list, k1h: list) -> dict:
     idx = len(k5) - 1
     out["spot"] = k5[idx]["close"]
 
-    # 7d return → determine active side
+    # 7d return → determine active side (or dead zone)
     ret_7d = compute_ret_7d(k5, idx)
     out["ret_7d"] = round(ret_7d, 2)
     active_side = determine_side(ret_7d)
     out["active_side"] = active_side
+
+    if active_side is None:
+        out["dead_zone"] = True
+        return out  # no trade zone — conditions irrelevant
 
     # Select gen kwargs for the active side
     gen_kw = PUT_GEN_KWARGS if active_side == "P" else CALL_GEN_KWARGS
