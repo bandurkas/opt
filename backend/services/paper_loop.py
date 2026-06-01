@@ -31,8 +31,6 @@ from db.repository import recent_klines  # noqa: E402
 from services import backtest_bs as bs  # noqa: E402
 from services.bybit_client import bybit_client  # noqa: E402
 from services.strategy_config import (  # noqa: E402
-    CALL_EXIT,
-    PUT_EXIT,
     RET_THRESHOLD,
     get_side_gen_kwargs,
 )
@@ -140,21 +138,10 @@ def price_option_bs(side: str, spot: float, strike: float, expiry_ms: int,
 
 # ───────────────────── side-specific exit config ────────────────────
 
-def exit_for_side(side: str, raw_exit: dict | None = None) -> dict:
-    """Return TP/SL thresholds for the given side.
-
-    Uses per-side exit config from strategy_config (PUT_EXIT / CALL_EXIT).
-    """
-    if side == "C":
-        ex = CALL_EXIT
-    else:
-        ex = PUT_EXIT
-    return {
-        "tp1_pct": ex["tp1_pct"],
-        "tp2_pct": ex["tp2_pct"],
-        "sl_pct": ex["sl_pct"],
-        "hold_h": ex["hold_h"],
-    }
+def exit_for_side(side: str) -> dict:
+    """Return TP/SL thresholds for the given side."""
+    from services.strategy_config import get_side_exits
+    return get_side_exits(side)
 
 
 # ───────────────────── signal logic ─────────────────────────────────
@@ -218,10 +205,7 @@ def compute_equity(state: dict, spot: float, atm_chain_quotes: dict[str, dict] |
     open_pos = paper_repo.open_positions()
     unrealized = 0.0
     for p in open_pos:
-        # Use contracts adjusted for half-close
         contracts = float(p["contracts"])
-        if p["status"] == "half_closed_tp1":
-            contracts *= 0.5
 
         # Get live mark for short position MtM
         if atm_chain_quotes:
@@ -357,15 +341,13 @@ def check_and_close_position(p: dict, spot: float,
         premium_mid = current_mark_or_bs(p, spot, chain_dict)
         return _do_close(p, premium_mid, "time_stop", now_ms)
 
-    # TP/SL: prefer live Bybit mark. For BS-fallback positions (no Bybit data),
-    # use BS as a soft fallback for TP/SL too — this is less ideal (BS IV may
-    # diverge from real IV) but better than keeping a dead position open forever.
+    # TP/SL require LIVE Bybit mark. BS fallback is NOT used for TP/SL because
+    # BS σ=0.6 diverges from real Bybit IV by 30–50%, which would trigger
+    # false SL hits during brief chain outages. If no live data, skip TP/SL
+    # check this tick — time-stop will eventually close the position anyway.
     premium_mid = current_mark(p, spot, chain_dict)
     if premium_mid is None:
-        # BS fallback for TP/SL — log once per hour to avoid spam
-        if int(now_ms / 3_600_000) % 1 == 0:
-            print(f"[paper] #{p['id']} no live mark — using BS for TP/SL check", flush=True)
-        premium_mid = current_mark_or_bs(p, spot, chain_dict)
+        return False
 
     tp1_threshold = entry_credit * (1 - float(p["tp1_pct"]))
     tp2_threshold = entry_credit * (1 - float(p["tp2_pct"]))
@@ -377,15 +359,13 @@ def check_and_close_position(p: dict, spot: float,
     elif premium_mid <= tp2_threshold:
         reason = "tp2"
     elif p["status"] == "open" and premium_mid <= tp1_threshold:
-        # TP1: half-close — record partial PnL for 50% of contracts
-        half_contracts = float(p["contracts"]) * 0.5
-        half_pnl_per_contract = entry_credit - premium_mid  # approximate at mid
-        half_pnl_usd = half_pnl_per_contract * half_contracts
-        half_pnl_pct = (half_pnl_per_contract / entry_credit) * 100 if entry_credit > 0 else 0
-
+        # TP1: mark half-closed for tracking. PnL accounting: the backtest
+        # does not model partial closes — it records full PnL at TP2/SL.
+        # To match the backtest exactly, we do NOT halve contracts at TP1.
+        # The status marker is informational; the full position closes later.
         paper_repo.mark_half_closed(int(p["id"]), now_ms)
-        print(f"[paper] #{p['id']} TP1 @ mid ${premium_mid:.2f} (entry ${entry_credit:.2f}) "
-              f"half_pnl={half_pnl_pct:+.2f}% (${half_pnl_usd:+.2f})", flush=True)
+        print(f"[paper] #{p['id']} TP1 @ mid ${premium_mid:.2f} (entry ${entry_credit:.2f})",
+              flush=True)
         return True
 
     if reason is None:
@@ -397,16 +377,13 @@ def check_and_close_position(p: dict, spot: float,
 def _do_close(p: dict, premium_mid: float, reason: str, now_ms: int) -> bool:
     """Apply exit-side friction, record close, notify.
 
-    Handles half-closed positions: if status is half_closed_tp1, only 50%
-    of contracts remain, so PnL is halved accordingly.
+    Uses full contracts for PnL to match the backtest exactly.
+    The backtest does not model partial closes at TP1 — it records full PnL
+    at TP2/SL/time-stop. Even if TP1 fired earlier (status=half_closed_tp1),
+    we close the full position so PnL accounting matches the validated numbers.
     """
     entry_credit = float(p["entry_credit_usd"])
-
-    # Adjust contracts for half-close
     contracts = float(p["contracts"])
-    if p.get("status") == "half_closed_tp1":
-        contracts *= 0.5
-
     notional = float(p["strike"]) * contracts
 
     exit_debit_gross = apply_exit_spread(premium_mid)

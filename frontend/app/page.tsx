@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from "react";
 import {
+  fetchPaperConditions,
   fetchPaperPositions,
   fetchPaperState,
+  type PaperConditions,
   type PaperPosition,
   type PaperState,
 } from "./lib/api";
@@ -21,6 +23,7 @@ const fmtTime = (ms: number) =>
 
 export default function Dashboard() {
   const [state, setState] = useState<PaperState | null>(null);
+  const [conditions, setConditions] = useState<PaperConditions | null>(null);
   const [open, setOpen] = useState<PaperPosition[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
@@ -29,12 +32,14 @@ export default function Dashboard() {
     let cancelled = false;
     const load = async () => {
       try {
-        const [s, op] = await Promise.all([
+        const [s, c, op] = await Promise.all([
           fetchPaperState(),
+          fetchPaperConditions(),
           fetchPaperPositions("open"),
         ]);
         if (cancelled) return;
         setState(s);
+        setConditions(c);
         setOpen(op.positions);
         setLastUpdate(new Date());
         setError(null);
@@ -75,7 +80,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {state && <LiveState state={state} />}
+      {state && <LiveState state={state} conditions={conditions} />}
       {open.length > 0 && <OpenPositions positions={open} />}
 
       <MissedSignals />
@@ -83,7 +88,7 @@ export default function Dashboard() {
   );
 }
 
-function LiveState({ state }: { state: PaperState }) {
+function LiveState({ state, conditions }: { state: PaperState; conditions: PaperConditions | null }) {
   const change = state.current_equity_usd - state.start_equity_usd;
   const changePct = (change / state.start_equity_usd) * 100;
   const isUp = change >= 0;
@@ -97,9 +102,9 @@ function LiveState({ state }: { state: PaperState }) {
           ? `${lastSig.toFixed(1)}h назад`
           : `${(lastSig / 24).toFixed(1)}d назад`;
 
-  // Determine active side from state (if available via conditions endpoint)
-  const activeSide = (state as any).active_side || "P";
-  const ret7d = (state as any).ret_7d;
+  // Active side from conditions endpoint (where it actually lives)
+  const activeSide = conditions?.active_side || "P";
+  const ret7d = conditions?.ret_7d;
 
   return (
     <section className="glass-panel p-6 grid grid-cols-2 md:grid-cols-4 gap-4">

@@ -105,7 +105,7 @@ def compute_ret_7d(k5: list, idx: int) -> float:
 def determine_side(ret_7d: float) -> str:
     """Determine which side to trade based on 7d return.
 
-    Returns 'P', 'C', or None (no trade).
+    Returns 'P' for Put or 'C' for Call — there is always an active side.
     """
     if abs(ret_7d) < RET_THRESHOLD:
         return "P"  # range → sell Put
