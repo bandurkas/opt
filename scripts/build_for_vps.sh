@@ -1,42 +1,41 @@
 #!/bin/bash
-# Build docker images for linux/amd64 (VPS compatible) and save as tar files.
-# Run from project root: /Users/sabar/Desktop/options
-# Usage: bash scripts/build_for_vps.sh
+# Build ONLY backend image for linux/amd64 (VPS compatible) and save as tar.
+# IMPORTANT: frontend is NOT built here — next build under QEMU emulation
+# on Apple Silicon crashes with SIGSEGV. Frontend is built natively on VPS
+# during deploy (see deploy_on_vps.sh).
+#
+# Run from project root: bash scripts/build_for_vps.sh
 
 set -e
 
 cd "$(dirname "$0")/.."
 
-echo "=== VPS Docker Image Builder ==="
-echo "Building for: linux/amd64 (x86_64)"
+echo "=== VPS Backend Image Builder ==="
+echo "Building backend for: linux/amd64 (x86_64)"
 echo "Project dir: $(pwd)"
 echo ""
 
-# 1. Clean old images
+# 1. Clean old artifacts
 echo "[1/4] Cleaning old build artifacts..."
-rm -rf frontend/.next
 rm -rf docker_images
 mkdir -p docker_images
 
-# 2. Build images
-echo "[2/4] Building docker images..."
-docker compose build --platform linux/amd64
-
-# 3. Save images
+# 2. Build backend only with buildx for cross-platform
+echo "[2/4] Building backend docker image for linux/amd64..."
+echo "  (frontend will be built natively on VPS)"
 echo ""
-echo "[3/4] Saving images to tar files..."
-echo "This may take a few minutes..."
 
-docker save opt-app-backend:latest     -o docker_images/backend.tar     2>/dev/null || \
-  docker save "$(docker images --format '{{.Repository}}:{{.Tag}}' | grep opt-app-backend | head -1)" \
-    -o docker_images/backend.tar
+DOCKER_DEFAULT_PLATFORM=linux/amd64 docker compose build backend
 
-docker save opt-app-frontend:latest    -o docker_images/frontend.tar    2>/dev/null || \
-  docker save "$(docker images --format '{{.Repository}}:{{.Tag}}' | grep opt-app-frontend | head -1)" \
-    -o docker_images/frontend.tar
+# 3. Save backend image
+echo ""
+echo "[3/4] Saving backend image to tar..."
+docker save "$(docker images --format '{{.Repository}}:{{.Tag}}' | grep opt-app-backend | head -1)" \
+  -o docker_images/backend.tar
 
-docker save postgres:15-alpine         -o docker_images/postgres.tar
-docker save redis:alpine               -o docker_images/redis.tar
+# Also save base images (already arm64, but VPS needs them)
+# These are small and commonly available, so we skip saving them
+# to save transfer time. They'll be pulled on VPS if missing.
 
 # 4. Show sizes
 echo ""
@@ -45,18 +44,16 @@ ls -lh docker_images/
 
 TOTAL=$(du -sh docker_images/ | cut -f1)
 echo ""
-echo "Total: ${TOTAL}"
+echo "Backend image: ${TOTAL}"
 echo ""
 echo "=== DONE ==="
 echo ""
 echo "Transfer to VPS:"
-echo "  scp docker_images/*.tar root@187.127.114.34:/root/opt-app/docker_images/"
+echo "  scp docker_images/backend.tar root@187.127.114.34:/root/opt-app/docker_images/"
 echo ""
 echo "On VPS:"
 echo "  ssh root@187.127.114.34"
 echo "  cd /root/opt-app"
 echo "  git pull origin main"
-echo "  docker load -i docker_images/backend.tar"
-echo "  docker load -i docker_images/frontend.tar"
-echo "  docker compose down"
+echo "  docker compose build frontend    # builds natively on x86_64"
 echo "  docker compose up -d"

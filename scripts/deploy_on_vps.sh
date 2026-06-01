@@ -9,51 +9,45 @@ cd /root/opt-app
 echo "=== VPS Deployer ==="
 echo ""
 
-# 0. Cleanup old containers and images
-echo "[0/6] Cleaning up old docker artifacts..."
+# 1. Load backend image
+echo ""
+echo "[1/7] Loading backend docker image..."
+docker load -i docker_images/backend.tar
+
+# 2. Pull latest code
+echo ""
+echo "[2/7] Pulling latest code..."
+git pull origin main
+
+# 3. Build frontend natively on x86_64 (avoid qemu SIGSEGV)
+echo ""
+echo "[3/7] Building frontend image natively on VPS..."
+docker compose build frontend
+
+# 4. Stop old containers and cleanup
+echo ""
+echo "[4/7] Cleaning up old docker artifacts..."
 echo "  Stopping all containers..."
 docker compose down --remove-orphans 2>/dev/null || true
 
-echo "  Removing all stopped containers..."
-docker container prune -f --filter "until=168h" 2>/dev/null || true
-
-echo "  Removing all old images..."
-docker image prune -af 2>/dev/null || true
+echo "  Removing old images..."
+docker image prune -af --filter "until=168h" 2>/dev/null || true
 
 echo "  Removing dangling volumes..."
 docker volume prune -f 2>/dev/null || true
 
-echo "  Listing remaining images..."
-docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}"
-
-echo "  Disk usage before cleanup:"
-df -h / | tail -1
-
-# 1. Load images
+# 5. Start new containers
 echo ""
-echo "[1/6] Loading docker images..."
-docker load -i docker_images/backend.tar
-docker load -i docker_images/frontend.tar
-docker load -i docker_images/postgres.tar
-docker load -i docker_images/redis.tar
+echo "[5/7] Starting new containers..."
+docker compose up -d
 
-# 2. Pull latest code
+# 6. Wait for startup and verify
 echo ""
-echo "[2/6] Pulling latest code..."
-git pull origin main
-
-# 3. Start new containers
-echo ""
-echo "[3/6] Starting new containers..."
-
-# 4. Wait for startup
-echo ""
-echo "[4/6] Waiting for services to start..."
+echo "[6/7] Waiting for services to start..."
 sleep 5
 
-# 5. Verify
 echo ""
-echo "[5/6] Verifying..."
+echo "[7/7] Verifying..."
 echo ""
 echo "=== Container Status ==="
 docker compose ps
@@ -73,9 +67,9 @@ echo ""
 curl -s http://localhost:8000/api/v1/paper/conditions | python3 -m json.tool 2>/dev/null || curl -s http://localhost:8000/api/v1/paper/conditions
 echo ""
 
-# 6. Final disk check
+# Final disk check
 echo ""
-echo "[6/6] Final disk usage:"
+echo "=== Disk usage ==="
 df -h / | tail -1
 docker system df
 

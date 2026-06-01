@@ -30,16 +30,15 @@ export default function Dashboard() {
 
   useEffect(() => {
     let cancelled = false;
-    const load = async () => {
+    // State + positions poll every 15s
+    const loadState = async () => {
       try {
-        const [s, c, op] = await Promise.all([
+        const [s, op] = await Promise.all([
           fetchPaperState(),
-          fetchPaperConditions(),
           fetchPaperPositions("open"),
         ]);
         if (cancelled) return;
         setState(s);
-        setConditions(c);
         setOpen(op.positions);
         setLastUpdate(new Date());
         setError(null);
@@ -48,11 +47,24 @@ export default function Dashboard() {
         setError(e instanceof Error ? e.message : String(e));
       }
     };
-    load();
-    const id = setInterval(load, REFRESH_MS);
+    // Conditions poll every 60s — heavy endpoint (2100 5m bars + indicators)
+    const loadConditions = async () => {
+      try {
+        const c = await fetchPaperConditions();
+        if (cancelled) return;
+        setConditions(c);
+      } catch {
+        // Non-critical — badge will show default
+      }
+    };
+    loadState();
+    loadConditions();
+    const id1 = setInterval(loadState, REFRESH_MS);
+    const id2 = setInterval(loadConditions, 60_000);
     return () => {
       cancelled = true;
-      clearInterval(id);
+      clearInterval(id1);
+      clearInterval(id2);
     };
   }, []);
 
