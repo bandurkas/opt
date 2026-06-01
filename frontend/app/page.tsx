@@ -129,8 +129,8 @@ function LiveState({ state, conditions }: { state: PaperState; conditions: Paper
           </span>
         }
         sub={
-          ret7d !== undefined
-            ? `7d ret: ${ret7d > 0 ? "+" : ""}${ret7d?.toFixed?.(2) ?? ret7d}%`
+          ret7d != null
+            ? `7d ret: ${ret7d > 0 ? "+" : ""}${ret7d.toFixed(2)}%`
             : ""
         }
       />
