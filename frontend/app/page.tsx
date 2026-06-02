@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { fetchPaperState, fetchPaperConditions, fetchPaperPositions, fetchRecentTrades, fetchEquityHistory, type PaperState, type PaperConditions, type PaperPosition, type EquityPoint } from "./lib/api";
+import { MissedSignals } from "./components/MissedSignals";
 
 const REFRESH_MS = 15_000;
 
@@ -255,6 +256,9 @@ export default function Dashboard() {
             <p className="text-xs text-slate-500 mt-1">Waiting for first signal...</p>
           </div>
         )}
+
+        {/* 30-day strategy simulation */}
+        <MissedSignals />
       </div>
     </main>
   );

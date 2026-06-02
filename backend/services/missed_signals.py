@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 
 from db.repository import recent_klines
 from services.backtest import simulate_signal_set
+from services.hybrid_backtest_v2 import generate_hybrid_v2
 from services.paper_strategy import (
     DEFAULT_SIGMA,
     EXPIRY_TARGET_HOURS,
@@ -27,8 +28,13 @@ from services.paper_strategy import (
     margin_per_lot,
     realistic_size_lots,
 )
-from services.strategy_config import active_exit, active_gen_kwargs
-from services.strategy_registry import gen_sell_premium_iv_high
+from services.strategy_config import (
+    CALL_EXIT,
+    CALL_GEN_KWARGS,
+    PUT_EXIT,
+    PUT_GEN_KWARGS,
+    RET_7D_THRESHOLD,
+)
 
 STRIKE_GRID = 25.0
 SPREAD_PCT_TOTAL = SPREAD_HALF_PCT * 2.0  # round-trip, fed to simulate_signal_set
@@ -69,24 +75,39 @@ def compute_missed_signals(lookback_days: int = 14, force_refresh: bool = False)
     now_ms = int(time.time() * 1000)
     cutoff_ms = now_ms - lookback_days * 86_400_000
 
-    gen_kw = active_gen_kwargs()
-    exit_kw = active_exit()
-    raw_signals = gen_sell_premium_iv_high(k5, k15, k1h, **gen_kw)
+    # V2 hybrid signals: side picked per-bar by ret_7d + MTF filter.
+    raw_signals = generate_hybrid_v2(
+        k5, k15, k1h,
+        put_gen=PUT_GEN_KWARGS, call_gen=CALL_GEN_KWARGS,
+        ret_7d_threshold=RET_7D_THRESHOLD,
+    )
     raw_signals = [s for s in raw_signals if s["ts_ms"] >= cutoff_ms]
     raw_signals.sort(key=lambda s: s["ts_ms"])
 
     if not raw_signals:
         return _empty_report(lookback_days, now_ms)
 
-    sims = simulate_signal_set(
-        raw_signals, k5,
-        sigma=DEFAULT_SIGMA, expiry_hours=EXPIRY_TARGET_HOURS,
-        tp1_pct=exit_kw["tp1_pct"],
-        tp2_pct=exit_kw["tp2_pct"],
-        sl_pct=exit_kw["sl_pct"],
-        option_horizon_h=exit_kw["hold_h"],
-        spread_pct=SPREAD_PCT_TOTAL,
-    )
+    # Simulate Put and Call signals separately (each side has its own TP/SL/hold).
+    put_sigs = [s for s in raw_signals if s["side"] == "P"]
+    call_sigs = [s for s in raw_signals if s["side"] == "C"]
+    sims = []
+    if put_sigs:
+        sims.extend(simulate_signal_set(
+            put_sigs, k5,
+            sigma=DEFAULT_SIGMA, expiry_hours=EXPIRY_TARGET_HOURS,
+            tp1_pct=PUT_EXIT["tp1_pct"], tp2_pct=PUT_EXIT["tp2_pct"],
+            sl_pct=PUT_EXIT["sl_pct"], option_horizon_h=PUT_EXIT["hold_h"],
+            spread_pct=SPREAD_PCT_TOTAL,
+        ))
+    if call_sigs:
+        sims.extend(simulate_signal_set(
+            call_sigs, k5,
+            sigma=DEFAULT_SIGMA, expiry_hours=EXPIRY_TARGET_HOURS,
+            tp1_pct=CALL_EXIT["tp1_pct"], tp2_pct=CALL_EXIT["tp2_pct"],
+            sl_pct=CALL_EXIT["sl_pct"], option_horizon_h=CALL_EXIT["hold_h"],
+            spread_pct=SPREAD_PCT_TOTAL,
+        ))
+    sims.sort(key=lambda s: s["ts_ms"])
 
     # Replay paper's full state machine: CB + dynsize + margin budget + 1-position discipline
     equity = float(START_EQUITY_USD)
@@ -171,7 +192,8 @@ def compute_missed_signals(lookback_days: int = 14, force_refresh: bool = False)
             consec_losses = 0
 
         bars_held = int(opt.get("bars_held") or 0)
-        held_ms = min(bars_held * 5 * 60 * 1000, exit_kw["hold_h"] * 3_600_000)
+        side_hold_h = PUT_EXIT["hold_h"] if sim["side"] == "P" else CALL_EXIT["hold_h"]
+        held_ms = min(bars_held * 5 * 60 * 1000, side_hold_h * 3_600_000)
         active_positions.append({"exit_ms": ts + held_ms, "margin_locked": margin_locked})
 
         equity_before = equity
