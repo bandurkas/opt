@@ -31,8 +31,7 @@ from db.repository import recent_klines  # noqa: E402
 from services import backtest_bs as bs  # noqa: E402
 from services.bybit_client import bybit_client  # noqa: E402
 from services.strategy_config import (  # noqa: E402
-    CALL_RET_MIN,
-    PUT_RET_MAX,
+    RET_7D_THRESHOLD,
     get_side_gen_kwargs,
 )
 from services.paper_strategy import (  # noqa: E402
@@ -44,6 +43,7 @@ from services.paper_strategy import (  # noqa: E402
     LOT_MIN_ETH,
     MAX_PORTFOLIO_MARGIN_PCT,
     START_EQUITY_USD,
+    allowed_sides,
     apply_entry_spread,
     apply_exit_spread,
     compute_ret_7d,
@@ -148,50 +148,42 @@ def exit_for_side(side: str) -> dict:
 # ───────────────────── signal logic ─────────────────────────────────
 
 def check_new_signal(k5, k15, k1h) -> dict | None:
-    """Run the hybrid V3 generator with asymmetric thresholds (Config B).
+    """Run V2 trend-following hybrid generator (validated 2026-06-02 on 365d).
 
-    Logic:
-      1. Compute 7d return → determine active side (P, C, or None=dead zone)
-      2. If dead zone → skip (no trade)
-      3. Get side-specific gen kwargs
-      4. Run gen_sell_premium_iv_high
-      5. Check if last bar emitted a signal
+    Logic per tick:
+      1. Compute 7d return
+      2. allowed_sides(ret_7d):
+           ret > +0.5%  → ["P"] only
+           ret < -0.5%  → ["C"] only
+           |ret| < 0.5% → ["P", "C"] (range — try both)
+      3. For each allowed side, run gen_sell_premium_iv_high with side-specific
+         filters (MTF=up for Put, MTF=down for Call, etc.). First side to fire
+         at the current bar wins.
 
-    IMPORTANT: cooldown is always max(PUT_CD, CALL_CD) = 6 to match the
-    validated backtest.
+    Cooldown is taken from each side's PUT/CALL_GEN_KWARGS["cooldown_bars"] = 6.
     """
     if not k5 or len(k5) < BARS_7D + 1:
         return None
 
     idx = len(k5) - 1
     ret_7d = compute_ret_7d(k5, idx)
-    active_side = determine_side(ret_7d)
+    sides = allowed_sides(ret_7d)
+    last_idx = idx
 
-    if active_side is None:
-        return None  # dead zone — don't trade
+    for side in sides:
+        gen_kw = get_side_gen_kwargs(side)
+        sigs = gen_sell_premium_iv_high(k5, k15, k1h, **gen_kw)
+        latest = [s for s in sigs if s.get("idx_5m") in (last_idx - 1, last_idx)]
+        if not latest:
+            continue
+        sig = latest[-1]
+        if sig.get("side") != side:
+            continue
+        sig["active_side"] = side
+        sig["ret_7d"] = round(ret_7d, 2)
+        return sig
 
-    # Get gen kwargs for the active side, but OVERRIDE cooldown to be consistent
-    gen_kw = get_side_gen_kwargs(active_side)
-    gen_kw["cooldown_bars"] = max(
-        gen_kw.get("cooldown_bars", 4),
-        6,  # Call's cd — ensures same spacing as validated backtest
-    )
-
-    last_idx = len(k5) - 1
-    sigs = gen_sell_premium_iv_high(k5, k15, k1h, **gen_kw)
-    # Accept signals at the just-closed bar OR the live edge
-    latest = [s for s in sigs if s.get("idx_5m") in (last_idx - 1, last_idx)]
-    if not latest:
-        return None
-
-    sig = latest[-1]
-    # Verify the signal side matches the active side (safety check)
-    if sig.get("side") != active_side:
-        return None
-
-    sig["active_side"] = active_side
-    sig["ret_7d"] = round(ret_7d, 2)
-    return sig
+    return None
 
 
 # ───────────────────── equity computation ──────────────────────────
@@ -441,7 +433,8 @@ async def loop():
     apply_schema()
     state = paper_repo.ensure_state(START_EQUITY_USD)
     print(f"[paper] schema ready, start_equity=${state['start_equity_usd']}, "
-          f"poll={POLL_INTERVAL_S}s, Config B asym Put<{PUT_RET_MAX}% Call>{CALL_RET_MIN}%", flush=True)
+          f"poll={POLL_INTERVAL_S}s, V2 trend-following: "
+          f"ret>+{RET_7D_THRESHOLD}%→Put, ret<-{RET_7D_THRESHOLD}%→Call, range→both", flush=True)
 
     last_signal_check_ms = 0
 

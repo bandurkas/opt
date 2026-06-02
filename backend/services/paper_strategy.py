@@ -1,13 +1,11 @@
-"""Live paper-trading strategy wrapper around the V3 hybrid strategy.
+"""Live paper-trading strategy wrapper for V2 trend-following hybrid.
 
-V3 Hybrid (validated 2026-06-01):
-  7d-return guided switching between Put/Call sides:
-    • |7d_ret| < 2% → sell Put (range regime, premium decay)
-    • 7d_ret > +2% → sell Call (uptrend — Put is dangerous)
-    • 7d_ret < -2% → sell Put (downtrend — Put profits)
-  Circuit breaker: 5 consecutive losses → 48h pause
+V2 hybrid (validated 2026-06-02 on 365d):
+  ret_7d > +0.5%  → sell Put  (uptrend — Put premium decays)
+  ret_7d < -0.5%  → sell Call (downtrend — Call premium decays)
+  |ret_7d| < 0.5% → range — try both, MTF picks the side
 
-Previous: Put-only (cd=4, h=96) — available via PAPER_VARIANT=alt.
+Circuit breaker: 5 consecutive losses → 48h pause.
 """
 from __future__ import annotations
 
@@ -19,12 +17,11 @@ from services.strategy_config import (
     CB_PAUSE_HOURS,
     CALL_GEN_KWARGS,
     CALL_EXIT,
-    CALL_RET_MIN,
     DEFAULT_SIGMA,
     EXPIRY_TARGET_HOURS,
     PUT_GEN_KWARGS,
     PUT_EXIT,
-    PUT_RET_MAX,
+    RET_7D_THRESHOLD,
     SPREAD_HALF_PCT,
 )
 
@@ -103,27 +100,40 @@ def compute_ret_7d(k5: list, idx: int) -> float:
     return (k5[idx]["close"] - prev_close) / prev_close * 100
 
 
-def determine_side(ret_7d: float) -> str | None:
-    """Determine which side to trade based on asymmetric 7d return thresholds.
+def allowed_sides(ret_7d: float) -> list[str]:
+    """V2 trend-following: return list of sides allowed at this 7d return.
 
-    Returns 'P', 'C', or None (dead zone — don't trade).
-
-    Config B (validated 2026-06-01):
-      ret < -2.5% → Put  (strong downtrend)
-      ret > +1.0% → Call (uptrend)
-      -2.5%..+1.0% → None (dead zone, slow bleed)
+    ret_7d > +0.5%  → ["P"] (uptrend → only Put)
+    ret_7d < -0.5%  → ["C"] (downtrend → only Call)
+    |ret_7d| < 0.5% → ["P", "C"] (range — try both, MTF picks)
     """
-    if ret_7d < PUT_RET_MAX:
-        return "P"
-    elif ret_7d > CALL_RET_MIN:
-        return "C"
-    return None
+    if ret_7d > RET_7D_THRESHOLD:
+        return ["P"]
+    elif ret_7d < -RET_7D_THRESHOLD:
+        return ["C"]
+    return ["P", "C"]
+
+
+def determine_side(ret_7d: float) -> str | None:
+    """Back-compat single-side picker for UI / conditions endpoint.
+
+    Returns the first allowed side, or None only if both are allowed (range).
+    The actual signal logic in paper_loop iterates allowed_sides() and lets
+    the per-side gen filter (MTF, regime, vol) decide which one fires.
+    """
+    sides = allowed_sides(ret_7d)
+    if len(sides) == 1:
+        return sides[0]
+    return None  # range zone — UI should display "both / MTF picks"
 
 
 def evaluate_conditions(k5: list, k15: list, k1h: list) -> dict:
-    """Check each entry condition for the V3 hybrid strategy.
+    """Check each entry condition for V2 trend-following hybrid.
 
-    Returns a dict with per-condition booleans + summary + which side is active.
+    Returns a dict with per-condition booleans + summary + which side(s) active.
+    For UI: when in range zone, both sides allowed and MTF picks; we report
+    the MTF-preferred side as `active_side` so the frontend can show one
+    coherent answer.
     """
     from .indicators import ema, realized_vol
     from .momentum_mtf import analyze_tf, consensus
@@ -131,8 +141,8 @@ def evaluate_conditions(k5: list, k15: list, k1h: list) -> dict:
 
     out = {
         "ready": False,
-        "active_side": None,    # 'P', 'C', or None (dead zone)
-        "dead_zone": False,
+        "active_side": None,    # 'P', 'C', or None
+        "dead_zone": False,     # always False under V2 (range allows both)
         "ret_7d": None,
         "vol_high": False,
         "regime_ok": False,
@@ -153,26 +163,40 @@ def evaluate_conditions(k5: list, k15: list, k1h: list) -> dict:
     idx = len(k5) - 1
     out["spot"] = k5[idx]["close"]
 
-    # 7d return → determine active side (or dead zone)
+    # 7d return → which sides are allowed under V2 trend-following
     ret_7d = compute_ret_7d(k5, idx)
     out["ret_7d"] = round(ret_7d, 2)
-    active_side = determine_side(ret_7d)
-    out["active_side"] = active_side
+    sides = allowed_sides(ret_7d)
 
-    if active_side is None:
-        out["dead_zone"] = True
-        return out  # no trade zone — conditions irrelevant
-
-    # Select gen kwargs for the active side
-    gen_kw = PUT_GEN_KWARGS if active_side == "P" else CALL_GEN_KWARGS
-
-    # Use the same HIST=240 window as the generator
+    # MTF (computed once, reused)
     HIST = 240
     s5 = k5[-HIST:] if len(k5) > HIST else k5
     s15 = k15[-HIST:] if len(k15) > HIST else k15
     s1h = k1h[-HIST:] if len(k1h) > HIST else k1h
+    mtf = consensus(analyze_tf(s5), analyze_tf(s15), analyze_tf(s1h))
+    out["mtf_direction"] = mtf["direction"]
+    out["mtf_aligned_count"] = mtf["tfs_aligned"]
 
-    # 1) Vol percentile
+    # When both sides allowed (range), pick the MTF-preferred side for display.
+    if len(sides) == 1:
+        active_side = sides[0]
+    else:
+        if mtf["direction"] == "up" and mtf["tfs_aligned"] >= 2:
+            active_side = "P"
+        elif mtf["direction"] == "down" and mtf["tfs_aligned"] >= 2:
+            active_side = "C"
+        else:
+            active_side = None  # range + neutral MTF → won't fire
+    out["active_side"] = active_side
+
+    if active_side is None:
+        # range zone with no MTF alignment — bot won't trade this bar
+        return out
+
+    # Select gen kwargs for the (display) active side
+    gen_kw = PUT_GEN_KWARGS if active_side == "P" else CALL_GEN_KWARGS
+
+    # 1) Vol percentile (1h realized vol vs rolling history)
     closes_1h = [c["close"] for c in s1h]
     rolling_vols: list[float] = []
     for j in range(20, len(closes_1h)):
@@ -194,10 +218,7 @@ def evaluate_conditions(k5: list, k15: list, k1h: list) -> dict:
     out["regime"] = reg.get("regime", "unknown")
     out["regime_ok"] = out["regime"] in gen_kw["regime_filter"]
 
-    # 3) MTF direction
-    mtf = consensus(analyze_tf(s5), analyze_tf(s15), analyze_tf(s1h))
-    out["mtf_direction"] = mtf["direction"]
-    out["mtf_aligned_count"] = mtf["tfs_aligned"]
+    # 3) MTF direction filter (vs side-specific requirement)
     mtf_filter = gen_kw.get("mtf_direction_filter")
     if mtf_filter == "up":
         out["mtf_direction_ok"] = (mtf["direction"] == "up" and mtf["tfs_aligned"] >= 2)

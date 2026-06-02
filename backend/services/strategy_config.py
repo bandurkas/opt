@@ -2,31 +2,41 @@
 
 Kept dependency-free so ``local_backtest.py`` can import without psycopg2.
 
-V3 Hybrid (validated 2026-06-01):
-  7d-return guided switching between Put/Call sides:
-    • |7d_ret| < 2% → sell Put (range regime, premium decay)
-    • 7d_ret > +2% → sell Call (uptrend — Put is dangerous)
-    • 7d_ret < -2% → sell Put (downtrend — Put profits)
-  Circuit breaker: 5 consecutive losses → 48h pause
-  Holdout-90d: n=125, avg +11.97%, WR 69.6%, cl=10
-  Sensitivity: 15/15 cells (σ=0.40-0.80, spread=1-4%) positive
+V2 trend-following hybrid (validated 2026-06-02 on 365d):
+  ret_7d > +0.5%  → sell Put  (uptrend — Put premium decays)
+  ret_7d < -0.5%  → sell Call (downtrend — Call premium decays)
+  |ret_7d| < 0.5% → range — try both, MTF picks the side
 
-Previous: cd=4/h=96 (Put-only) — kept as PAPER_VARIANT=alt.
+  365d stats vs alternatives:
+    Pure Put:   n=779 avg +17.81% WR 72% — but 4 losing months incl. -65/-80/-50
+    Pure Call:  n=837 avg +3.71%  WR 57% — 6 losing months
+    V2 hybrid:  n=936 avg +7.09%  WR 60% — only 2 losing months (Sep -42, Nov -3)
+    May 2026 (current down regime): Pure Put -50.6%, V2 hybrid +10.6%
+
+Previous configurations:
+  - Config B (2026-06-01 mean-reversion, ret<-2.5→P, ret>+1.0→C): deadlocked
+    in May 2026 (ret=-5.1% → wanted Put but MTF=down rejected it). 0 trades/24h.
+  - cd=4/h=96 Put-only (54-cell sweep winner): broke in May with -68%/trade.
+
+Circuit breaker: 5 consecutive losses → 48h pause.
 """
 from __future__ import annotations
 
 import copy
 import os
 
-# ── V3 Hybrid: 7d-return switching + per-side exits ──
-# Config B (validated 2026-06-01): asymmetric thresholds with dead zone.
-#   ret < -2.5%  → sell Put  (strong downtrend — Put profits)
-#   ret > +1.0%  → sell Call (uptrend — Call profits, Put is dangerous)
-#   -2.5%..+1.0% → dead zone (don't trade — slow bleed kills both sides)
+# ── V2 trend-following hybrid (validated 2026-06-02) ──
+# Per-bar logic:
+#   ret_7d > +RET_7D_THRESHOLD → only Put allowed
+#   ret_7d < -RET_7D_THRESHOLD → only Call allowed
+#   |ret_7d| < RET_7D_THRESHOLD → both sides allowed, MTF filter picks
 
-PUT_RET_MAX = -2.5   # sell Put only when 7d ret < -2.5%
-CALL_RET_MIN = 1.0   # sell Call only when 7d ret > +1.0%
-# Dead zone: -2.5% ≤ ret ≤ +1.0% → no trade
+RET_7D_THRESHOLD = 0.5    # V2 hybrid: 0.5% boundary (best from {0.5,1,1.5,2,3} sweep)
+
+# Legacy Config B constants kept for back-compat with research/* scripts.
+# NOT used by paper_loop or live trading.
+PUT_RET_MAX = -2.5   # legacy Config B (mean-reversion): "Put when ret < -2.5%"
+CALL_RET_MIN = 1.0   # legacy Config B (mean-reversion): "Call when ret > +1.0%"
 
 PUT_GEN_KWARGS = {
     "vol_threshold": 0.50,

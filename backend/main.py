@@ -250,21 +250,19 @@ def paper_positions_endpoint(
 @app.get("/api/v1/paper/conditions")
 def paper_conditions():
     """Live check: does the current 5m bar satisfy all entry conditions?
-    Returns per-condition booleans + the current thresholds so the UI never
-    drifts from the actual strategy config.
 
-    V3 Hybrid: includes active_side (P/C) and 7d return.
+    V2 trend-following hybrid: includes active_side (P / C / None for range+neutral)
+    and 7d return. Frontend reads `ret_threshold_put` / `ret_threshold_call` as
+    the symmetric V2 boundaries (e.g. ±0.5%).
     """
     from services.paper_strategy import evaluate_conditions
     from services.strategy_config import (
         CALL_GEN_KWARGS,
         PUT_GEN_KWARGS,
-        PUT_RET_MAX as RET_THRESHOLD_PUT,
-        CALL_RET_MIN as RET_THRESHOLD_CALL,
+        RET_7D_THRESHOLD,
     )
 
     symbol = "ETHUSDT"
-    # Need >= 2016 bars for 7d return computation (BARS_7D = 2016)
     k5 = recent_klines(symbol, "5m", limit=2100)
     k15 = recent_klines(symbol, "15m", limit=220)
     k1h = recent_klines(symbol, "1h", limit=270)
@@ -272,31 +270,24 @@ def paper_conditions():
     cond["checked_at_ms"] = int(time.time() * 1000)
     cond["bars_available"] = {"5m": len(k5), "15m": len(k15), "1h": len(k1h)}
 
-    # V3 Hybrid: show both sides' configs + active side + dead zone
     active_side = cond.get("active_side")
-    dead_zone = cond.get("dead_zone", False)
-    if dead_zone:
-        cond["thresholds"] = {
-            "ret_threshold_put": RET_THRESHOLD_PUT,
-            "ret_threshold_call": RET_THRESHOLD_CALL,
-            "ret_7d": cond.get("ret_7d"),
-            "active_side": None,
-            "dead_zone": True,
-        }
-    else:
-        side_gen = CALL_GEN_KWARGS if active_side == "C" else PUT_GEN_KWARGS
-        cond["thresholds"] = {
-            "ret_threshold_put": RET_THRESHOLD_PUT,
-            "ret_threshold_call": RET_THRESHOLD_CALL,
-            "ret_7d": cond.get("ret_7d"),
-            "active_side": active_side,
-            "dead_zone": False,
-            "vol_threshold": side_gen["vol_threshold"],
-            "regime_filter": list(side_gen["regime_filter"] or []),
-            "mtf_direction_filter": side_gen["mtf_direction_filter"],
-            "mtf_min_aligned": 2,
-            "bull_market_ratio_max": side_gen["bull_market_ratio_max"],
-        }
+    # V2 thresholds: Put when ret > +T, Call when ret < -T. UI fields kept
+    # for backward compat with frontend (ret_threshold_put / _call).
+    side_gen = CALL_GEN_KWARGS if active_side == "C" else PUT_GEN_KWARGS
+    cond["thresholds"] = {
+        # NOTE: under V2 the names are inverted relative to Config B —
+        # ret_threshold_put is the MIN ret to allow Put (positive boundary).
+        "ret_threshold_put": +RET_7D_THRESHOLD,
+        "ret_threshold_call": -RET_7D_THRESHOLD,
+        "ret_7d": cond.get("ret_7d"),
+        "active_side": active_side,
+        "dead_zone": False,  # V2: no dead zone — range allows both
+        "vol_threshold": side_gen["vol_threshold"],
+        "regime_filter": list(side_gen["regime_filter"] or []),
+        "mtf_direction_filter": side_gen["mtf_direction_filter"],
+        "mtf_min_aligned": 2,
+        "bull_market_ratio_max": side_gen["bull_market_ratio_max"],
+    }
     return cond
 
 
