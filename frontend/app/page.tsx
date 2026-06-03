@@ -27,6 +27,9 @@ const fmtDay = (ms: number) => {
   const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   return `${days[d.getDay()]} ${d.getDate()}`;
 };
+// Traffic-light dot: red = not met, yellow = met but waiting on others, green = met & all ready.
+const condDotColor = (met: boolean, ready: boolean) =>
+  !met ? "bg-rose-500" : ready ? "bg-emerald-500" : "bg-amber-400";
 
 export default function Dashboard() {
   const [state, setState] = useState<PaperState | null>(null);
@@ -96,6 +99,23 @@ export default function Dashboard() {
   const last24h = recentTrades.filter(t => t.closed_at_ms && (Date.now() - t.closed_at_ms) < 86400000);
   const last24hPnl = last24h.reduce((sum, t) => sum + (t.pnl_usd || 0), 0);
 
+  // Entry-condition checklist (traffic-light dots)
+  const ready = conditions?.ready ?? false;
+  const entryConds = conditions ? [
+    { label: "Сторона выбрана", met: conditions.active_side !== null,
+      value: conditions.active_side === "P" ? "Put" : conditions.active_side === "C" ? "Call" : "нет (флэт)" },
+    { label: "Волатильность", met: conditions.vol_high,
+      value: conditions.vol_pctile != null ? `${(conditions.vol_pctile * 100).toFixed(0)}%-ile` : "—" },
+    { label: "Режим (ADX)", met: conditions.regime_ok,
+      value: conditions.regime ?? "—" },
+    { label: "MTF тренд", met: conditions.mtf_direction_ok,
+      value: `${conditions.mtf_direction ?? "—"} ${conditions.mtf_aligned_count ?? 0}/3` },
+    ...(conditions.active_side === "P" ? [{
+      label: "Bull-фильтр", met: conditions.bull_filter_ok,
+      value: conditions.ema_ratio != null ? conditions.ema_ratio.toFixed(3) : "—",
+    }] : []),
+  ] : [];
+
   return (
     <main className="min-h-screen bg-slate-950 text-white">
       {/* Header */}
@@ -156,6 +176,35 @@ export default function Dashboard() {
             </div>
           )}
         </div>
+
+        {/* Entry conditions — traffic-light dots */}
+        {conditions && (
+          <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+            <div className="px-4 py-2 bg-slate-800/50 text-xs font-semibold text-slate-400 flex justify-between items-center">
+              <span>Условия входа</span>
+              <span className={`flex items-center gap-1.5 ${ready ? "text-emerald-400" : "text-slate-500"}`}>
+                <span className={`inline-block w-2 h-2 rounded-full ${ready ? "bg-emerald-500" : "bg-amber-400"}`} />
+                {ready ? "вход в сделку" : "ожидание"}
+              </span>
+            </div>
+            <div className="divide-y divide-slate-800">
+              {entryConds.map((c) => (
+                <div key={c.label} className="px-4 py-2.5 flex items-center justify-between text-sm">
+                  <div className="flex items-center gap-2.5">
+                    <span className={`inline-block w-2.5 h-2.5 rounded-full ${condDotColor(c.met, ready)}`} />
+                    <span className="text-slate-300">{c.label}</span>
+                  </div>
+                  <span className="font-mono text-xs text-slate-500">{c.value}</span>
+                </div>
+              ))}
+            </div>
+            <div className="px-4 py-2 flex flex-wrap gap-3 text-[10px] text-slate-500 border-t border-slate-800">
+              <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-rose-500" />не выполнено</span>
+              <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-amber-400" />ждём остальные</span>
+              <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />вход</span>
+            </div>
+          </div>
+        )}
 
         {/* Stats Row */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
