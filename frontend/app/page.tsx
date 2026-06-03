@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { fetchPaperState, fetchPaperConditions, fetchPaperPositions, fetchRecentTrades, fetchEquityHistory, type PaperState, type PaperConditions, type PaperPosition, type EquityPoint } from "./lib/api";
-import { MissedSignals } from "./components/MissedSignals";
 
 const REFRESH_MS = 15_000;
 
@@ -104,7 +103,7 @@ export default function Dashboard() {
         <div className="max-w-5xl mx-auto flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold">ETH Options</h1>
-            <p className="text-xs text-slate-500">Config B · 7d switching · Paper $400</p>
+            <p className="text-xs text-slate-500">V2 hybrid · 7d switching · Paper $400</p>
           </div>
           <div className="text-right">
             <p className="text-xs text-slate-500">{lastUpdate?.toLocaleTimeString("ru-RU")}</p>
@@ -212,11 +211,11 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Recent Trades (last 14 days) */}
+        {/* Trade Journal — real executed trades, grows over time */}
         {recentTrades.length > 0 && (
           <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
             <div className="px-4 py-2 bg-slate-800/50 text-xs font-semibold text-slate-400 flex justify-between">
-              <span>Recent Trades (14 days)</span>
+              <span>Журнал сделок</span>
               <span>{recentTrades.length} total</span>
             </div>
             <div className="divide-y divide-slate-800 max-h-80 overflow-y-auto">
@@ -256,9 +255,6 @@ export default function Dashboard() {
             <p className="text-xs text-slate-500 mt-1">Waiting for first signal...</p>
           </div>
         )}
-
-        {/* 30-day strategy simulation */}
-        <MissedSignals />
       </div>
     </main>
   );

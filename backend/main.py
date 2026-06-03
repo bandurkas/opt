@@ -12,7 +12,6 @@ from db.repository import (
     recent_klines,
     recent_signals,
 )
-from services.missed_signals import compute_missed_signals
 from services.paper_strategy import START_EQUITY_USD
 from services.signal_freshness import compute_freshness
 from services.analysis import (
@@ -316,13 +315,6 @@ def paper_audit(hours: int = Query(24, ge=1, le=168)):
         "reject_reasons": by_reason,
         "entries": rows,
     }
-
-
-@app.get("/api/v1/paper/missed-signals")
-def paper_missed_signals(lookback_days: int = Query(14, ge=1, le=60)):
-    """Return the trades paper_loop SHOULD have opened but missed due to the
-    pre-2026-05-28 bug. Used by the UI to show 'what the bug cost us'."""
-    return compute_missed_signals(lookback_days=lookback_days)
 
 
 @app.get("/api/v1/paper/equity_history")
