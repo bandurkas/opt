@@ -48,6 +48,7 @@ from services.paper_strategy import (  # noqa: E402
     apply_exit_spread,
     compute_ret_7d,
     determine_side,
+    evaluate_conditions,
     fee_per_side,
     is_cb_active,
     margin_per_lot,
@@ -60,6 +61,10 @@ from services import telegram_notify  # noqa: E402
 
 POLL_INTERVAL_S = int(os.getenv("PAPER_POLL_INTERVAL", "30"))
 SIGNAL_CHECK_EVERY_MIN = 5
+# Entry conditions are re-evaluated every minute; the open command is committed
+# near the 5m candle close (~:50 of the window's last minute) only if conditions
+# held on EVERY per-minute check inside the window (persistence / debounce).
+ENTRY_FIRE_SECOND = int(os.getenv("PAPER_ENTRY_FIRE_SECOND", "50"))
 SPOT_SYMBOL = "ETHUSDT"
 BASE_COIN = "ETH"
 STRIKE_GRID = 25.0   # Bybit ETH options use $25/$50 grid; use $25 for safety
@@ -421,12 +426,16 @@ def _do_close(p: dict, premium_mid: float, reason: str, now_ms: int) -> bool:
 
 # ───────────────────── main loop ───────────────────────────────────
 
-def is_signal_check_time(last_check_ms: int) -> bool:
-    """Trigger every 5 min, around the top of a 5m candle close."""
-    now = datetime.now(timezone.utc)
-    if (now.minute % SIGNAL_CHECK_EVERY_MIN) != 0:
-        return False
-    return (int(time.time() * 1000) - last_check_ms) >= 4 * 60 * 1000
+def window_id(epoch_min: int) -> int:
+    """5m-window id: floor(minute / 5). minute % 5 gives position 0..4 in window."""
+    return epoch_min // SIGNAL_CHECK_EVERY_MIN
+
+
+def conditions_ready(k5, k15, k1h) -> tuple[bool, dict]:
+    """Live entry readiness — same booleans the dashboard 'Условия входа' dots show."""
+    ev = evaluate_conditions(k5, k15, k1h)
+    ready = bool(ev.get("ready")) and ev.get("active_side") is not None
+    return ready, ev
 
 
 async def loop():
@@ -436,7 +445,11 @@ async def loop():
           f"poll={POLL_INTERVAL_S}s, V2 trend-following: "
           f"ret>+{RET_7D_THRESHOLD}%→Put, ret<-{RET_7D_THRESHOLD}%→Call, range→both", flush=True)
 
-    last_signal_check_ms = 0
+    # Per-window persistence state for the debounced entry:
+    cur_window_id = -1
+    window_disqualified = False   # any per-minute check in this window failed → no entry
+    window_fired = False          # already opened (or attempted) in this window
+    last_minute_eval = -1         # epoch-minute of the last per-minute condition eval
 
     while True:
         try:
@@ -466,10 +479,44 @@ async def loop():
             for p in open_pos_now:
                 check_and_close_position(p, spot, chain_dict)
 
-            # 2) Signal check — every 5 min
-            if is_signal_check_time(last_signal_check_ms):
-                last_signal_check_ms = int(time.time() * 1000)
-                now_ms = last_signal_check_ms
+            # 2) Entry conditions — evaluate every minute, debounce across the 5m
+            #    window, commit the open near the candle close (~:50 of last minute).
+            now = datetime.now(timezone.utc)
+            epoch_min = int(time.time() // 60)
+            wid = window_id(epoch_min)
+            min_in_window = epoch_min % SIGNAL_CHECK_EVERY_MIN  # 0..4
+
+            if wid != cur_window_id:
+                cur_window_id = wid
+                window_disqualified = False
+                window_fired = False
+                last_minute_eval = -1
+
+            # 2a) Per-minute condition check (once per distinct minute). A single
+            #     failed check disqualifies the whole window (persistence rule).
+            if epoch_min != last_minute_eval:
+                last_minute_eval = epoch_min
+                k5_m, k15_m, k1h_m = load_klines_for_generator()
+                if len(k5_m) >= BARS_7D + 50:
+                    minute_ready, ev_m = conditions_ready(k5_m, k15_m, k1h_m)
+                else:
+                    minute_ready, ev_m = False, {}
+                if not minute_ready:
+                    window_disqualified = True
+                print(f"[paper] cond w{wid} m{min_in_window}: ready={minute_ready} "
+                      f"side={ev_m.get('active_side')} regime={ev_m.get('regime')} "
+                      f"mtf={ev_m.get('mtf_direction')}/{ev_m.get('mtf_aligned_count')} "
+                      f"vol={ev_m.get('vol_high')} disq={window_disqualified}", flush=True)
+
+            # 2b) Fire the open near the candle close, once per window, only if every
+            #     per-minute check in this window passed.
+            fire_now = (min_in_window == SIGNAL_CHECK_EVERY_MIN - 1
+                        and now.second >= ENTRY_FIRE_SECOND
+                        and not window_fired
+                        and not window_disqualified)
+            if fire_now:
+                window_fired = True
+                now_ms = int(time.time() * 1000)
 
                 # Compute ret_7d and active side for audit
                 k5_audit, k15_audit, k1h_audit = load_klines_for_generator()
@@ -547,7 +594,14 @@ async def loop():
         except Exception as e:  # noqa: BLE001
             print(f"[paper] error: {e!r}", flush=True)
 
-        await asyncio.sleep(POLL_INTERVAL_S)
+        # Adaptive sleep: in the window's last minute, wake right at the fire
+        # instant (~:50) so we don't overshoot it with the coarse poll interval.
+        sleep_s = POLL_INTERVAL_S
+        _now = datetime.now(timezone.utc)
+        if (int(time.time() // 60) % SIGNAL_CHECK_EVERY_MIN == SIGNAL_CHECK_EVERY_MIN - 1
+                and _now.second < ENTRY_FIRE_SECOND):
+            sleep_s = min(sleep_s, ENTRY_FIRE_SECOND - _now.second)
+        await asyncio.sleep(max(1, sleep_s))
 
 
 if __name__ == "__main__":
