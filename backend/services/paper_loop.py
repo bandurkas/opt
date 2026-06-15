@@ -33,6 +33,7 @@ from services import backtest_bs as bs  # noqa: E402
 from services import broker  # noqa: E402  (live order routing; inert in paper mode)
 from services import execution_config as cfg  # noqa: E402  (live mode/caps; safe defaults)
 from services import live_safety  # noqa: E402  (live pre-open gates; inert in paper mode)
+from services import reconcile  # noqa: E402  (live exchange↔DB sync; inert in paper mode)
 from services.bybit_client import bybit_client  # noqa: E402
 from services.strategy_config import (  # noqa: E402
     RET_7D_THRESHOLD,
@@ -516,6 +517,8 @@ def _live_preopen_block(now_ms: int) -> str | None:
     never calls this."""
     if cfg.killswitch_engaged():
         return "killswitch"
+    if reconcile.is_blocked():
+        return "unreconciled"
     day_start = live_safety.utc_day_start_ms(now_ms)
     realized_today = paper_repo.realized_pnl_since(day_start)
     if live_safety.daily_loss_limit_hit(realized_today):
@@ -542,6 +545,14 @@ async def loop():
           f"poll={POLL_INTERVAL_S}s, V2 trend-following: "
           f"ret>+{RET_7D_THRESHOLD}%→Put, ret<-{RET_7D_THRESHOLD}%→Call, range→both", flush=True)
 
+    # P5: live reconcile on startup (and a live-start banner). Inert in paper.
+    last_reconcile_ms = 0
+    if broker.is_live():
+        telegram_notify.notify_trader_start(
+            mode=cfg.TRADING_MODE, armed=True, wallet_usdt=broker.wallet_equity_usdt())
+        reconcile.reconcile_once()
+        last_reconcile_ms = int(time.time() * 1000)
+
     # Per-window persistence state for the debounced entry:
     cur_window_id = -1
     window_disqualified = False   # any per-minute check in this window failed → no entry
@@ -557,6 +568,13 @@ async def loop():
                 continue
 
             state = paper_repo.get_state() or state
+
+            # P5: periodic live reconcile (exchange wins; blocks opens on drift). Inert in paper.
+            if broker.is_live():
+                tick_ms = int(time.time() * 1000)
+                if tick_ms - last_reconcile_ms >= cfg.RECONCILE_EVERY_MIN * 60_000:
+                    reconcile.reconcile_once()
+                    last_reconcile_ms = tick_ms
 
             # Fetch option chain ONCE per tick
             open_pos_now = paper_repo.open_positions()

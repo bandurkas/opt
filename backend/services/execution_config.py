@@ -83,6 +83,9 @@ LIMIT_POLL_S = _i("LIMIT_POLL_S", 2)
 MAX_SPREAD_PCT = _f("MAX_SPREAD_PCT", 15.0)
 # Alert (do not block) if the realized fill is worse than expected mid by this %.
 MAX_SLIPPAGE_PCT = _f("MAX_SLIPPAGE_PCT", 25.0)
+# How often (minutes) to reconcile exchange positions vs the DB. Also runs once
+# at startup. New opens are blocked while a reconcile is unresolved.
+RECONCILE_EVERY_MIN = _i("RECONCILE_EVERY_MIN", 5)
 
 
 # ───────────────────────── Derived helpers ─────────────────────────

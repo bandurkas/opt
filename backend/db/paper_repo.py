@@ -137,6 +137,7 @@ def close_position(position_id: int, *, closed_at_ms: int,
         "tp2": "closed_tp2",
         "sl": "closed_sl",
         "time_stop": "closed_time",
+        "reconciled": "closed_reconciled",  # closed on the exchange (e.g. manual), healed by P5
     }
     conn = get_conn()
     try:
