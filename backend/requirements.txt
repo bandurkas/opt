@@ -1,6 +1,6 @@
 fastapi
 uvicorn[standard]
-pybit
+pybit==5.16.0
 websockets
 redis
 celery

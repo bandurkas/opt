@@ -90,6 +90,57 @@ def notify_skipped_margin(*, spot: float, strike: float, need_usd: float,
     notify(text, silent=True)
 
 
+def notify_fill(*, action: str, symbol: str, qty: float, avg_price: float,
+                fees: float, status: str, ref_mid: float) -> None:
+    """Real order filled (testnet/live)."""
+    slip = ((avg_price - ref_mid) / ref_mid * 100) if ref_mid else 0.0
+    text = (
+        f"📡 <b>FILL</b> · {action} <code>{symbol}</code>\n"
+        f"  qty {qty:.2f} ETH @ <b>${avg_price:.2f}</b> ({status})\n"
+        f"  ref mid ${ref_mid:.2f} · slip {slip:+.1f}% · fee ${fees:.3f}"
+    )
+    notify(text)
+
+
+def notify_order_error(*, action: str, symbol: str, detail: str) -> None:
+    text = (
+        f"🛑 <b>ORDER ERROR</b> · {action} <code>{symbol}</code>\n"
+        f"  {detail}\n  (signal skipped — no position assumed)"
+    )
+    notify(text)
+
+
+def notify_reconcile_mismatch(*, detail: str) -> None:
+    text = f"🔄 <b>RECONCILE</b>\n  {detail}"
+    notify(text)
+
+
+def notify_killswitch(*, reason: str) -> None:
+    text = f"🚫 <b>KILL-SWITCH</b> — trading halted\n  {reason}"
+    notify(text)
+
+
+def notify_cap_breach(*, cap: str, detail: str) -> None:
+    text = f"⛔️ <b>CAP</b> {cap} — open blocked\n  {detail}"
+    notify(text, silent=True)
+
+
+def notify_slippage(*, symbol: str, expected: float, got: float, pct: float) -> None:
+    text = (
+        f"⚠️ <b>SLIPPAGE</b> <code>{symbol}</code>\n"
+        f"  expected ${expected:.2f} · got ${got:.2f} ({pct:+.1f}%)"
+    )
+    notify(text)
+
+
+def notify_trader_start(*, mode: str, armed: bool, wallet_usdt: float | None) -> None:
+    text = (
+        f"🤖 <b>TRADER START</b> · mode=<b>{mode}</b> armed={armed}\n"
+        f"  USDT wallet: {wallet_usdt if wallet_usdt is not None else '?'}"
+    )
+    notify(text)
+
+
 def notify_cb_triggered(*, equity_after: float) -> None:
     from services.strategy_config import CB_CONSEC_LIMIT, CB_PAUSE_HOURS
     text = (
