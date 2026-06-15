@@ -320,6 +320,26 @@ def latest_equity() -> dict | None:
         put_conn(conn)
 
 
+def realized_pnl_since(ts_ms: int) -> float:
+    """Signed sum of realized pnl_usd for positions closed at/after ts_ms.
+
+    Used by the live daily-loss-limit gate (P4). Negative = net loss. The regex
+    `~ '^closed'` has no literal % so no psycopg2 escaping needed despite the param.
+    """
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT COALESCE(SUM(pnl_usd), 0) FROM paper_positions "
+                "WHERE status ~ '^closed' AND closed_at_ms >= %s",
+                (ts_ms,),
+            )
+            row = cur.fetchone()
+            return float(row[0]) if row and row[0] is not None else 0.0
+    finally:
+        put_conn(conn)
+
+
 # ───────────────────────── Signal Audit ─────────────────────────
 
 def insert_signal_audit(*, ts_ms: int, ret_7d: float,

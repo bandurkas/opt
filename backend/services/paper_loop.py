@@ -31,6 +31,8 @@ from db.engine import apply_schema  # noqa: E402
 from db.repository import recent_klines  # noqa: E402
 from services import backtest_bs as bs  # noqa: E402
 from services import broker  # noqa: E402  (live order routing; inert in paper mode)
+from services import execution_config as cfg  # noqa: E402  (live mode/caps; safe defaults)
+from services import live_safety  # noqa: E402  (live pre-open gates; inert in paper mode)
 from services.bybit_client import bybit_client  # noqa: E402
 from services.strategy_config import (  # noqa: E402
     RET_7D_THRESHOLD,
@@ -291,12 +293,22 @@ def open_paper_position(signal: dict, spot: float, equity_usd: float, free_margi
         if entry_source != "bybit":
             print("[paper] LIVE open skip — no real Bybit instrument (BS fallback)", flush=True)
             return None
+        # P4 liquidity guard: skip illiquid options (wide bid/ask) before ordering.
+        if pick and not live_safety.spread_ok(float(pick.get("bid") or 0), float(pick.get("ask") or 0)):
+            sp = live_safety.spread_pct(float(pick.get("bid") or 0), float(pick.get("ask") or 0))
+            print(f"[paper] LIVE open skip — spread {sp}% > {cfg.MAX_SPREAD_PCT}% (illiquid)", flush=True)
+            return None
         fill = broker.live_open(symbol, strike, premium_mid)
         if fill is None:
             telegram_notify.notify_skipped_margin(
                 spot=spot, strike=strike,
                 need_usd=margin_per_lot(strike, premium_mid), have_usd=equity_usd)
             return None
+        # P4 post-fill slippage alert (informational — does not block).
+        if live_safety.slippage_alarming(premium_mid, fill.avg_price, "sell"):
+            telegram_notify.notify_slippage(
+                symbol=symbol, expected=premium_mid, got=fill.avg_price,
+                pct=live_safety.slippage_pct(premium_mid, fill.avg_price, "sell"))
         n_lots = fill.n_lots
         contracts = fill.qty_eth
         entry_fee = fill.fee
@@ -498,6 +510,19 @@ def _report_loop_error(where: str) -> None:
         pass  # telemetry must never break the loop
 
 
+def _live_preopen_block(now_ms: int) -> str | None:
+    """P4 live-only gate: return a reject-reason if a real open must be blocked
+    right now (kill-switch / daily realized-loss limit), else None. Paper mode
+    never calls this."""
+    if cfg.killswitch_engaged():
+        return "killswitch"
+    day_start = live_safety.utc_day_start_ms(now_ms)
+    realized_today = paper_repo.realized_pnl_since(day_start)
+    if live_safety.daily_loss_limit_hit(realized_today):
+        return "daily_loss_limit"
+    return None
+
+
 def window_id(epoch_min: int) -> int:
     """5m-window id: floor(minute / 5). minute % 5 gives position 0..4 in window."""
     return epoch_min // SIGNAL_CHECK_EVERY_MIN
@@ -624,6 +649,17 @@ async def loop():
                         signal_payload=None)
                 else:
                     sig = check_new_signal(k5_audit, k15_audit, k1h_audit)
+                    if sig and broker.is_live():
+                        # P4: block live opens on kill-switch / daily-loss limit.
+                        blocked = _live_preopen_block(now_ms)
+                        if blocked:
+                            print(f"[paper] LIVE skip signal — {blocked}", flush=True)
+                            telegram_notify.notify(f"⛔ Live open blocked: {blocked}")
+                            paper_repo.insert_signal_audit(
+                                ts_ms=now_ms, ret_7d=ret_7d_val, active_side=sig.get("active_side"),
+                                dead_zone=False, signal_generated=True, accepted=False,
+                                reject_reason=blocked, spot=spot_val, signal_payload=sig)
+                            sig = None
                     if sig:
                         eq = compute_equity(state, spot, chain_dict)
                         locked_margin = sum(float(p["size_usd"]) for p in open_pos_now)
