@@ -150,7 +150,7 @@ def close_position(position_id: int, *, closed_at_ms: int,
                   pnl_pct = %s,
                   pnl_usd = %s,
                   exit_reason = %s
-                WHERE id = %s AND status NOT LIKE 'closed_%'
+                WHERE id = %s AND status NOT LIKE 'closed_%%'
                 """,
                 (
                     status_map.get(exit_reason, "closed_time"),
