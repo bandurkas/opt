@@ -30,6 +30,7 @@ from db import paper_repo  # noqa: E402
 from db.engine import apply_schema  # noqa: E402
 from db.repository import recent_klines  # noqa: E402
 from services import backtest_bs as bs  # noqa: E402
+from services import broker  # noqa: E402  (live order routing; inert in paper mode)
 from services.bybit_client import bybit_client  # noqa: E402
 from services.strategy_config import (  # noqa: E402
     RET_7D_THRESHOLD,
@@ -204,6 +205,19 @@ def compute_equity(state: dict, spot: float, atm_chain_quotes: dict[str, dict] |
     stats = paper_repo.position_stats()
     realized = float(stats["realized_usd"])
 
+    if broker.is_live():
+        # Live equity is the real wallet balance (Bybit already marks open
+        # positions into it). Fall back to the DB model only if the read fails.
+        wallet = broker.wallet_equity_usdt()
+        if wallet is not None:
+            return {
+                "equity": wallet,
+                "realized": realized,
+                "unrealized": wallet - start_equity - realized,
+                "n_open": stats["n_open"],
+                "n_closed": stats["n_closed"],
+            }
+
     open_pos = paper_repo.open_positions()
     unrealized = 0.0
     for p in open_pos:
@@ -270,26 +284,48 @@ def open_paper_position(signal: dict, spot: float, equity_usd: float, free_margi
         entry_source = "bs_fallback"
         symbol = f"ETH-?-{int(strike)}-{active_side}"
 
-    n_lots = realistic_size_lots(free_margin_usd, equity_usd, strike, premium_mid, state)
-    if n_lots < 1:
-        m_per_lot = margin_per_lot(strike, premium_mid)
-        print(f"[paper] open skipped — insufficient margin "
-              f"(need ${m_per_lot:.2f}/lot, have ${equity_usd:.2f} equity)", flush=True)
-        telegram_notify.notify_skipped_margin(
-            spot=spot, strike=strike, need_usd=m_per_lot, have_usd=equity_usd,
-        )
-        return None
+    # ── sizing + entry pricing: LIVE (real fills) vs PAPER (simulated) ──
+    if broker.is_live():
+        # Real money: only trade a real Bybit instrument (never the BS fallback),
+        # size off the real wallet, and persist the REAL fill — never assume one.
+        if entry_source != "bybit":
+            print("[paper] LIVE open skip — no real Bybit instrument (BS fallback)", flush=True)
+            return None
+        fill = broker.live_open(symbol, strike, premium_mid)
+        if fill is None:
+            telegram_notify.notify_skipped_margin(
+                spot=spot, strike=strike,
+                need_usd=margin_per_lot(strike, premium_mid), have_usd=equity_usd)
+            return None
+        n_lots = fill.n_lots
+        contracts = fill.qty_eth
+        entry_fee = fill.fee
+        premium_received_total = fill.avg_price * contracts
+        entry_credit_per_contract_net = fill.avg_price - (entry_fee / max(contracts, 1e-9))
+        margin_locked = margin_per_lot(strike, premium_mid) * n_lots  # est; exchange authoritative
+        entry_credit_pct = entry_credit_per_contract_net / spot * 100 if spot > 0 else 0
+        entry_source = "bybit_live"
+    else:
+        n_lots = realistic_size_lots(free_margin_usd, equity_usd, strike, premium_mid, state)
+        if n_lots < 1:
+            m_per_lot = margin_per_lot(strike, premium_mid)
+            print(f"[paper] open skipped — insufficient margin "
+                  f"(need ${m_per_lot:.2f}/lot, have ${equity_usd:.2f} equity)", flush=True)
+            telegram_notify.notify_skipped_margin(
+                spot=spot, strike=strike, need_usd=m_per_lot, have_usd=equity_usd,
+            )
+            return None
 
-    contracts = n_lots * LOT_MIN_ETH
-    notional = strike * contracts
+        contracts = n_lots * LOT_MIN_ETH
+        notional = strike * contracts
 
-    entry_credit_per_contract_gross = apply_entry_spread(premium_mid)
-    premium_received_total = entry_credit_per_contract_gross * contracts
-    entry_fee = fee_per_side(notional, premium_received_total)
-    entry_credit_per_contract_net = entry_credit_per_contract_gross - (entry_fee / max(contracts, 1e-9))
+        entry_credit_per_contract_gross = apply_entry_spread(premium_mid)
+        premium_received_total = entry_credit_per_contract_gross * contracts
+        entry_fee = fee_per_side(notional, premium_received_total)
+        entry_credit_per_contract_net = entry_credit_per_contract_gross - (entry_fee / max(contracts, 1e-9))
 
-    margin_locked = margin_per_lot(strike, premium_mid) * n_lots
-    entry_credit_pct = entry_credit_per_contract_net / spot * 100
+        margin_locked = margin_per_lot(strike, premium_mid) * n_lots
+        entry_credit_pct = entry_credit_per_contract_net / spot * 100
 
     pid = paper_repo.open_position(
         opened_at_ms=int(time.time() * 1000),
@@ -388,10 +424,24 @@ def _do_close(p: dict, premium_mid: float, reason: str, now_ms: int) -> bool:
     contracts = float(p["contracts"])
     notional = float(p["strike"]) * contracts
 
-    exit_debit_gross = apply_exit_spread(premium_mid)
-    premium_paid_total = exit_debit_gross * contracts
-    exit_fee = fee_per_side(notional, premium_paid_total)
-    exit_debit_net = exit_debit_gross + (exit_fee / max(contracts, 1e-9))
+    if broker.is_live():
+        # Real money: buy-to-close on the exchange. If it does NOT confirm filled,
+        # return False and leave the position open so the DB never claims a close
+        # the exchange didn't make (reconciler P5 is the backstop for divergence).
+        symbol = (p.get("signal_payload") or {}).get("symbol")
+        if not symbol:
+            print(f"[paper] LIVE close abort #{p['id']} — no symbol on position", flush=True)
+            return False
+        fill = broker.live_close(symbol, contracts, premium_mid)
+        if fill is None:
+            return False
+        exit_fee = fill.fee
+        exit_debit_net = fill.avg_price + (exit_fee / max(contracts, 1e-9))
+    else:
+        exit_debit_gross = apply_exit_spread(premium_mid)
+        premium_paid_total = exit_debit_gross * contracts
+        exit_fee = fee_per_side(notional, premium_paid_total)
+        exit_debit_net = exit_debit_gross + (exit_fee / max(contracts, 1e-9))
 
     pnl_per_contract = entry_credit - exit_debit_net
     pnl_usd = pnl_per_contract * contracts
