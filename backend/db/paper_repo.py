@@ -141,6 +141,10 @@ def close_position(position_id: int, *, closed_at_ms: int,
     conn = get_conn()
     try:
         with conn.cursor() as cur:
+            # ⚠️ psycopg2 gotcha: this execute() PASSES a params tuple, so EVERY
+            # literal '%' in the SQL must be doubled ('%%') or psycopg2 reads it
+            # as a placeholder and raises IndexError. Hence 'closed_%%' below.
+            # (Paramless queries elsewhere keep a single '%' — see position_stats.)
             cur.execute(
                 """
                 UPDATE paper_positions SET

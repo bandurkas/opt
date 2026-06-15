@@ -21,6 +21,7 @@ import asyncio
 import os
 import sys
 import time
+import traceback
 from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -426,6 +427,27 @@ def _do_close(p: dict, premium_mid: float, reason: str, now_ms: int) -> bool:
 
 # ───────────────────── main loop ───────────────────────────────────
 
+# Throttled error alerting: a loop error should surface to the user fast (the
+# close_position bug ran silently for 3 days). Telegram at most once per window.
+_err_state = {"count": 0, "last_alert_ms": 0}
+_ERR_ALERT_THROTTLE_MS = 30 * 60 * 1000  # 30 min between error alerts
+
+
+def _report_loop_error(where: str) -> None:
+    """Count loop errors; Telegram-alert (throttled) so silent failures surface."""
+    _err_state["count"] += 1
+    now_ms = int(time.time() * 1000)
+    if now_ms - _err_state["last_alert_ms"] < _ERR_ALERT_THROTTLE_MS:
+        return
+    _err_state["last_alert_ms"] = now_ms
+    try:
+        telegram_notify.notify(
+            f"⚠️ paper-loop error (#{_err_state['count']} since start): {where}. "
+            f"Бот может не торговать — проверь логи.", silent=False)
+    except Exception:  # noqa: BLE001
+        pass  # telemetry must never break the loop
+
+
 def window_id(epoch_min: int) -> int:
     """5m-window id: floor(minute / 5). minute % 5 gives position 0..4 in window."""
     return epoch_min // SIGNAL_CHECK_EVERY_MIN
@@ -475,9 +497,16 @@ async def loop():
                 except Exception as e:  # noqa: BLE001
                     print(f"[paper] WARN: chain fetch failed: {e!r}", flush=True)
 
-            # 1) Position monitoring — every iteration
+            # 1) Position monitoring — every iteration. Each position is isolated:
+            #    a failure on one (e.g. a bad close) must NOT abort monitoring of
+            #    the others, the equity snapshot, or signal evaluation below.
             for p in open_pos_now:
-                check_and_close_position(p, spot, chain_dict)
+                try:
+                    check_and_close_position(p, spot, chain_dict)
+                except Exception:  # noqa: BLE001
+                    print(f"[paper] ERROR closing #{p.get('id')}:\n{traceback.format_exc()}",
+                          flush=True)
+                    _report_loop_error(f"close #{p.get('id')}")
 
             # 2) Entry conditions — evaluate every minute, debounce across the 5m
             #    window, commit the open near the candle close (~:50 of last minute).
@@ -592,7 +621,11 @@ async def loop():
             )
 
         except Exception as e:  # noqa: BLE001
-            print(f"[paper] error: {e!r}", flush=True)
+            # Log the FULL traceback — `repr(e)` alone once hid a fatal
+            # close_position bug for 3 days (see git 52f9dc6). A bare message
+            # tells you nothing about WHERE the failure is.
+            print(f"[paper] error: {e!r}\n{traceback.format_exc()}", flush=True)
+            _report_loop_error(repr(e))
 
         # Adaptive sleep: in the window's last minute, wake right at the fire
         # instant (~:50) so we don't overshoot it with the coarse poll interval.
