@@ -77,5 +77,35 @@ services:
     profiles:
       - bot
 
+  # Live real-money trader. Same image as `paper`, but a SEPARATE database
+  # (options_trader) so live data never mixes with the paper shadow, and
+  # TRADING_MODE=live. Does NOT auto-start — launch explicitly:
+  #     docker compose --profile trader up -d trader
+  # Even then it is ARMED-OFF (LIVE_ENABLED=false) → no real orders until you set
+  # LIVE_ENABLED=true in .env. File kill-switch: `touch /data/STOP_TRADING` (or
+  # `docker exec opt-app-trader-1 touch /data/STOP_TRADING`). The `paper` service
+  # keeps running unchanged as a shadow.
+  trader:
+    build:
+      context: ./backend
+    command: sh -c "python db/bootstrap.py && python services/paper_loop.py"
+    depends_on:
+      - postgres
+      - poller
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://user:password@postgres:5432/options_trader
+      - PAPER_POLL_INTERVAL=${PAPER_POLL_INTERVAL:-30}
+      - TRADING_MODE=live
+      - LIVE_ENABLED=${LIVE_ENABLED:-false}
+      - LIVE_KILLSWITCH_FILE=/data/STOP_TRADING
+    volumes:
+      - trader_data:/data
+    restart: unless-stopped
+    profiles:
+      - trader
+
 volumes:
   postgres_data:
+  trader_data:
