@@ -174,8 +174,10 @@ def gen_sell_premium_iv_high(k5, k15, k1h, *, vol_lookback_h: int = 168, vol_thr
                               side: str = "P",
                               adx_max: float | None = None,
                               mtf_direction_filter: str | None = None,
+                              mtf_min_aligned: int = 2,
                               bull_market_ratio_max: float | None = None,
-                              cooldown_bars: int = 24) -> list[dict]:
+                              cooldown_bars: int = 24,
+                              adx_score_min: float | None = None) -> list[dict]:
     """When realized vol is in TOP (1-vol_threshold) of recent week AND we're in
     non-trend regime, sell ATM option(s). Returns short_premium signals.
 
@@ -212,38 +214,56 @@ def gen_sell_premium_iv_high(k5, k15, k1h, *, vol_lookback_h: int = 168, vol_thr
         threshold = sorted_vols[int(len(sorted_vols) * vol_threshold)]
         if current_vol < threshold:
             continue
+        
+        # Calculate these ahead of time for attaching to signal
+        from services.adx_score import compute_adx_score
+        score_data = compute_adx_score(s1h)
+        
+        mtf = None
+        if len(s5) >= 50 and len(s15) >= 50 and len(s1h) >= 50:
+            mtf = consensus(analyze_tf(s5), analyze_tf(s15), analyze_tf(s1h))
 
         reg = detect_regime(s1h)
-        if regime_filter and reg.get("regime", "unknown") not in regime_filter:
-            continue
-        if adx_max is not None and (reg.get("adx") or 999) > adx_max:
-            continue
+        if adx_score_min is not None:
+            if score_data["score"] < adx_score_min:
+                continue
+        else:
+            if regime_filter and reg.get("regime", "unknown") not in regime_filter:
+                continue
+            if adx_max is not None and (reg.get("adx") or 999) > adx_max:
+                continue
 
         if mtf_direction_filter is not None:
-            if len(s5) < 50 or len(s15) < 50 or len(s1h) < 50:
-                continue
-            mtf = consensus(analyze_tf(s5), analyze_tf(s15), analyze_tf(s1h))
-            if mtf["direction"] != mtf_direction_filter or mtf["tfs_aligned"] < 2:
+            if not mtf or mtf["direction"] != mtf_direction_filter or mtf["tfs_aligned"] < mtf_min_aligned:
                 continue
 
         # Bull-market kill switch: when EMA50_1h / EMA200_1h > threshold, skip
         # (Designed to disable C-side selling in strong uptrends where calls get crushed.)
-        if bull_market_ratio_max is not None:
-            closes_1h = [c["close"] for c in s1h]
-            if len(closes_1h) < 200:
-                continue
-            ema50 = ema(closes_1h, 50)
-            ema200 = ema(closes_1h, 200)
-            if ema50 is None or ema200 is None or ema200 == 0:
-                continue
-            ratio = ema50 / ema200
-            if ratio > bull_market_ratio_max:
-                continue
+        bull_ratio = None
+        if bull_market_ratio_max is not None or True: # always calculate for extra
+            closes_1h_all = [c["close"] for c in s1h]
+            if len(closes_1h_all) >= 200:
+                ema50 = ema(closes_1h_all, 50)
+                ema200 = ema(closes_1h_all, 200)
+                if ema50 is not None and ema200 is not None and ema200 > 0:
+                    bull_ratio = ema50 / ema200
+                    if bull_market_ratio_max is not None and bull_ratio > bull_market_ratio_max:
+                        continue
 
         sides = ["P", "C"] if side == "both" else [side]
         sig_type = "sell_premium_strangle" if side == "both" else "sell_premium_high_vol"
         for s in sides:
-            out.append(_emit(i, ts, close, s, sig_type, 6.5, position="short_premium"))
+            extra = {
+                "position": "short_premium",
+                "vol_current": current_vol,
+                "vol_sorted": sorted_vols,
+                "adx_score": score_data["score"],
+                "mtf_direction": mtf["direction"] if mtf else None,
+                "mtf_aligned": mtf["tfs_aligned"] if mtf else 0,
+                "bull_ratio": bull_ratio,
+                "regime": reg.get("regime")
+            }
+            out.append(_emit(i, ts, close, s, sig_type, 6.5, **extra))
         last_idx = i
     return out
 

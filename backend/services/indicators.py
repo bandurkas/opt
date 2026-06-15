@@ -169,3 +169,62 @@ def realized_vol_at_idx_1h(closes_1h: Sequence[float], idx_1h: int,
         return None
     window = closes_1h[idx_1h - lookback_h:idx_1h + 1]
     return realized_vol(window, lookback=lookback_h)
+
+
+def adx_full(candles: list[dict], period: int = 14) -> dict | None:
+    """Returns {adx, plus_di, minus_di, adx_history} or None."""
+    if len(candles) < 2 * period + 2:
+        return None
+    plus_dm: list[float] = []
+    minus_dm: list[float] = []
+    trs: list[float] = []
+    for i in range(1, len(candles)):
+        h, low = candles[i]["high"], candles[i]["low"]
+        ph, pl, pc = candles[i - 1]["high"], candles[i - 1]["low"], candles[i - 1]["close"]
+        up = h - ph
+        dn = pl - low
+        plus_dm.append(up if up > dn and up > 0 else 0.0)
+        minus_dm.append(dn if dn > up and dn > 0 else 0.0)
+        trs.append(max(h - low, abs(h - pc), abs(low - pc)))
+
+    atr_v = sum(trs[:period])
+    plus_v = sum(plus_dm[:period])
+    minus_v = sum(minus_dm[:period])
+    dxs: list[float] = []
+    plus_dis: list[float] = []
+    minus_dis: list[float] = []
+    
+    for i in range(period, len(trs)):
+        atr_v = atr_v - atr_v / period + trs[i]
+        plus_v = plus_v - plus_v / period + plus_dm[i]
+        minus_v = minus_v - minus_v / period + minus_dm[i]
+        if atr_v == 0:
+            plus_dis.append(0.0)
+            minus_dis.append(0.0)
+            dxs.append(0.0)
+            continue
+        plus_di = 100 * plus_v / atr_v
+        minus_di = 100 * minus_v / atr_v
+        plus_dis.append(plus_di)
+        minus_dis.append(minus_di)
+        if plus_di + minus_di == 0:
+            dx = 0.0
+        else:
+            dx = 100 * abs(plus_di - minus_di) / (plus_di + minus_di)
+        dxs.append(dx)
+        
+    if len(dxs) < period:
+        return None
+        
+    a = sum(dxs[:period]) / period
+    adx_history = [a]
+    for dx in dxs[period:]:
+        a = (a * (period - 1) + dx) / period
+        adx_history.append(a)
+        
+    return {
+        "adx": a,
+        "plus_di": plus_dis[-1],
+        "minus_di": minus_dis[-1],
+        "adx_history": adx_history
+    }
