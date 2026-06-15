@@ -66,6 +66,12 @@ LIVE_MIN_WALLET_USDT = _f("LIVE_MIN_WALLET_USDT", 50.0)
 LIVE_DAILY_LOSS_LIMIT_USDT = _f("LIVE_DAILY_LOSS_LIMIT_USDT", 100.0)
 # Fraction of available margin the bot may use (buffer vs liquidation). 0.5 = 50%.
 LIVE_MARGIN_UTILIZATION = _f("LIVE_MARGIN_UTILIZATION", 0.5)
+# Estimated initial-margin rate for shorting an ETH option, as a fraction of
+# strike notional. Bybit's real option IM formula is more complex; this is a
+# conservative APPROXIMATION used only to pre-size the order. The exchange is the
+# final authority — if it still rejects for margin, the broker layer reduces lots
+# and retries (reduce-on-reject). Matches the paper model's IM_RATE for parity.
+LIVE_IM_RATE_EST = _f("LIVE_IM_RATE_EST", 0.10)
 
 
 # ───────────────────────── Order execution ─────────────────────────
