@@ -6,6 +6,37 @@ Goal: take the proven paper strategy (`backend/services/paper_loop.py`) to **rea
 
 ---
 
+## Update 2026-06-16 — P2–P6 BUILT (inert, in repo, NOT deployed)
+
+All remaining infra is implemented and unit-tested, every live path gated on
+`broker.is_live()` (= `trading_armed()` = mode≠paper AND `LIVE_ENABLED` AND no
+kill-switch) — **paper behaviour is byte-identical** until armed. 42 backend tests pass.
+
+| Phase | Commit | What |
+|---|---|---|
+| **P2** | `1e3f61a` | `live_sizing.py` — margin-bound sizing off real USDT × util ÷ per-lot IM, caps, reduce-on-reject (11 tests) |
+| **P3** | `76e4d5b` | `broker.py` — open/close routed to `execution.py`, real fills, wallet equity; wired into paper_loop open/close/equity (8 tests) |
+| **P4** | `13a4780` | `live_safety.py` — kill-switch / daily-loss-limit / spread guard / slippage alert; `paper_repo.realized_pnl_since` (8 tests) |
+| **P5** | `b7c1412` | `reconcile.py` — startup+periodic exchange↔DB heal, blocks opens on drift; `closed_reconciled` status (9 tests) |
+| **P6** | `f296e6c` | separate `options_trader` DB (`db/bootstrap.py`) + `trader` compose service under `profiles:[trader]`, armed-OFF |
+
+**⚠️ Deploy landmine (important).** The running `paper` container is patched via
+`docker cp` over an image that **predates Phase 0**. A `docker compose up -d` /
+recreate would revert it to the old image (re-introducing the close_position bug +
+losing all hardening). Before any recreate, **rebuild the image** (`docker compose
+build paper backend`). P2–P6 are committed but **not deployed** — they ship with the
+eventual live deploy.
+
+**Go-live still gated on:** paper passes ≥20–30 cycles within 30–50% of backtest +
+SL/CB/dynsize observed (see `PROJECT_DOSSIER.md` §8.3), then fund USDT, then
+`docker compose --profile trader up -d trader` (bootstraps `options_trader` DB),
+verify a clean reconcile + probe, then set `LIVE_ENABLED=true` to arm.
+
+Remaining: deploy/rebuild + fund + arm (P7). Tail-risk overlay (daily-loss in
+paper, concentration cap) tracked separately in `FUTURE_WORK.md`.
+
+---
+
 ## Locked decisions (from the user)
 - **Live-first, manual oversight.** User overrode the original testnet-first plan: test **directly on mainnet with the existing keys**, watching manually, ready to stop (kill-switch) or close trades by hand on the Bybit UI. (So testnet is effectively skipped; the `trader` container will run `TRADING_MODE=live`.)
 - **Fully autonomous** open/close + kill-switch.
