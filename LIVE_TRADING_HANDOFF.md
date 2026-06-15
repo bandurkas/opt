@@ -86,3 +86,32 @@ Strong guarantee: the **signal logic is shared** (`check_new_signal`, `evaluate_
 - Strategy/loop: `backend/services/paper_loop.py` (open `open_paper_position`, close `_do_close`/`check_and_close_position`, sizing helpers in `paper_strategy.py`).
 - Market data + symbol parser: `backend/services/bybit_client.py`.
 - VPS: `187.127.114.34`, repo `/root/opt-app`, paper container `opt-app-paper-1`. Keys in `/root/opt-app/.env` (`BYBIT_API_KEY/SECRET`).
+
+---
+
+## Connection & access (for a fresh session)
+
+> ⚠️ Secrets (API keys, DB password, Telegram token) are **not** in this file — it is committed to a public repo. They live in `/root/opt-app/.env` on the VPS. Never paste secret values into committed files.
+
+**GitHub**
+- Repo: `git@github.com:bandurkas/opt.git` · branch **`main`**
+- Local clone (Mac, authoritative for edits): `~/Desktop/options`
+- VPS clone (deploy target): `/root/opt-app`
+- Workflow: edit on Mac → `git commit` → `git push origin main` → on VPS `git pull --ff-only origin main`.
+
+**VPS (Hostinger VPS3)**
+- SSH: `ssh root@187.127.114.34` (key-based, no password prompt from this Mac).
+- 1 CPU / ~3.8 GB RAM — **build images on the Mac**, do NOT run a full `docker compose build` on the VPS (stalls). Backend cached rebuild (~1 min) and frontend (builds natively on VPS) are fine; cross-building the frontend on Apple Silicon segfaults, so frontend must build on the VPS.
+- App dir: `/root/opt-app` (docker-compose project `opt-app`).
+
+**Containers** (`docker ps`): `opt-app-paper-1` (strategy loop), `opt-app-backend-1` (API), `opt-app-frontend-1` (dashboard), `opt-app-poller-1` (Bybit data feed), `opt-app-postgres-1` (DB), `opt-app-redis-1`.
+
+**Ports / URLs**: dashboard `http://187.127.114.34:3000` · API `http://187.127.114.34:8000` (`/api/v1/...`).
+
+**Postgres**: container `opt-app-postgres-1`, db `options_assistant`, user `user` (creds in compose/.env). Query: `ssh root@187.127.114.34 "docker exec -i opt-app-postgres-1 psql -U user -d options_assistant" <<'SQL' ... SQL`. Live trader will use a **separate DB** `options_trader` (to be created).
+
+**Env (`/root/opt-app/.env`)**: `BYBIT_API_KEY`/`BYBIT_API_SECRET` (mainnet, OptionsTrade-enabled), `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID`, `NEXT_PUBLIC_API_URL=http://187.127.114.34:8000/api/v1`. To go live add: `TRADING_MODE=live`, `LIVE_ENABLED=true`, and (separate) `DATABASE_URL` for the trader service.
+
+**Run the probe / tests from the Mac clone**:
+- Tests (no network): `cd ~/Desktop/options/backend && PYTHONPATH=. python3 tests/test_execution.py`
+- Probe (needs keys → run in a VPS container): `ssh root@187.127.114.34 "docker exec -e PYTHONWARNINGS=ignore opt-app-paper-1 sh -c 'cd /app && PYTHONPATH=. python3 services/bybit_probe.py'"` (after the new image is built; until then use the inline read-only snippet from the session).
