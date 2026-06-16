@@ -2,7 +2,7 @@
 
 > 👉 Новый агент: начни с **`START_HERE.md`** (точка входа), затем этот файл и `ROADMAP.md`.
 > Самодостаточный файл, чтобы продолжить в новом чате. **Дата:** 2026-06-16 ·
-> **HEAD:** `48f2fc0`+ · ветка `main` · **local = GitHub = VPS**, дерево чистое.
+> **HEAD:** `85b5aff` · ветка `main` · **local = GitHub = VPS**, дерево чистое.
 > Контекст: открой `PROJECT_DOSSIER.md` (всё о проекте) первым.
 
 ---
@@ -17,6 +17,15 @@
 Что НЕ доказано и блокирует live: paper ещё не прошёл гейт (нужно ≥20–30 полных циклов в разных
 режимах в пределах 30–50% бэктеста + наблюдать SL/CB/dynsize вживую). См. §8.3 досье.
 
+**Сессия 2026-06-16 (третья):** **Фаза A1 — CB race condition исправлен** (`85b5aff`,
+`FUTURE_WORK §5.2`). Был split read-modify-write `consec_losses` в двух транзакциях → при
+2 закрытиях в одной итерации терялся инкремент, CB мог не сработать на 5 убытках. Фикс: вся
+транзиция в одной залоченной транзакции `paper_repo.record_trade_outcome()` (`SELECT … FOR UPDATE`
++ rollback), решение CB — чистая `paper_strategy._next_cb_state()`. +7 тестов (`test_cb_race.py`,
+race-симуляция через fake-repo); **54/54 backend-теста зелёные**. Задеплоено в paper (Mac amd64
+rebuild → save/load → recreate), контейнер `Up`, 0 ошибок, гейт-состояние сохранено (8 циклов,
+equity $457.74, consec=0, CB off). local = GitHub = VPS.
+
 **Сессия 2026-06-16 (вторая):** (1) почистили Docker на VPS3 — освобождено ~5GB (build-кэш
 4.39GB), диск 37%→28%, мусора в контейнерах/томах не было; (2) **внедрили tail-risk кэп
 `MAX_OPEN_POSITIONS=4`** (P1 приоритет, закрывает п.4 гейта) — код+5 тестов (47 всего, все
@@ -27,7 +36,13 @@
 
 ---
 
-## 1. Что сделано (хронология, коммиты `b45ecbb..48f2fc0`)
+## 1. Что сделано (хронология, коммиты `b45ecbb..85b5aff`)
+
+**Сессия 2026-06-16 (третья) — Фаза A1 (CB race)**
+- `85b5aff` ✅ **CB race condition** (`§5.2`): атомарный `paper_repo.record_trade_outcome()`
+  (`SELECT … FOR UPDATE` + rollback) + чистая `paper_strategy._next_cb_state()`; устранён
+  split read-modify-write `consec_losses`. +7 тестов `test_cb_race.py` (54/54 зелёные).
+  Задеплоено в paper (rebuild Mac amd64 → save/load → recreate), 0 ошибок, гейт сохранён.
 
 **Сессия 2026-06-16 (вторая) — tail-risk + чистка**
 - `34e150b` ✅ **tail-risk кэп `MAX_OPEN_POSITIONS=4`** в `execution_config.py` (mode-agnostic,
