@@ -35,10 +35,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from services.adx_score import compute_adx_score
+from services.adx_sizing_oos import SIZING_MODELS as SM
 from services.local_optimizer import find_data_dir, load_local
 from services.variant_backtest import generate, sim_set
 
-CACHE = "/tmp/tail_trades_v3.json"
+CACHE = "/tmp/tail_trades_v3_adx.json"  # includes per-trade adx_score
 FIVE_MIN_MS = 5 * 60 * 1000
 HOLDOUT_DAYS = 90
 START_EQUITY = 1000.0
@@ -71,6 +73,14 @@ def build_trades(force: bool = False) -> list[dict]:
             "month": datetime.fromtimestamp(entry / 1000, tz=timezone.utc).strftime("%Y-%m"),
         })
     trades.sort(key=lambda t: t["entry_ts"])
+    # Annotate ADX readiness score at entry (1h history up to entry_ts), so risk
+    # overlays can size by it. HIGH score = range-like = best premium decay.
+    i1h = 0
+    for t in trades:
+        while i1h < len(k1h) and k1h[i1h]["start_ms"] + 3_600_000 <= t["entry_ts"]:
+            i1h += 1
+        s1h = k1h[max(0, i1h - 240):i1h]
+        t["adx_score"] = compute_adx_score(s1h).get("score", 0.0) if s1h else 0.0
     json.dump(trades, open(CACHE, "w"))
     print(f"[gen] {len(trades)} trades, {time.time()-t0:.0f}s (cached → {CACHE})", flush=True)
     return trades
@@ -80,7 +90,8 @@ def build_trades(force: bool = False) -> list[dict]:
 
 def replay(trades: list[dict], *, max_open: int = 999, max_per_side: int = 999,
            cb_k: int = 0, cb_pause_h: int = 48,
-           daily_loss_limit_pct: float = 0.0, dyn_size: bool = False) -> dict:
+           daily_loss_limit_pct: float = 0.0, dyn_size: bool = False,
+           size_fn=None) -> dict:
     """Apply overlays via an open/close event stream (no look-ahead). Returns metrics."""
     # event list: (+1 open) then we realize at exit. Process OPEN by entry order; CLOSE on demand.
     events = []
@@ -140,6 +151,8 @@ def replay(trades: list[dict], *, max_open: int = 999, max_per_side: int = 999,
                 if lost_today >= daily_loss_limit_pct / 100.0 * equity:
                     continue
             size = RISK_FRAC * equity
+            if size_fn is not None:
+                size *= size_fn(t.get("adx_score", 0.0))
             if dyn_size and len(recent) >= 10:
                 wr10 = sum(1 for p in recent[-10:] if p > 0) / 10.0
                 if wr10 < 0.40:
@@ -202,6 +215,20 @@ CONFIGS = [
 ]
 
 
+# ADX-score sizing under the chosen concentration cap (mo=4). avg/wr/worst_month
+# are sizing-INVARIANT here (same trades selected); the sizing signal shows in
+# return_pct (edge) and max_dd (sized tail) — read those two columns.
+ADX_CONFIGS = [
+    ("mo=4 flat (control)",   dict(max_open=4)),
+    ("mo=4 + 2-tier",         dict(max_open=4, size_fn=SM["2-tier (FW§8) <=7:1.0 >7:1.5"])),
+    ("mo=4 + 4-step A",       dict(max_open=4, size_fn=SM["4-step A 0.5/1.0/1.25/1.5"])),
+    ("mo=4 + 4-step B",       dict(max_open=4, size_fn=SM["4-step B 0.75/1.0/1.25/1.5"])),
+    ("mo=4 + 4-step aggr",    dict(max_open=4, size_fn=SM["4-step aggressive 0.5..2.0"])),
+    ("mo=4 + continuous",     dict(max_open=4, size_fn=SM["continuous clamp(0.5+0.1*s)"])),
+    ("mo=4 + 4-step B + dyn", dict(max_open=4, size_fn=SM["4-step B 0.75/1.0/1.25/1.5"], dyn_size=True)),
+]
+
+
 def _row(name: str, m: dict) -> str:
     return (f"{name:<22} n={m['n']:>4} avg={m['avg']:>+6.2f}% wr={m['wr']:>4.1f}% "
             f"worstM={m['worst_month']:>+7.1f} losM={m['losing_months']}/{m.get('total_months',0)} "
@@ -231,6 +258,12 @@ def main() -> int:
     for name, kw in CONFIGS:
         m = replay(trades, **kw)
         print(_row(name, m))
+
+    # ── ADX-score sizing × mo=4 cap: net edge (return_pct) vs net tail (max_dd) ──
+    for label, dataset in (("TRAIN", train), ("HOLDOUT", hold), ("FULL", trades)):
+        print(f"\n{'='*120}\nADX SIZING × mo=4 — {label}  (read return_pct=edge, max_dd=sized tail)\n{'-'*120}")
+        for name, kw in ADX_CONFIGS:
+            print(_row(name, replay(dataset, **kw)))
     return 0
 
 
