@@ -75,6 +75,45 @@ def get_state() -> dict | None:
         put_conn(conn)
 
 
+def record_trade_outcome(pnl_pct: float, now_ms: int, decide) -> dict:
+    """Atomically advance the circuit-breaker counters after a trade closes.
+
+    The read-modify-write happens inside ONE transaction holding a row lock
+    (`SELECT ... FOR UPDATE`), so two positions closing in the same loop
+    iteration can't lose a consec_losses increment (FUTURE_WORK §5.2). `decide`
+    is the pure transition `(consec, cb_until, pnls, pnl_pct, now_ms) -> dict`.
+    """
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                "SELECT consec_losses, cb_cooldown_until_ms, recent_pnls_json "
+                "FROM paper_state WHERE id = 1 FOR UPDATE"
+            )
+            row = cur.fetchone() or {}
+            nxt = decide(
+                int(row.get("consec_losses") or 0),
+                int(row.get("cb_cooldown_until_ms") or 0),
+                list(row.get("recent_pnls_json") or []),
+                pnl_pct,
+                now_ms,
+            )
+            cur.execute(
+                "UPDATE paper_state SET consec_losses = %s, "
+                "cb_cooldown_until_ms = %s, recent_pnls_json = %s::jsonb "
+                "WHERE id = 1",
+                (nxt["consec_losses"], nxt["cb_cooldown_until_ms"],
+                 json.dumps(nxt["recent_pnls"])),
+            )
+        conn.commit()
+        return nxt
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        put_conn(conn)
+
+
 # ───────────────────────── Positions ─────────────────────────
 
 def open_position(*, opened_at_ms: int, underlying_at_open: float,

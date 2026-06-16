@@ -244,31 +244,40 @@ def evaluate_conditions(k5: list, k15: list, k1h: list) -> dict:
     return out
 
 
-def record_trade_result(pnl_pct: float) -> dict:
-    """Update CB counters + recent_pnls list after a trade closes."""
-    state = paper_repo.get_state() or paper_repo.ensure_state(START_EQUITY_USD)
-    pnls = list(state.get("recent_pnls_json") or [])
-    pnls.append(float(pnl_pct))
-    pnls = pnls[-50:]
+def _next_cb_state(consec: int, cb_until: int, pnls: list[float],
+                   pnl_pct: float, now_ms: int) -> dict:
+    """Pure: given the *current* CB counters, compute the next ones after one
+    trade closes at `pnl_pct`. No I/O — unit-testable on its own.
 
-    consec = int(state.get("consec_losses") or 0)
-    cb_until = int(state.get("cb_cooldown_until_ms") or 0)
-
+    A loss bumps the consecutive-loss counter; hitting CB_CONSEC_LIMIT arms the
+    circuit breaker (cooldown window) and resets the counter. Any win resets it.
+    `recent_pnls` is a rolling window of the last 50 results.
+    """
+    pnls = (list(pnls) + [float(pnl_pct)])[-50:]
     if pnl_pct <= 0:
         consec += 1
         if consec >= CB_CONSEC_LIMIT:
-            cb_until = int(time.time() * 1000) + CB_PAUSE_HOURS * 60 * 60 * 1000
+            cb_until = now_ms + CB_PAUSE_HOURS * 60 * 60 * 1000
             consec = 0
     else:
         consec = 0
-
-    paper_repo.update_state(
-        cb_cooldown_until_ms=cb_until,
-        consec_losses=consec,
-        recent_pnls=pnls,
-    )
     return {
         "consec_losses": consec,
         "cb_cooldown_until_ms": cb_until,
         "recent_pnls": pnls,
     }
+
+
+def record_trade_result(pnl_pct: float) -> dict:
+    """Update CB counters + recent_pnls list after a trade closes.
+
+    The read-modify-write of consec_losses MUST be atomic: when two positions
+    close in one loop iteration, a split read/update would lose one increment and
+    the breaker could miss 5 consecutive losses (FUTURE_WORK §5.2). We therefore
+    do the whole transition inside a single locked transaction in the repo, with
+    `_next_cb_state` as the pure decision step.
+    """
+    paper_repo.ensure_state(START_EQUITY_USD)
+    return paper_repo.record_trade_outcome(
+        float(pnl_pct), int(time.time() * 1000), _next_cb_state,
+    )
