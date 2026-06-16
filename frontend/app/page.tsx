@@ -177,6 +177,31 @@ export default function Dashboard() {
           )}
         </div>
 
+        {/* Entry-proximity gauge — how close the market is to a tradeable entry */}
+        {conditions?.proximity && (
+          <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+            <div className="px-4 py-2 bg-slate-800/50 text-xs font-semibold text-slate-400 flex justify-between items-center">
+              <span>Близость ко входу</span>
+              {conditions.adx && (
+                <span className="font-mono text-[10px] text-slate-500">
+                  ADX {conditions.adx.adx?.toFixed(0) ?? "—"} · score {conditions.adx.score.toFixed(1)}/10
+                </span>
+              )}
+            </div>
+            <div className="p-4">
+              <ProximityGauge pct={conditions.proximity.proximity_pct} zone={conditions.proximity.zone} />
+              <div className="grid grid-cols-4 gap-2 mt-3">
+                {([["ADX", "adx"], ["MTF", "mtf"], ["Vol", "vol"], ["Bull", "bull"]] as const).map(([lbl, k]) => (
+                  <FactorBar key={k} label={lbl} v={conditions.proximity!.factors[k]} />
+                ))}
+              </div>
+              <p className="text-[10px] text-slate-600 mt-3 text-center">
+                100% = все условия входа выполнены. ADX-скор — индикатор силы сигнала, не размер позиции.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Entry conditions — traffic-light dots */}
         {conditions && (
           <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
@@ -306,6 +331,64 @@ export default function Dashboard() {
         )}
       </div>
     </main>
+  );
+}
+
+const ZONE_LABEL: Record<string, string> = {
+  waiting: "Ожидание", preparing: "Подготовка", ready: "Готовность", entry: "Вход!",
+};
+const ZONE_COLOR: Record<string, string> = {
+  waiting: "#f43f5e", preparing: "#f59e0b", ready: "#10b981", entry: "#10b981",
+};
+
+function ProximityGauge({ pct, zone }: { pct: number; zone: string }) {
+  const cx = 100, cy = 100, r = 80;
+  // 0% → 180° (left), 100% → 0° (right); top semicircle (screen y is down).
+  const polar = (deg: number, rad: number): [number, number] => {
+    const a = (deg * Math.PI) / 180;
+    return [cx + rad * Math.cos(a), cy - rad * Math.sin(a)];
+  };
+  // Sample each zone as a polyline (unambiguous vs SVG arc flags).
+  const zonePoints = (a: number, b: number) => {
+    const pts: string[] = [];
+    for (let i = 0; i <= 16; i++) {
+      const p = a + ((b - a) * i) / 16;
+      const [x, y] = polar(180 - p * 1.8, r);
+      pts.push(`${x.toFixed(1)},${y.toFixed(1)}`);
+    }
+    return pts.join(" ");
+  };
+  const clamped = Math.max(0, Math.min(100, pct));
+  const color = ZONE_COLOR[zone] ?? "#64748b";
+  return (
+    <svg viewBox="0 0 200 116" className="w-full max-w-[18rem] mx-auto">
+      {/* zone scale */}
+      <polyline points={zonePoints(0, 50)} fill="none" stroke="#f43f5e" strokeWidth="10" opacity="0.3" strokeLinecap="round" />
+      <polyline points={zonePoints(50, 80)} fill="none" stroke="#f59e0b" strokeWidth="10" opacity="0.3" />
+      <polyline points={zonePoints(80, 100)} fill="none" stroke="#10b981" strokeWidth="10" opacity="0.3" strokeLinecap="round" />
+      {/* needle (vertical, rotated to pct: 0%→-90°/left, 50%→0°/up, 100%→+90°/right) */}
+      <g transform={`rotate(${(clamped / 100) * 180 - 90} ${cx} ${cy})`}>
+        <line x1={cx} y1={cy} x2={cx} y2={cy - (r - 10)} stroke={color} strokeWidth="3" strokeLinecap="round" />
+      </g>
+      <circle cx={cx} cy={cy} r="4.5" fill={color} />
+      <text x={cx} y={cy - 30} textAnchor="middle" fill={color} fontSize="28" fontWeight="bold">{clamped.toFixed(0)}%</text>
+      <text x={cx} y={cy - 12} textAnchor="middle" fill="#94a3b8" fontSize="11">{ZONE_LABEL[zone] ?? zone}</text>
+    </svg>
+  );
+}
+
+function FactorBar({ label, v }: { label: string; v: number }) {
+  const pct = Math.max(0, Math.min(100, v * 100));
+  const color = pct >= 80 ? "bg-emerald-500" : pct >= 50 ? "bg-amber-400" : "bg-rose-500";
+  return (
+    <div>
+      <div className="flex justify-between text-[10px] text-slate-500 mb-0.5">
+        <span>{label}</span><span className="font-mono">{pct.toFixed(0)}</span>
+      </div>
+      <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+        <div className={`h-full ${color} rounded-full`} style={{ width: `${pct}%` }} />
+      </div>
+    </div>
   );
 }
 

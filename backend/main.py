@@ -254,7 +254,8 @@ def paper_conditions():
     and 7d return. Frontend reads `ret_threshold_put` / `ret_threshold_call` as
     the symmetric V2 boundaries (e.g. ±0.5%).
     """
-    from services.paper_strategy import evaluate_conditions
+    from services.adx_score import compute_adx_score
+    from services.paper_strategy import entry_proximity, evaluate_conditions
     from services.strategy_config import (
         CALL_GEN_KWARGS,
         PUT_GEN_KWARGS,
@@ -268,6 +269,11 @@ def paper_conditions():
     cond = evaluate_conditions(k5, k15, k1h)
     cond["checked_at_ms"] = int(time.time() * 1000)
     cond["bars_available"] = {"5m": len(k5), "15m": len(k15), "1h": len(k1h)}
+
+    # ADX readiness score + entry-proximity gauge (display only — see entry_proximity).
+    adx = compute_adx_score(k1h)
+    cond["adx"] = adx
+    cond["proximity"] = entry_proximity(cond, adx.get("score", 0.0))
 
     active_side = cond.get("active_side")
     # V2 thresholds: Put when ret > +T, Call when ret < -T. UI fields kept

@@ -244,6 +244,49 @@ def evaluate_conditions(k5: list, k15: list, k1h: list) -> dict:
     return out
 
 
+def entry_proximity(cond: dict, adx_score: float) -> dict:
+    """How close the market is to a tradeable entry, as 0-100 + a zone label.
+
+    Display/observability only — this drives the dashboard "proximity gauge", NOT
+    position sizing (ADX-score sizing was rejected by backtest: it hurt compounded
+    return and worsened drawdown). The needle is a weighted blend of the same
+    factors the entry uses, each normalised to 0-1:
+      - adx   : adx_score/10  (HIGH = low/falling ADX = range-like = best decay)
+      - mtf   : aligned timeframes / 3
+      - vol   : volatility percentile
+      - bull  : bull-market filter pass (Put side)
+    100 is reserved for `ready` (every gate actually passes), so the gauge never
+    claims a full signal the bot wouldn't take.
+    """
+    def _f(x: float | None) -> float:
+        return 0.0 if x is None else max(0.0, min(1.0, float(x)))
+
+    f_adx = _f((adx_score or 0.0) / 10.0)
+    f_mtf = _f((cond.get("mtf_aligned_count") or 0) / 3.0)
+    f_vol = _f(cond.get("vol_pctile"))
+    f_bull = 1.0 if cond.get("bull_filter_ok") else 0.0
+    weights = {"adx": 0.40, "mtf": 0.25, "vol": 0.20, "bull": 0.15}
+    composite = 100.0 * (weights["adx"] * f_adx + weights["mtf"] * f_mtf
+                         + weights["vol"] * f_vol + weights["bull"] * f_bull)
+    pct = 100.0 if cond.get("ready") else min(99.0, composite)
+    pct = round(pct, 1)
+    if pct >= 100.0:
+        zone = "entry"        # all gates pass — bot will fire
+    elif pct >= 80.0:
+        zone = "ready"        # one factor short of entry
+    elif pct >= 50.0:
+        zone = "preparing"    # factors aligning
+    else:
+        zone = "waiting"      # far from a signal
+    return {
+        "proximity_pct": pct,
+        "zone": zone,
+        "factors": {"adx": round(f_adx, 3), "mtf": round(f_mtf, 3),
+                    "vol": round(f_vol, 3), "bull": round(f_bull, 3)},
+        "weights": weights,
+    }
+
+
 def _next_cb_state(consec: int, cb_until: int, pnls: list[float],
                    pnl_pct: float, now_ms: int) -> dict:
     """Pure: given the *current* CB counters, compute the next ones after one

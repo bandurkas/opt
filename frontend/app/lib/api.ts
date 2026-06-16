@@ -303,6 +303,21 @@ export type PaperConditions = {
   ema_ratio: number | null;
   checked_at_ms: number;
   bars_available: { "5m": number; "15m": number; "1h": number };
+  adx?: {
+    score: number;
+    adx: number | null;
+    plus_di: number | null;
+    minus_di: number | null;
+    adx_slope_6h: number;
+    di_spread: number;
+    components: { base: number; slope_bonus: number; di_bonus: number };
+  };
+  proximity?: {
+    proximity_pct: number;
+    zone: "waiting" | "preparing" | "ready" | "entry";
+    factors: { adx: number; mtf: number; vol: number; bull: number };
+    weights: { adx: number; mtf: number; vol: number; bull: number };
+  };
   thresholds?: {
     ret_threshold_put: number;
     ret_threshold_call: number;
