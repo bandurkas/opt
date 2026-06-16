@@ -50,7 +50,24 @@ equity $457.74, consec=0, CB off). local = GitHub = VPS.
 
 ---
 
-## 1. Что сделано (хронология, коммиты `b45ecbb..85b5aff`)
+## 1. Что сделано (хронология, коммиты `b45ecbb..739b00b`)
+
+**Сессия 2026-06-16 (четвёртая) — audit-fix deploy + ADX-research + гейдж + VPS-чистка**
+- `a436302` ✅ **Fix1+Fix2 ЗАДЕПЛОЕНЫ**: `signal_audit` пишет 1 строку/окно для дисквалифицированных
+  окон (полный eval в `signal_payload`, `reject_reason='disqualified'`) — закрыта 3.7-дн дыра в
+  записи параметров; + rowcount-guard в `record_trade_outcome` (тихий промах CB-апдейта → RuntimeError).
+  Подтверждено в paper (`disqualified`-строки идут, 0 ошибок, гейт цел). +2 теста `test_paper_repo.py`.
+- `2cad943` ❌ **ADX-сайзинг ОТВЕРГНУТ** (research): на реалистичной модели (компаундинг + кэп mo=4)
+  любой вариант режет компаунд-доходность (FULL +202.8%→+50..84%) и хвост. Опровергает `FUTURE_WORK §8`
+  (там был арифметический расчёт). Артефакты: `adx_sizing_oos.py` (V2+OOS), `tail_overlay_sweep.py`
+  (+`size_fn`). Полный разбор — память `project_options_adx_sizing_rejected`.
+- `0a8d72b` ✅ **Гейдж 2.1 «Близость ко входу»** — бэкенд `paper_strategy.entry_proximity()` (0-100+зона)
+  в `/paper/conditions` + ADX-скор; фронт — SVG-спидометр (`page.tsx`) + per-factor бары. ADX = индикатор,
+  НЕ сайзинг. +6 тестов `test_proximity.py`, tsc чист. ⚠️ **КОД ГОТОВ, НЕ ЗАДЕПЛОЕН** (нужны backend+frontend образы).
+- `538b616` ✅ **Авточистка VPS** `vps_cleanup.sh` + cron 04:00 UTC: prune только stopped/dangling/
+  build-cache>168h/networks; НИКОГДА `image -a`/`volume prune`; усечение больших логов; disk-alert ≥80%.
+  Протестирован на VPS (сервисы целы). `739b00b` docs.
+- 🛠️ Собран нативный **`opt-app-bt:arm64`** для быстрых ЛОКАЛЬНЫХ бэктестов (2 мин vs 33 мин эмуляции amd64).
 
 **Сессия 2026-06-16 (третья) — Фаза A1 (CB race)**
 - `85b5aff` ✅ **CB race condition** (`§5.2`): атомарный `paper_repo.record_trade_outcome()`
@@ -99,14 +116,18 @@ equity $457.74, consec=0, CB off). local = GitHub = VPS.
 
 ## 2. Текущее состояние системы
 
-- **Paper-бот:** жив (пересоздан на свежем образе 2026-06-16), без ошибок, копит циклы к гейту.
-  `MAX_OPEN_POSITIONS=4` активен в рантайме. Часто `regime=trend/transition` → сторона
-  дисквалифицируется (нужен `range`) → корректно ждёт. Не баг. Гейт: **8/≥20–30 циклов** (все TP2,
-  +$57.74, equity $457.74); п.4 (концентрация) теперь закрыт кэпом; SL/CB/dynsize ещё не наблюдались.
-- **Мониторинг:** VPS-cron каждые 3ч (`/root/opt-app/paper_cron.sh`) → Telegram на
-  SL/CB/dynsize/+5 циклов/гейт. Ручная проверка: `bash /root/opt-app/monitor_paper.sh`.
-  ⚠️ `docker logs opt-app-paper-1` подвисает (containerd image-store, 1 CPU) — читать json-логфайл
-  напрямую: `tail $(docker inspect opt-app-paper-1 --format '{{.LogPath}}')`.
+- **Paper-бот:** жив на образе `a436302`, без ошибок, копит циклы к гейту. `MAX_OPEN_POSITIONS=4`
+  активен. Часто `regime=trend/transition` → сторона дисквалифицируется (нужен `range`) → корректно
+  ждёт (не баг). Гейт: **8/≥20–30 циклов** (все TP2, +$57.74, equity $457.74); п.4 (концентрация)
+  закрыт кэпом; SL/CB/dynsize ещё не наблюдались вживую.
+- **`signal_audit` теперь полный:** после `a436302` каждое 5m-окно даёт 1 строку (fire-time решение
+  ИЛИ `disqualified`-наблюдение с полным eval в `signal_payload`). Дыра в записи параметров закрыта.
+- **⚠️ НЕ задеплоено (готово в коде на `739b00b`):** гейдж 2.1 (`0a8d72b`) — нужен rebuild **двух**
+  образов: `backend` (эндпоинт `/paper/conditions`) и `frontend` (UI). См. рецепт в §3 / ROADMAP §2.
+- **Мониторинг:** VPS-cron 3ч (`paper_cron.sh`) → Telegram на SL/CB/dynsize/+5 циклов/гейт. Ручная
+  проверка: `bash /root/opt-app/monitor_paper.sh`. **Авточистка:** cron 04:00 UTC (`vps_cleanup.sh`).
+  ⚠️ `docker logs opt-app-paper-1` виснет (1 CPU) — читать json-логфайл:
+  `tail $(docker inspect opt-app-paper-1 --format '{{.LogPath}}')`.
 - **Live-инфра P2–P6:** в репозитории, инертна, **НЕ задеплоена** (trader-сервис не стартовал).
 
 ---
@@ -126,7 +147,7 @@ docker load`, контейнер пересоздан (`compose up -d --no-build
 
 Задача была: убрать «плохой месяц» (−42% Sep), сохранив плюсы. Харнесс
 `backend/services/tail_overlay_sweep.py` (event-driven портфельный replay, train/holdout, без
-look-ahead; trades кэшируются в `/tmp/tail_trades_v3.json` — `/tmp` эфемерен, регенерация ~3 мин).
+look-ahead; trades кэшируются в `/tmp/tail_trades_v3_adx.json` — `/tmp` эфемерен, регенерация ~2–3 мин).
 
 **Победитель (OOS-подтверждён): `MAX_OPEN_POSITIONS=4`** — жёсткий лимит одновременных позиций:
 - худший месяц **−33.7% → −11.3%**, edge **+4.9 → +7.7%/сделку** (holdout +11.4%), maxDD 91%→29%.
@@ -146,15 +167,23 @@ look-ahead; trades кэшируются в `/tmp/tail_trades_v3.json` — `/tmp`
 > сделанного + инструменты тестирования/деплоя. Двигаемся по нему по одному шагу. Ниже — сводка.
 
 
+0. **⚡ НЕЗАКРЫТЫЙ ХВОСТ (ближайшее действие): задеплоить гейдж 2.1** (`0a8d72b`, уже в коде/GitHub/VPS).
+   Нужны ДВА образа: `backend` (для `/paper/conditions`) и `frontend` (UI). Рецепт (по ROADMAP §2,
+   собирать на Mac, amd64):
+   `docker buildx build --platform linux/amd64 -t opt-app-backend:latest ./backend --load` и
+   `... -t opt-app-frontend:latest ./frontend --load` → `docker save | gzip | scp` → на VPS
+   `docker load` + `docker compose up -d --no-build --force-recreate backend frontend`.
+   ⚠️ `docker load` на 1 CPU ~10 мин и роняет SSH → запускать отвязанным (`setsid bash скрипт`)
+   и опрашивать лог (как делали для paper). Проверка: открыть дашборд :3000 → гейдж рисуется.
 1. **Ждать гейт** (реальный блокер — рынок в trend/transition, сделки не копятся; не баг). Прогресс:
    `ssh root@187.127.114.34 'bash /root/opt-app/monitor_paper.sh'`. Гейт — `PROJECT_DOSSIER.md` §8.3.
-2. **P0: баги достоверности paper-данных** (`FUTURE_WORK §5`, приоритизация в §0) — CB-race (§5.2),
-   отравление пула (§5.1), ZeroDiv при spot=0 (§5.6), open_position→0 (§5.7). Чинить, чтобы
-   статистика гейта не искажалась молча. ⚠️ это меняет код → деплой через rebuild (см. §3).
+2. **P0: баги достоверности paper-данных** (`FUTURE_WORK §5`): ✅ A1 CB-race (§5.2) СДЕЛАН (`85b5aff`).
+   Осталось: отравление пула (§5.1), ZeroDiv при spot=0 (§5.6), open_position→0 (§5.7). Один rebuild
+   на все. ⚠️ меняет код → деплой через rebuild (см. §3).
 3. **P1: live-корректность** (после гейта, до денег) — broker exception-handling (§5.4),
    reconcile PnL≠0 (§5.3), live-safety мелочи (§6.4-6.6).
-4. **P2 (НЕ сейчас): ADX dynamic sizing** (§8, +$1600/год бэктест) — меняет стратегию, сбросит
-   валидацию; только ПОСЛЕ гейта.
+4. **ADX dynamic sizing — ❌ ОТВЕРГНУТ** (`2cad943`, бэктест OOS+tail: режет доходность и хвост).
+   НЕ внедрять. ADX-скор используется только как индикатор в гейдже 2.1. См. `FUTURE_WORK §8`.
 5. **Идти в live (P7)** когда гейт пройден: rebuild (Mac) → фандинг USDT $500–1000 →
    `docker compose --profile trader up -d trader` (создаст `options_trader` БД) → проверить
    чистый reconcile + `bybit_probe.py` → `LIVE_ENABLED=true` (взвести).
@@ -171,10 +200,13 @@ look-ahead; trades кэшируются в `/tmp/tail_trades_v3.json` — `/tmp`
   `paper_loop.py` · `regime.py`.
 - **Live-инфра:** `backend/services/{live_sizing,broker,live_safety,reconcile}.py` ·
   `execution.py` · `execution_config.py` · `db/bootstrap.py` · `docker-compose.yml` (`trader`).
-- **Research:** `backend/services/tail_overlay_sweep.py` (tail-risk) · `variant_backtest.py`
-  (V2/V3) · `adx_score*.py` (ADX-исследование) · данные `backend/data/eth_{5m,15m,1h}.json` (365д).
-- **Тесты:** `backend/tests/test_{live_sizing,broker,live_safety,reconcile,execution,tail_risk}.py`
-  (47 шт, все зелёные на py3.11). Прогон без сети/БД в контейнере: см. §7.
+- **Гейдж 2.1:** `paper_strategy.entry_proximity()` · эндпоинт `/paper/conditions` (`main.py`) ·
+  фронт `frontend/app/page.tsx` (ProximityGauge/FactorBar) + `app/lib/api.ts` (типы).
+- **Research:** `tail_overlay_sweep.py` (tail-risk + ADX-sizing×cap, `size_fn`) · `adx_sizing_oos.py`
+  (V2+OOS sizing) · `variant_backtest.py` (V2/V3) · `adx_score*.py` · данные в **корне репо** `data/eth_{5m,15m,1h}.json` (365д).
+- **Тесты:** `backend/tests/test_{live_sizing,broker,live_safety,reconcile,execution,tail_risk,cb_race,paper_repo,proximity}.py`
+  (**62 шт**, все зелёные на py3.11). Фронт: `tsc --noEmit` чист. Прогон без сети/БД: см. §7.
+- **Ops:** `vps_cleanup.sh` (авточистка, cron 04:00 UTC) · `monitor_paper.sh` · `paper_cron.sh`.
 
 ---
 
@@ -186,4 +218,9 @@ look-ahead; trades кэшируются в `/tmp/tail_trades_v3.json` — `/tmp`
 - **Секреты** только в `/root/opt-app/.env` на VPS (НЕ в репо): `BYBIT_API_*`, `TELEGRAM_*`.
 - **Память сессий (авто-recall):** `~/.claude/.../memory/project_options_paper_validation.md`.
 - **Запуск тестов:** `cd backend && PYTHONPATH=. python3 tests/test_<name>.py` (без сети/БД).
-- **Бэктест:** `cd backend && PYTHONPATH=. python3 services/tail_overlay_sweep.py` (или `variant_backtest.py`).
+- **⚡ Быстрые локальные бэктесты (нативно arm64, без эмуляции — 2 мин vs 33):**
+  `docker run --rm --platform linux/arm64 -v "$PWD/backend:/app" -v "$PWD/data:/data" -w /app
+  -e PYTHONPATH=/app opt-app-bt:arm64 python3 services/<harness>.py`. Образ: пересобрать при нужде
+  `docker buildx build --platform linux/arm64 -t opt-app-bt:arm64 ./backend --load`. ⚠️ при пайпе
+  через `grep` вывод буферизуется до конца; в zsh код возврата — `$?`, не `PIPESTATUS`.
+- **Фронт-typecheck:** `frontend/node_modules/.bin/tsc --noEmit -p frontend/tsconfig.json`.
