@@ -565,6 +565,7 @@ async def loop():
     cur_window_id = -1
     window_disqualified = False   # any per-minute check in this window failed → no entry
     window_fired = False          # already opened (or attempted) in this window
+    window_audited = False        # observation row already persisted for this window
     last_minute_eval = -1         # epoch-minute of the last per-minute condition eval
 
     while True:
@@ -620,6 +621,7 @@ async def loop():
                 cur_window_id = wid
                 window_disqualified = False
                 window_fired = False
+                window_audited = False
                 last_minute_eval = -1
 
             # 2a) Per-minute condition check (once per distinct minute). A single
@@ -637,6 +639,25 @@ async def loop():
                       f"side={ev_m.get('active_side')} regime={ev_m.get('regime')} "
                       f"mtf={ev_m.get('mtf_direction')}/{ev_m.get('mtf_aligned_count')} "
                       f"vol={ev_m.get('vol_high')} disq={window_disqualified}", flush=True)
+
+                # Persist one observation row per disqualified window so the audit
+                # trail is complete during long range-less stretches (the fire-time
+                # write below only runs for windows that survive to the open). One
+                # row per window; the full eval (regime/side/mtf/vol/…) goes into
+                # signal_payload. Observability only — a failed write must not stop
+                # trading, so it rides the loop's outer try/except.
+                if window_disqualified and not window_audited:
+                    window_audited = True
+                    paper_repo.insert_signal_audit(
+                        ts_ms=int(time.time() * 1000),
+                        ret_7d=float(ev_m.get("ret_7d") or 0),
+                        active_side=ev_m.get("active_side"),
+                        dead_zone=bool(ev_m.get("dead_zone")),
+                        signal_generated=False, accepted=None,
+                        reject_reason="disqualified",
+                        spot=float(ev_m.get("spot") or 0),
+                        signal_payload=ev_m or None,
+                    )
 
             # 2b) Fire the open near the candle close, once per window, only if every
             #     per-minute check in this window passed.

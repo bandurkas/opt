@@ -105,6 +105,14 @@ def record_trade_outcome(pnl_pct: float, now_ms: int, decide) -> dict:
                 (nxt["consec_losses"], nxt["cb_cooldown_until_ms"],
                  json.dumps(nxt["recent_pnls"])),
             )
+            # The state row must exist (caller does ensure_state first). If the
+            # UPDATE hit nothing, the breaker advance was silently dropped —
+            # fail loud instead of returning a result we never persisted.
+            if cur.rowcount != 1:
+                raise RuntimeError(
+                    f"record_trade_outcome: expected to update 1 paper_state "
+                    f"row (id=1), updated {cur.rowcount}"
+                )
         conn.commit()
         return nxt
     except Exception:
