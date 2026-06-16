@@ -110,7 +110,11 @@ look-ahead; trades кэшируются в `/tmp/tail_trades_v3.json` — `/tmp`
 
 ---
 
-## 5. Как продолжить (приоритеты — `FUTURE_WORK.md §0`)
+## 5. Как продолжить (канон плана — `ROADMAP.md`)
+
+> **`ROADMAP.md`** — пошаговый backtest-gated план (гипотеза→тест→критерий→деплой) + журнал
+> сделанного + инструменты тестирования/деплоя. Двигаемся по нему по одному шагу. Ниже — сводка.
+
 
 1. **Ждать гейт** (реальный блокер — рынок в trend/transition, сделки не копятся; не баг). Прогресс:
    `ssh root@187.127.114.34 'bash /root/opt-app/monitor_paper.sh'`. Гейт — `PROJECT_DOSSIER.md` §8.3.
@@ -129,9 +133,10 @@ look-ahead; trades кэшируются в `/tmp/tail_trades_v3.json` — `/tmp`
 
 ## 6. Карта ключевых файлов
 
-- **Резюме/доки:** `SESSION_STATE.md` (этот файл) · `PROJECT_DOSSIER.md` (стратегия + все
-  бэктесты + changelog + постмортем + гейт) · `LIVE_TRADING_HANDOFF.md` (live-сборка) ·
-  `FUTURE_WORK.md` (бэклог + вердикт tail-risk + код-ревью §5-6).
+- **Резюме/доки:** `SESSION_STATE.md` (этот файл) · **`ROADMAP.md`** (пошаговый backtest-gated
+  план + журнал + инструменты) · `PROJECT_DOSSIER.md` (стратегия + все бэктесты + changelog +
+  постмортем + гейт) · `LIVE_TRADING_HANDOFF.md` (live-сборка) · `FUTURE_WORK.md` (детальный
+  бэклог §1-8 + вердикты исследований/код-ревью).
 - **Стратегия (source of truth):** `backend/services/strategy_config.py` · `paper_strategy.py` ·
   `paper_loop.py` · `regime.py`.
 - **Live-инфра:** `backend/services/{live_sizing,broker,live_safety,reconcile}.py` ·
