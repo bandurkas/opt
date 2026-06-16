@@ -1,3 +1,5 @@
+> 🗄️ **ИСТОРИЧЕСКОЕ (эпоха V3 ±2%).** Актуально — `PROJECT_DOSSIER.md` + код. Вход: **`START_HERE.md`**.
+
 # V3 Hybrid Strategy — Deployment Summary
 
 **Date:** 2026-06-01

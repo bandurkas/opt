@@ -1,5 +1,6 @@
 # Handover / Resume checkpoint — ETH Options project
 
+> 👉 Новый агент: начни с **`START_HERE.md`** (точка входа), затем этот файл и `ROADMAP.md`.
 > Самодостаточный файл, чтобы продолжить в новом чате. **Дата:** 2026-06-16 ·
 > **HEAD:** `48f2fc0`+ · ветка `main` · **local = GitHub = VPS**, дерево чистое.
 > Контекст: открой `PROJECT_DOSSIER.md` (всё о проекте) первым.

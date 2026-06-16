@@ -1,3 +1,6 @@
+> 🗄️ **ИСТОРИЧЕСКОЕ (эпоха sell-Call).** Актуальная стратегия — V2 hybrid + V3 ADX в коде
+> (`strategy_config.py`) и `PROJECT_DOSSIER.md`. Точка входа: **`START_HERE.md`**.
+
 # ETH Options — Validated Strategy Spec
 
 **Found:** 2026-05-21 after 4 sweep iterations (~360 combos tested over 365 days of ETH 5m klines).
