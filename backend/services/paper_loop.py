@@ -531,6 +531,14 @@ def window_id(epoch_min: int) -> int:
     return epoch_min // SIGNAL_CHECK_EVERY_MIN
 
 
+def at_position_cap(open_count: int) -> bool:
+    """Tail-risk concentration cap: True if we already hold the max number of
+    simultaneous positions (open + half_closed_tp1) and must refuse new opens.
+    cfg.MAX_OPEN_POSITIONS == 0 disables the cap. Validated OOS by
+    tail_overlay_sweep.py (commit 987efab)."""
+    return bool(cfg.MAX_OPEN_POSITIONS) and open_count >= cfg.MAX_OPEN_POSITIONS
+
+
 def conditions_ready(k5, k15, k1h) -> tuple[bool, dict]:
     """Live entry readiness — same booleans the dashboard 'Условия входа' dots show."""
     ev = evaluate_conditions(k5, k15, k1h)
@@ -678,7 +686,20 @@ async def loop():
                                 dead_zone=False, signal_generated=True, accepted=False,
                                 reject_reason=blocked, spot=spot_val, signal_payload=sig)
                             sig = None
-                    if sig:
+                    if sig and at_position_cap(len(open_pos_now)):
+                        # Tail-risk concentration cap (validated OOS by tail_overlay_sweep,
+                        # commit 987efab): refuse new opens once we already hold the max
+                        # number of simultaneous positions. Cuts negative-EV cluster trades
+                        # that blow up the worst month. Counts open + half_closed_tp1 (1=1 slot).
+                        print(f"[paper] skip signal — concentration cap "
+                              f"({len(open_pos_now)} open >= MAX_OPEN_POSITIONS="
+                              f"{cfg.MAX_OPEN_POSITIONS})", flush=True)
+                        paper_repo.insert_signal_audit(
+                            ts_ms=now_ms, ret_7d=ret_7d_val, active_side=sig.get("active_side"),
+                            dead_zone=False, signal_generated=True, accepted=False,
+                            reject_reason="max_open_positions", spot=spot_val,
+                            signal_payload=sig)
+                    elif sig:
                         eq = compute_equity(state, spot, chain_dict)
                         locked_margin = sum(float(p["size_usd"]) for p in open_pos_now)
                         free_margin = (eq["equity"] * MAX_PORTFOLIO_MARGIN_PCT) - locked_margin

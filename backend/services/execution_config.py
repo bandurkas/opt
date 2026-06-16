@@ -58,6 +58,16 @@ KILLSWITCH_FILE = os.getenv("LIVE_KILLSWITCH_FILE", "/data/STOP_TRADING").strip(
 LIVE_MAX_CAPITAL_USDT = _f("LIVE_MAX_CAPITAL_USDT", 1000.0)
 # Max simultaneous open positions. 0 = unlimited (size is margin-bound instead).
 LIVE_MAX_CONCURRENT = _i("LIVE_MAX_CONCURRENT", 0)
+# Tail-risk concentration cap — STRATEGY-LEVEL (applies in paper AND live), unlike
+# the legacy LIVE_MAX_CONCURRENT above. Hard ceiling on total simultaneously open
+# positions (open + half_closed_tp1). 0 = unlimited.
+#   Validated out-of-sample by tail_overlay_sweep.py (commit 987efab): capping at
+#   4 simultaneously cuts the worst month (−33.7%→−11.3%) AND lifts edge
+#   (+4.9→+7.7%/trade, holdout +11.4%) by removing negative-EV cluster trades.
+#   This is a pure risk overlay — it does NOT touch entry/exit logic. The cap
+#   matches the backtest where 1 trade = 1 slot, so a half-closed (TP1-taken)
+#   position still counts as one open slot until fully closed.
+MAX_OPEN_POSITIONS = _i("MAX_OPEN_POSITIONS", 4)
 # Hard cap on lots (0.1-ETH units) per single trade. 0 = unlimited (margin-bound).
 LIVE_PER_TRADE_LOTS_CAP = _i("LIVE_PER_TRADE_LOTS_CAP", 0)
 # Refuse to open if wallet USDT balance falls below this.
