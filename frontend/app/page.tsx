@@ -343,37 +343,65 @@ const ZONE_COLOR: Record<string, string> = {
 
 function ProximityGauge({ pct, zone }: { pct: number; zone: string }) {
   const cx = 100, cy = 100, r = 80;
+  const clamped = Math.max(0, Math.min(100, pct));
+  const color = ZONE_COLOR[zone] ?? "#64748b";
+
   // 0% → 180° (left), 100% → 0° (right); top semicircle (screen y is down).
   const polar = (deg: number, rad: number): [number, number] => {
     const a = (deg * Math.PI) / 180;
     return [cx + rad * Math.cos(a), cy - rad * Math.sin(a)];
   };
-  // Sample each zone as a polyline (unambiguous vs SVG arc flags).
-  const zonePoints = (a: number, b: number) => {
+  // Sample [a,b] of the scale as a polyline (unambiguous vs SVG arc flags).
+  const scalePoints = (a: number, b: number) => {
     const pts: string[] = [];
-    for (let i = 0; i <= 16; i++) {
-      const p = a + ((b - a) * i) / 16;
+    const steps = Math.max(2, Math.round(Math.abs(b - a) / 2));
+    for (let i = 0; i <= steps; i++) {
+      const p = a + ((b - a) * i) / steps;
       const [x, y] = polar(180 - p * 1.8, r);
       pts.push(`${x.toFixed(1)},${y.toFixed(1)}`);
     }
     return pts.join(" ");
   };
-  const clamped = Math.max(0, Math.min(100, pct));
-  const color = ZONE_COLOR[zone] ?? "#64748b";
+
+  const angle = (clamped / 100) * 180 - 90; // needle rotation: -90° left, 0° up, +90° right
+  const needleLen = r - 14;
+
   return (
-    <svg viewBox="0 0 200 116" className="w-full max-w-[18rem] mx-auto">
-      {/* zone scale */}
-      <polyline points={zonePoints(0, 50)} fill="none" stroke="#f43f5e" strokeWidth="10" opacity="0.3" strokeLinecap="round" />
-      <polyline points={zonePoints(50, 80)} fill="none" stroke="#f59e0b" strokeWidth="10" opacity="0.3" />
-      <polyline points={zonePoints(80, 100)} fill="none" stroke="#10b981" strokeWidth="10" opacity="0.3" strokeLinecap="round" />
-      {/* needle (vertical, rotated to pct: 0%→-90°/left, 50%→0°/up, 100%→+90°/right) */}
-      <g transform={`rotate(${(clamped / 100) * 180 - 90} ${cx} ${cy})`}>
-        <line x1={cx} y1={cy} x2={cx} y2={cy - (r - 10)} stroke={color} strokeWidth="3" strokeLinecap="round" />
-      </g>
-      <circle cx={cx} cy={cy} r="4.5" fill={color} />
-      <text x={cx} y={cy - 30} textAnchor="middle" fill={color} fontSize="28" fontWeight="bold">{clamped.toFixed(0)}%</text>
-      <text x={cx} y={cy - 12} textAnchor="middle" fill="#94a3b8" fontSize="11">{ZONE_LABEL[zone] ?? zone}</text>
-    </svg>
+    <div className="flex flex-col items-center">
+      {/* viewBox cropped to the arc; readout lives BELOW it so the needle never overlaps text */}
+      <svg viewBox="0 0 200 108" className="w-full max-w-[17rem] mx-auto">
+        {/* base track for depth */}
+        <polyline points={scalePoints(0, 100)} fill="none" stroke="#1e293b" strokeWidth="13" strokeLinecap="round" />
+        {/* dim coloured zones */}
+        <polyline points={scalePoints(0, 50)} fill="none" stroke="#f43f5e" strokeWidth="11" opacity="0.25" strokeLinecap="round" />
+        <polyline points={scalePoints(50, 80)} fill="none" stroke="#f59e0b" strokeWidth="11" opacity="0.25" />
+        <polyline points={scalePoints(80, 100)} fill="none" stroke="#10b981" strokeWidth="11" opacity="0.25" strokeLinecap="round" />
+        {/* bright value fill 0 → pct */}
+        {clamped > 0 && (
+          <polyline points={scalePoints(0, clamped)} fill="none" stroke={color} strokeWidth="11" strokeLinecap="round" />
+        )}
+        {/* needle */}
+        <g transform={`rotate(${angle} ${cx} ${cy})`}>
+          <polygon
+            points={`${cx - 3.2},${cy} ${cx + 3.2},${cy} ${cx},${cy - needleLen}`}
+            fill={color}
+          />
+        </g>
+        {/* hub bearing */}
+        <circle cx={cx} cy={cy} r="6.5" fill={color} />
+        <circle cx={cx} cy={cy} r="3" fill="#0f172a" />
+      </svg>
+      {/* readout — clear of the needle sweep */}
+      <div className="flex flex-col items-center -mt-1">
+        <div className="flex items-baseline gap-0.5 leading-none">
+          <span className="text-4xl font-bold tabular-nums" style={{ color }}>{clamped.toFixed(0)}</span>
+          <span className="text-lg font-semibold" style={{ color }}>%</span>
+        </div>
+        <span className="mt-1 text-[11px] font-medium uppercase tracking-[0.15em]" style={{ color }}>
+          {ZONE_LABEL[zone] ?? zone}
+        </span>
+      </div>
+    </div>
   );
 }
 
