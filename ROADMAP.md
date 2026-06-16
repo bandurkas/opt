@@ -33,6 +33,17 @@
 - `987efab`+`7e11b66` 🔬 исследование tail-risk (harness `tail_overlay_sweep.py`, train/holdout):
   победитель `MAX_OPEN_POSITIONS=4` (OOS-подтверждён).
 
+### Сессия 2026-06-16 (четвёртая) — audit-fix deploy + ADX-research + гейдж + VPS-чистка
+- ✅ `a436302` **Fix1** (`signal_audit` пишет 1 строку/окно для дисквалифицированных окон, полный
+  eval в payload — закрыта 3.7-дн дыра) **+ Fix2** (rowcount-guard в `record_trade_outcome`).
+  Задеплоено в paper, подтверждено (`disqualified`-строки идут, 0 ошибок, гейт цел).
+- ❌ `2cad943` **ADX-сайзинг ОТВЕРГНУТ** (OOS + tail с компаундингом+кэпом mo=4): режет доходность
+  и хвост. `adx_sizing_oos.py` + `tail_overlay_sweep.py(size_fn)`; вердикт в `FUTURE_WORK §8`.
+  Нативный `opt-app-bt:arm64` для быстрых локальных бэктестов (2 мин vs 33 мин эмуляции).
+- ✅ `0a8d72b` **Гейдж 2.1** «Близость ко входу»: `entry_proximity` (0-100+зона) в `/paper/conditions`
+  + SVG-спидометр. ADX-скор как индикатор, не сайзинг. Код+тесты готовы, **НЕ задеплоен**.
+- ✅ `538b616` **Авточистка VPS** `vps_cleanup.sh` + cron 04:00 UTC (консервативно: без volume/image-a).
+
 ### Сессия 2026-06-16 (третья) — Фаза A1 (CB race)
 - ✅ `85b5aff` **Фаза A1 — CB race condition исправлен** (`FUTURE_WORK §5.2`). Был split
   read-modify-write `consec_losses` в двух транзакциях (`get_state`→compute→`update_state`):
