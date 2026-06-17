@@ -66,10 +66,10 @@ CALL_GEN_KWARGS = {
 }
 
 CALL_EXIT = {
-    "tp1_pct": 0.30,
-    "tp2_pct": 0.50,
-    "sl_pct": 0.50,
-    "hold_h": 24,  # validated exit (live .25/.45/.75/12h gave Call avg -1.53%)
+    "tp1_pct": 0.40,
+    "tp2_pct": 0.80,
+    "sl_pct": 0.75,
+    "hold_h": 24,  # short-dated (24h) re-tuned exits — holdout +7.37%→+14.79%/trade (2026-06-17)
 }
 
 CB_CONSEC_LIMIT = 5       # consecutive losses before cooldown
@@ -103,8 +103,17 @@ BASELINE_CALL_EXIT = {
 }
 
 DEFAULT_SIGMA = 0.6
-EXPIRY_TARGET_HOURS = 168
+# Per-side target expiry: Calls go short-dated (24h, re-tuned exits) — holdout +14.79%/trade,
+# $400-model 215→332 trades, +34%→+53% (2026-06-17). Puts stay long (no short edge at the edge).
+CALL_TARGET_EXPIRY_H = 24
+PUT_TARGET_EXPIRY_H = 168
+EXPIRY_TARGET_HOURS = PUT_TARGET_EXPIRY_H  # alias for backward compat (Put default)
 SPREAD_HALF_PCT = 1.0
+
+
+def get_side_expiry_h(side: str) -> int:
+    """Target option expiry (hours) for the given side: 24h Calls, 168h Puts."""
+    return CALL_TARGET_EXPIRY_H if (side or "C").upper() == "C" else PUT_TARGET_EXPIRY_H
 
 
 def active_gen_kwargs() -> dict:

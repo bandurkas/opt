@@ -44,7 +44,7 @@ from services.paper_strategy import (  # noqa: E402
     CB_CONSEC_LIMIT,
     CB_PAUSE_HOURS,
     DEFAULT_SIGMA,
-    EXPIRY_TARGET_HOURS,
+    get_side_expiry_h,
     LOT_MIN_ETH,
     MAX_PORTFOLIO_MARGIN_PCT,
     START_EQUITY_USD,
@@ -268,8 +268,9 @@ def open_paper_position(signal: dict, spot: float, equity_usd: float, free_margi
     active_side = signal.get("active_side", signal.get("side", "P"))
     ex_kw = exit_for_side(active_side)
 
+    target_expiry_h = get_side_expiry_h(active_side)
     chain = bybit_client.get_options_tickers(BASE_COIN)
-    pick = pick_bybit_atm_option(chain, spot, EXPIRY_TARGET_HOURS, active_side)
+    pick = pick_bybit_atm_option(chain, spot, target_expiry_h, active_side)
 
     if pick and pick.get("bid", 0) > 0 and pick.get("ask", 0) > 0:
         strike = float(pick["strike"])
@@ -279,7 +280,7 @@ def open_paper_position(signal: dict, spot: float, equity_usd: float, free_margi
         symbol = pick["symbol"]
     else:
         strike = round(spot / STRIKE_GRID) * STRIKE_GRID
-        expiry_ms = int(time.time() * 1000) + EXPIRY_TARGET_HOURS * 3_600_000
+        expiry_ms = int(time.time() * 1000) + target_expiry_h * 3_600_000
         premium_mid = price_option_bs(active_side, spot, strike, expiry_ms, DEFAULT_SIGMA)
         if premium_mid <= 0:
             print(f"[paper] open skipped — could not price option", flush=True)

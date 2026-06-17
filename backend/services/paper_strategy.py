@@ -19,6 +19,7 @@ from services.strategy_config import (
     CALL_EXIT,
     DEFAULT_SIGMA,
     EXPIRY_TARGET_HOURS,
+    get_side_expiry_h,
     PUT_GEN_KWARGS,
     PUT_EXIT,
     RET_7D_THRESHOLD,
