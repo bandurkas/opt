@@ -2,10 +2,10 @@
 
 > 👉 Новый агент: начни с **`START_HERE.md`** (точка входа), затем этот файл и `ROADMAP.md`.
 > Самодостаточный файл, чтобы продолжить в новом чате. **Дата:** 2026-06-17 ·
-> **HEAD:** `ce5867d` · ветка `main` · **local = GitHub = VPS**, дерево чистое.
-> ✅ Гейдж 2.1 (`0a8d72b`) **ЗАДЕПЛОЕН** 2026-06-17 (нативный rebuild backend+frontend на VPS;
-> Mac-кросс-сборка фронта отвергнута — `next build`/SWC сегфолтится под qemu-amd64) + UX-фикс
-> гейджа `ce5867d` (readout вынесен из-под стрелки). Cleanup-cron — установлен на VPS.
+> **HEAD:** `49474d1` · ветка `main` · **local = GitHub = VPS**, дерево чистое.
+> ✅ **Короткие Call'ы (24ч) ЗАДЕПЛОЕНЫ в paper** (`49474d1`, 2026-06-17): Call expiry 168→24ч +
+> exits `tp0.4/0.8 sl0.75 h24`, Put не тронут; 68/68 тестов; рантайм-конфиг в контейнере подтверждён,
+> гейт цел (8 циклов, equity $457.74). Ранее: гейдж 2.1 (`ce5867d`) задеплоен; cleanup-cron на VPS.
 > Контекст: открой `PROJECT_DOSSIER.md` (всё о проекте) первым.
 
 ---
@@ -52,7 +52,19 @@ equity $457.74, consec=0, CB off). local = GitHub = VPS.
 
 ---
 
-## 1. Что сделано (хронология, коммиты `b45ecbb..739b00b`)
+## 1. Что сделано (хронология, коммиты `b45ecbb..49474d1`)
+
+**Сессия 2026-06-17 (пятая) — короткие Call'ы (24ч) внедрены + задеплоены**
+- `49474d1` ✅ **Short-dated 24h Calls** (`IMPL_SHORT_DATED_CALLS.md`): `strategy_config` разведён
+  по сторонам — `CALL_TARGET_EXPIRY_H=24` / `PUT_TARGET_EXPIRY_H=168` + `get_side_expiry_h()`;
+  `EXPIRY_TARGET_HOURS=168` оставлен алиасом (backtest/back-compat). `CALL_EXIT` перетюнен
+  `tp0.4/0.8 sl0.75 h24` (Put не тронут). `paper_loop` выбирает контракт Bybit и BS-fallback
+  expiry по стороне. +6 тестов `test_short_dated_calls.py` (**68/68 зелёные**, py3.11 контейнер).
+  Holdout: per-trade +7.37%→+14.79%, Sharpe 0.149→0.197; $400-модель 215→332 сделок, +34%→+53%,
+  maxDD 25.9%→24.1%. Code-review (high) — чисто, блокеров нет. **Задеплоено в paper** (rebuild Mac
+  amd64 → save/load на VPS → `compose up -d --force-recreate paper`); рантайм-конфиг в контейнере
+  подтверждён (Call=24/Put=168), бот жив, 0 ошибок, гейт цел. ⚠️ Деплой отвязанно (`setsid`+опрос
+  лога): SSH рвётся на 1 CPU; две конкурирующие `docker load` душат CPU — оставлять одну.
 
 **Сессия 2026-06-16 (четвёртая) — audit-fix deploy + ADX-research + гейдж + VPS-чистка**
 - `a436302` ✅ **Fix1+Fix2 ЗАДЕПЛОЕНЫ**: `signal_audit` пишет 1 строку/окно для дисквалифицированных

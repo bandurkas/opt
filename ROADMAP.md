@@ -23,6 +23,14 @@
 
 ## 1. ✅ Сделано (журнал)
 
+### Сессия 2026-06-17 (пятая) — короткие Call'ы (24ч) внедрены + задеплоены
+- ✅ `49474d1` **Short-dated 24h Calls** (`IMPL_SHORT_DATED_CALLS.md`): per-side expiry
+  (`CALL_TARGET_EXPIRY_H=24`/`PUT_TARGET_EXPIRY_H=168` + `get_side_expiry_h()`, `EXPIRY_TARGET_HOURS`
+  оставлен алиасом); `CALL_EXIT`→`tp0.4/0.8 sl0.75 h24` (Put не тронут); `paper_loop` берёт контракт
+  и BS-fallback expiry по стороне. +6 тестов (**68/68**). Holdout per-trade +7.37%→+14.79%; $400-модель
+  215→332 сделок, +34%→+53%. Code-review high — чисто. **Задеплоено в paper** (Mac amd64 rebuild →
+  save/load → force-recreate), рантайм подтверждён, гейт цел. Деплой отвязанно (`setsid`+опрос лога).
+
 ### Сессия 2026-06-15/16 (первая)
 - 🔴 `52f9dc6` фикс `close_position` (неэкранированный `%` → IndexError → 0 закрытий 3 дня).
   После рестарта 8 позиций закрылись по TP2: **+$57.74, equity $457.74**.
