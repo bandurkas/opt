@@ -1,10 +1,11 @@
 # Handover / Resume checkpoint — ETH Options project
 
 > 👉 Новый агент: начни с **`START_HERE.md`** (точка входа), затем этот файл и `ROADMAP.md`.
-> Самодостаточный файл, чтобы продолжить в новом чате. **Дата:** 2026-06-16 ·
-> **HEAD:** `538b616` · ветка `main` · **local = GitHub = VPS**, дерево чистое.
-> ⚠️ Деплоено в paper: до `a436302` включительно. Гейдж 2.1 (`0a8d72b`) — **код готов, НЕ
-> задеплоен** (нужен rebuild backend+frontend образов). Cleanup-cron — установлен на VPS.
+> Самодостаточный файл, чтобы продолжить в новом чате. **Дата:** 2026-06-17 ·
+> **HEAD:** `ce5867d` · ветка `main` · **local = GitHub = VPS**, дерево чистое.
+> ✅ Гейдж 2.1 (`0a8d72b`) **ЗАДЕПЛОЕН** 2026-06-17 (нативный rebuild backend+frontend на VPS;
+> Mac-кросс-сборка фронта отвергнута — `next build`/SWC сегфолтится под qemu-amd64) + UX-фикс
+> гейджа `ce5867d` (readout вынесен из-под стрелки). Cleanup-cron — установлен на VPS.
 > Контекст: открой `PROJECT_DOSSIER.md` (всё о проекте) первым.
 
 ---
@@ -27,7 +28,8 @@ rowcount-guard в `record_trade_outcome`. Подтверждено в ранта
 `project_options_adx_sizing_rejected`. Артефакты: `adx_sizing_oos.py`, `tail_overlay_sweep.py`
 (size_fn), нативный `opt-app-bt:arm64` для быстрых бэктестов. (3) **Гейдж 2.1** (`0a8d72b`): бэкенд
 `entry_proximity` (0-100+зона) в `/paper/conditions` + SVG-спидометр на фронте; ADX-скор как
-**индикатор**, не сайзинг. Код+тесты готовы, **НЕ задеплоен**. (4) **Авточистка VPS** (`538b616`):
+**индикатор**, не сайзинг. ✅ **ЗАДЕПЛОЕН 2026-06-17** (нативный rebuild на VPS) + UX-фикс
+`ce5867d`. (4) **Авточистка VPS** (`538b616`):
 консервативный `vps_cleanup.sh` + cron 04:00 UTC (без volume/image-a; disk-alert). (5) Правило
 зафиксировано: архитектура→код→ревью→тест→ревью→деплой.
 
@@ -63,7 +65,12 @@ equity $457.74, consec=0, CB off). local = GitHub = VPS.
   (+`size_fn`). Полный разбор — память `project_options_adx_sizing_rejected`.
 - `0a8d72b` ✅ **Гейдж 2.1 «Близость ко входу»** — бэкенд `paper_strategy.entry_proximity()` (0-100+зона)
   в `/paper/conditions` + ADX-скор; фронт — SVG-спидометр (`page.tsx`) + per-factor бары. ADX = индикатор,
-  НЕ сайзинг. +6 тестов `test_proximity.py`, tsc чист. ⚠️ **КОД ГОТОВ, НЕ ЗАДЕПЛОЕН** (нужны backend+frontend образы).
+  НЕ сайзинг. +6 тестов `test_proximity.py`, tsc чист. ✅ **ЗАДЕПЛОЕН 2026-06-17** — `/paper/conditions`
+  отдаёт `proximity` (53.4%/preparing подтверждено), дашборд рисует. Mac-кросс-сборка фронта отвергнута
+  (`next build`/SWC → `qemu: signal 11`); собирали backend+frontend **нативно на VPS** (см. память
+  `vps3-build-images-locally`), деплой отвязанно через `setsid`+опрос лога (SSH рвётся на 1 CPU).
+- `ce5867d` ✅ **UX-фикс гейджа**: readout (%/зона) вынесен **под дугу** — стрелка больше не наезжает на
+  текст; + базовый трек, яркая заливка шкалы 0→pct, сужающаяся стрелка + hub. tsc чист. Задеплоен 2026-06-17.
 - `538b616` ✅ **Авточистка VPS** `vps_cleanup.sh` + cron 04:00 UTC: prune только stopped/dangling/
   build-cache>168h/networks; НИКОГДА `image -a`/`volume prune`; усечение больших логов; disk-alert ≥80%.
   Протестирован на VPS (сервисы целы). `739b00b` docs.
@@ -122,8 +129,9 @@ equity $457.74, consec=0, CB off). local = GitHub = VPS.
   закрыт кэпом; SL/CB/dynsize ещё не наблюдались вживую.
 - **`signal_audit` теперь полный:** после `a436302` каждое 5m-окно даёт 1 строку (fire-time решение
   ИЛИ `disqualified`-наблюдение с полным eval в `signal_payload`). Дыра в записи параметров закрыта.
-- **⚠️ НЕ задеплоено (готово в коде на `739b00b`):** гейдж 2.1 (`0a8d72b`) — нужен rebuild **двух**
-  образов: `backend` (эндпоинт `/paper/conditions`) и `frontend` (UI). См. рецепт в §3 / ROADMAP §2.
+- **✅ Гейдж 2.1 ЗАДЕПЛОЕН (2026-06-17):** backend (`/paper/conditions` отдаёт `proximity`) + frontend
+  (SVG-спидометр) пересобраны **нативно на VPS** и подняты; UX-фикс `ce5867d` применён. Дашборд :3000 чист
+  (HTTP 200, 0 ошибок). ⚠️ Урок: фронт НЕ кросс-собирать на Mac (qemu segfault на `next build`) — только на VPS.
 - **Мониторинг:** VPS-cron 3ч (`paper_cron.sh`) → Telegram на SL/CB/dynsize/+5 циклов/гейт. Ручная
   проверка: `bash /root/opt-app/monitor_paper.sh`. **Авточистка:** cron 04:00 UTC (`vps_cleanup.sh`).
   ⚠️ `docker logs opt-app-paper-1` виснет (1 CPU) — читать json-логфайл:
@@ -167,14 +175,12 @@ look-ahead; trades кэшируются в `/tmp/tail_trades_v3_adx.json` — `/
 > сделанного + инструменты тестирования/деплоя. Двигаемся по нему по одному шагу. Ниже — сводка.
 
 
-0. **⚡ НЕЗАКРЫТЫЙ ХВОСТ (ближайшее действие): задеплоить гейдж 2.1** (`0a8d72b`, уже в коде/GitHub/VPS).
-   Нужны ДВА образа: `backend` (для `/paper/conditions`) и `frontend` (UI). Рецепт (по ROADMAP §2,
-   собирать на Mac, amd64):
-   `docker buildx build --platform linux/amd64 -t opt-app-backend:latest ./backend --load` и
-   `... -t opt-app-frontend:latest ./frontend --load` → `docker save | gzip | scp` → на VPS
-   `docker load` + `docker compose up -d --no-build --force-recreate backend frontend`.
-   ⚠️ `docker load` на 1 CPU ~10 мин и роняет SSH → запускать отвязанным (`setsid bash скрипт`)
-   и опрашивать лог (как делали для paper). Проверка: открыть дашборд :3000 → гейдж рисуется.
+0. ✅ **ХВОСТ ЗАКРЫТ (2026-06-17): гейдж 2.1 задеплоен** (`0a8d72b`) + UX-фикс (`ce5867d`). Собирали
+   backend+frontend **НАТИВНО на VPS** (`git pull` → `docker compose build frontend backend` → `up -d`),
+   а НЕ кросс-сборкой на Mac: `next build`/SWC сегфолтится под qemu-amd64 (`signal 11`). Деплой отвязанно
+   (`setsid` + опрос `/tmp/*.log`), т.к. SSH рвётся на 1 CPU при долгих командах; `compose up` без
+   `--force-recreate` может НЕ пересоздать контейнер при том же теге — форсить. Подробности — память
+   `vps3-build-images-locally`.
 1. **Ждать гейт** (реальный блокер — рынок в trend/transition, сделки не копятся; не баг). Прогресс:
    `ssh root@187.127.114.34 'bash /root/opt-app/monitor_paper.sh'`. Гейт — `PROJECT_DOSSIER.md` §8.3.
 2. **P0: баги достоверности paper-данных** (`FUTURE_WORK §5`): ✅ A1 CB-race (§5.2) СДЕЛАН (`85b5aff`).
