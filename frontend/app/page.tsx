@@ -190,8 +190,8 @@ export default function Dashboard() {
             </div>
             <div className="p-4">
               <ProximityGauge pct={conditions.proximity.proximity_pct} zone={conditions.proximity.zone} />
-              <div className="grid grid-cols-4 gap-2 mt-3">
-                {([["ADX", "adx"], ["MTF", "mtf"], ["Vol", "vol"], ["Bull", "bull"]] as const).map(([lbl, k]) => (
+              <div className="grid grid-cols-3 gap-2 mt-3">
+                {([["MTF", "mtf"], ["Vol", "vol"], ["Bull", "bull"]] as const).map(([lbl, k]) => (
                   <FactorBar key={k} label={lbl} v={conditions.proximity!.factors[k]} />
                 ))}
               </div>

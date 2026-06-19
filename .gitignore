@@ -28,6 +28,7 @@ data/
 .streamlit/
 *.log
 # Scratch / debug files
+kkk.txt
 *.exp
 test_missed*.py
 verify.py
