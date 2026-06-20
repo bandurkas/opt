@@ -109,14 +109,15 @@ def _simulate_option_trade(
     tsl_trigger_pct: float = 0.0,
     tsl_offset_pct: float = 0.0,
     position: str = "long_premium",  # 'long_premium' or 'short_premium'
+    strike_round_to: float = 25.0,   # listed strike spacing; ETH=$25, BTC real spacing is wider
 ) -> dict:
     """Walk forward bar-by-bar on the underlying path. Compute synthetic premium
     via BS at each step. Apply TP1/TP2/SL exits. Return resolution + P&L.
 
-    ATM strike (rounded to $25). T shrinks by 5m each step (theta decay baked in).
+    ATM strike (rounded to nearest `strike_round_to`). T shrinks by 5m each
+    step (theta decay baked in).
     """
-    # Round strike to nearest $25 (Bybit ETH options usually $25/$50 spacing)
-    strike = round(entry_spot / 25) * 25
+    strike = round(entry_spot / strike_round_to) * strike_round_to
 
     T0 = expiry_hours / (24 * 365)
     bs_mid = bs.price(side, entry_spot, strike, T0, sigma)
@@ -344,6 +345,7 @@ def simulate_signal_set(
     dynamic_sigma: bool = False,                        # σ_t from 168h RV × multiplier
     iv_rv_multiplier: float = 1.05,                     # calibrated 2026-05: live IV / RV_168h ≈ 1.03
     sigma_clamp: tuple[float, float] = (0.20, 1.50),    # safety bounds
+    strike_round_to: float = 25.0,                      # listed strike spacing (asset-specific)
 ) -> list[dict]:
     out = []
     skipped_adaptive = 0
@@ -429,6 +431,7 @@ def simulate_signal_set(
             horizon_hours=option_horizon_h, spread_pct=spread_pct,
             tsl_trigger_pct=tsl_trigger_pct, tsl_offset_pct=tsl_offset_pct,
             position=sig.get("position", "long_premium"),
+            strike_round_to=strike_round_to,
         )
         out.append({**sig, "underlying_returns": urets, "option": option,
                     "side": sig["side"], "sigma_used": round(sigma_t, 4),
