@@ -9,6 +9,7 @@ Circuit breaker: 5 consecutive losses → 48h pause.
 """
 from __future__ import annotations
 
+import os
 import time
 
 from db import paper_repo
@@ -28,9 +29,15 @@ from services.strategy_config import (
 
 # ───────────── Bybit-realistic sizing / friction model ─────────────
 # Starting equity sized so the minimum 0.1-ETH lot fits in budget.
-START_EQUITY_USD = 400.0
+# Env-overridable (default = validated $400/0.15). 2026-06-20: paper deposit raised to
+# $800 via PAPER_START_EQUITY_USD=800, keeping MO4/MP.15. Rationale (OOS deposit-curve,
+# real DVOL): granularity KNEE ~$800 — below it the bot is capital-starved in high-signal
+# (volatile) periods (train taken 187→264 at $800); above $800 ROI% is flat (~+39% OOS)
+# and $ scales linearly. So $800 = capacity headroom for active periods at no ROI/maxDD
+# cost. MO6 was REJECTED (halves ROI), BESTPICK REJECTED (overfit). Reversible via env.
+START_EQUITY_USD = float(os.getenv("PAPER_START_EQUITY_USD", "400"))
 # Per trade: up to 15% of equity goes into option margin. On $400 → $60 budget.
-MARGIN_PCT_PER_TRADE = 0.15
+MARGIN_PCT_PER_TRADE = float(os.getenv("PAPER_MARGIN_PCT_PER_TRADE", "0.15"))
 # Bybit min lot for ETH options.
 LOT_MIN_ETH = 0.1
 # Bybit Cross-Margin IM rate for short ETH options ≈ 10% of strike-notional.

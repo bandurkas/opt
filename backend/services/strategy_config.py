@@ -51,7 +51,14 @@ PUT_GEN_KWARGS = {
 PUT_EXIT = {
     "tp1_pct": 0.50,
     "tp2_pct": 0.70,
-    "sl_pct": 1.50,
+    # 2026-06-19 SL sweep (sl_sweep.py + sl_deposit_sweep.py, full year, real DVOL,
+    # $400 margin/MAX_OPEN4/compound/CB engine): widening Put stop 1.50→2.00 lifts
+    # the account $612→$712 (+78% vs +53%) at ~flat maxDD (24.1%→25.1%), and HOLDOUT
+    # per-trade avg +6.08%→+15.20% (OOS, not a compounding mirage). Puts have 168h to
+    # recover; the tight 1.50 stop whipsaws out of positions that revert. 2.50 over-widens
+    # (slots clogged, throughput 319→258). Calls stay 0.75 — widening HURTS there (24h
+    # recycle + margin slots), so this change is PUT-ONLY.
+    "sl_pct": 2.00,
     "hold_h": 96,  # 4 days — validated exit (168h drops Put avg +16.7%→+2.6%)
 }
 

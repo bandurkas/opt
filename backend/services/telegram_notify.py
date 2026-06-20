@@ -12,31 +12,33 @@ from typing import Final
 import requests
 
 _TOKEN: Final = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
-_CHAT_ID: Final = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+# TELEGRAM_CHAT_ID supports multiple recipients: comma/space-separated chat IDs.
+_CHAT_IDS: Final = [c for c in os.getenv("TELEGRAM_CHAT_ID", "").replace(",", " ").split() if c]
 _TIMEOUT_S: Final = 5
 
 
 def is_enabled() -> bool:
-    return bool(_TOKEN and _CHAT_ID)
+    return bool(_TOKEN and _CHAT_IDS)
 
 
 def notify(text: str, *, parse_mode: str = "HTML", silent: bool = False) -> None:
-    """Send a message. Never raises — paper-loop should never break on this."""
+    """Send a message to every configured chat. Never raises — paper-loop should never break on this."""
     if not is_enabled():
         return
-    try:
-        requests.post(
-            f"https://api.telegram.org/bot{_TOKEN}/sendMessage",
-            json={
-                "chat_id": _CHAT_ID,
-                "text": text,
-                "parse_mode": parse_mode,
-                "disable_notification": silent,
-            },
-            timeout=_TIMEOUT_S,
-        )
-    except Exception as e:  # noqa: BLE001
-        print(f"[telegram] notify failed: {e!r}", flush=True)
+    for chat_id in _CHAT_IDS:
+        try:
+            requests.post(
+                f"https://api.telegram.org/bot{_TOKEN}/sendMessage",
+                json={
+                    "chat_id": chat_id,
+                    "text": text,
+                    "parse_mode": parse_mode,
+                    "disable_notification": silent,
+                },
+                timeout=_TIMEOUT_S,
+            )
+        except Exception as e:  # noqa: BLE001
+            print(f"[telegram] notify failed for {chat_id}: {e!r}", flush=True)
 
 
 def notify_open(*, pid: int, symbol: str, side: str, strike: float, spot: float,
