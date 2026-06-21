@@ -36,6 +36,7 @@ from services import live_safety  # noqa: E402  (live pre-open gates; inert in p
 from services import reconcile  # noqa: E402  (live exchange↔DB sync; inert in paper mode)
 from services.bybit_client import bybit_client  # noqa: E402
 from services.strategy_config import (  # noqa: E402
+    CALL_SL_DOLLAR_FRAC,
     RET_7D_THRESHOLD,
     get_side_gen_kwargs,
 )
@@ -44,6 +45,7 @@ from services.paper_strategy import (  # noqa: E402
     CB_CONSEC_LIMIT,
     CB_PAUSE_HOURS,
     DEFAULT_SIGMA,
+    IM_RATE,
     get_side_expiry_h,
     LOT_MIN_ETH,
     MAX_PORTFOLIO_MARGIN_PCT,
@@ -53,6 +55,7 @@ from services.paper_strategy import (  # noqa: E402
     apply_exit_spread,
     compute_ret_7d,
     determine_side,
+    dyn_size_factor,
     evaluate_conditions,
     fee_per_side,
     is_cb_active,
@@ -153,6 +156,25 @@ def exit_for_side(side: str) -> dict:
     """Return TP/SL thresholds for the given side."""
     from services.strategy_config import get_side_exits
     return get_side_exits(side)
+
+
+def call_dollar_sl_pct(strike: float, entry_credit: float,
+                       sl_dollar_frac: float = CALL_SL_DOLLAR_FRAC,
+                       im_rate: float = IM_RATE) -> float:
+    """Dollar-margin SL for short Calls, expressed as the equivalent
+    %-of-entry-credit ratio so it plugs straight into the existing
+    `sl_threshold = entry_credit * (1 + sl_pct)` check unchanged.
+
+    margin = im_rate*strike + entry_credit (per 1 ETH, matches BTC straddle's
+    btc_straddle_sl.margin_per_lot formula); SL trips at sl_dollar_frac*margin
+    of buyback loss. Validated 2026-06-21 (eth_dollar_sl_deposit_sweep.py,
+    frac=0.10 dominates the live %-SL=0.75 on the real $-account engine).
+    Put side is unaffected — keeps the static %-of-premium sl_pct.
+    """
+    if entry_credit <= 0:
+        return 0.0
+    margin = im_rate * strike + entry_credit
+    return sl_dollar_frac * margin / entry_credit
 
 
 # ───────────────────── signal logic ─────────────────────────────────
@@ -260,16 +282,17 @@ def compute_equity(state: dict, spot: float, atm_chain_quotes: dict[str, dict] |
 
 # ───────────────────── position open / close ───────────────────────
 
-def open_paper_position(signal: dict, spot: float, equity_usd: float, free_margin_usd: float, state: dict) -> int | None:
+def open_paper_position(signal: dict, spot: float, equity_usd: float, free_margin_usd: float,
+                        state: dict, chain: list[dict]) -> int | None:
     """Open a paper position for a signal — Bybit-realistic sizing/friction.
 
-    Uses per-side exit params (PUT_EXIT for P, CALL_EXIT for C).
+    Uses per-side exit params (PUT_EXIT for P, CALL_EXIT for C). `chain` is the
+    options chain already fetched by the caller this tick (avoids re-fetching).
     """
     active_side = signal.get("active_side", signal.get("side", "P"))
     ex_kw = exit_for_side(active_side)
 
     target_expiry_h = get_side_expiry_h(active_side)
-    chain = bybit_client.get_options_tickers(BASE_COIN)
     pick = pick_bybit_atm_option(chain, spot, target_expiry_h, active_side)
 
     if pick and pick.get("bid", 0) > 0 and pick.get("ask", 0) > 0:
@@ -323,8 +346,9 @@ def open_paper_position(signal: dict, spot: float, equity_usd: float, free_margi
         n_lots = realistic_size_lots(free_margin_usd, equity_usd, strike, premium_mid, state)
         if n_lots < 1:
             m_per_lot = margin_per_lot(strike, premium_mid)
-            print(f"[paper] open skipped — insufficient margin "
-                  f"(need ${m_per_lot:.2f}/lot, have ${equity_usd:.2f} equity)", flush=True)
+            print(f"[paper] open skipped — insufficient margin/budget "
+                  f"(need ${m_per_lot:.2f}/lot, equity=${equity_usd:.2f}, "
+                  f"free_margin=${free_margin_usd:.2f}, size_factor={dyn_size_factor(state)})", flush=True)
             telegram_notify.notify_skipped_margin(
                 spot=spot, strike=strike, need_usd=m_per_lot, have_usd=equity_usd,
             )
@@ -341,6 +365,12 @@ def open_paper_position(signal: dict, spot: float, equity_usd: float, free_margi
         margin_locked = margin_per_lot(strike, premium_mid) * n_lots
         entry_credit_pct = entry_credit_per_contract_net / spot * 100
 
+    # Calls: dollar-margin SL (validated 2026-06-21) instead of the static
+    # %-of-premium sl_pct. Puts are unaffected (no viable dollar-SL operating
+    # point was found for them) and keep ex_kw["sl_pct"] as-is.
+    sl_pct = (call_dollar_sl_pct(strike, entry_credit_per_contract_net)
+             if active_side == "C" else ex_kw["sl_pct"])
+
     pid = paper_repo.open_position(
         opened_at_ms=int(time.time() * 1000),
         underlying_at_open=spot,
@@ -354,7 +384,7 @@ def open_paper_position(signal: dict, spot: float, equity_usd: float, free_margi
         entry_source=entry_source,
         tp1_pct=ex_kw["tp1_pct"],
         tp2_pct=ex_kw["tp2_pct"],
-        sl_pct=ex_kw["sl_pct"],
+        sl_pct=sl_pct,
         hold_h=ex_kw["hold_h"],
         signal_payload={
             "symbol": symbol, "signal": signal,
@@ -368,8 +398,8 @@ def open_paper_position(signal: dict, spot: float, equity_usd: float, free_margi
     print(f"[paper] OPENED #{pid}: SELL {symbol} "
           f"lots={n_lots} contracts={contracts:.2f}ETH  "
           f"credit_net=${entry_credit_per_contract_net:.2f}/ETH "
-          f"margin=${margin_locked:.2f}  fee=${entry_fee:.3f}  source={entry_source}  "
-          f"side={active_side} 7d_ret={signal.get('ret_7d', 0):+.2f}%",
+          f"margin=${margin_locked:.2f}  fee=${entry_fee:.3f}  sl_pct={sl_pct:.2f} "
+          f"source={entry_source}  side={active_side} 7d_ret={signal.get('ret_7d', 0):+.2f}%",
           flush=True)
     telegram_notify.notify_open(
         pid=pid, symbol=symbol, side=active_side, strike=strike, spot=spot,
@@ -586,8 +616,11 @@ async def loop():
                     reconcile.reconcile_once()
                     last_reconcile_ms = tick_ms
 
-            # Fetch option chain ONCE per tick
+            # Fetch option chain ONCE per tick, lazily — reused for both position
+            # monitoring and (if a signal fires later this tick) opening, so we
+            # never hit Bybit twice for the same tick's chain.
             open_pos_now = paper_repo.open_positions()
+            chain: list[dict] | None = None
             chain_dict: dict[str, dict] | None = None
             if open_pos_now:
                 try:
@@ -736,7 +769,13 @@ async def loop():
                                 reject_reason="insufficient_margin", spot=spot_val,
                                 signal_payload=sig)
                         else:
-                            pid = open_paper_position(sig, spot, eq["equity"], free_margin, state)
+                            if chain is None:
+                                try:
+                                    chain = bybit_client.get_options_tickers(BASE_COIN)
+                                except Exception as e:  # noqa: BLE001
+                                    print(f"[paper] WARN: chain fetch failed: {e!r}", flush=True)
+                                    chain = []
+                            pid = open_paper_position(sig, spot, eq["equity"], free_margin, state, chain)
                             paper_repo.insert_signal_audit(
                                 ts_ms=now_ms, ret_7d=ret_7d_val, active_side=sig.get("active_side"),
                                 dead_zone=False, signal_generated=True, accepted=pid is not None,

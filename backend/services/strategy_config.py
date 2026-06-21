@@ -79,6 +79,17 @@ CALL_EXIT = {
     "hold_h": 24,  # short-dated (24h) re-tuned exits — holdout +7.37%→+14.79%/trade (2026-06-17)
 }
 
+# 2026-06-21 dollar-margin SL for Calls (mirrors BTC straddle's btc_straddle_sl.py:
+# margin = IM_RATE*strike + entry_credit; SL trips at CALL_SL_DOLLAR_FRAC*margin of
+# buyback loss, instead of a fixed %-of-entry-credit). $-account engine (margin/
+# MAX_OPEN4/compound/CB, real DVOL, 70/30 train/holdout, eth_dollar_sl_deposit_sweep.py):
+# frac=0.10 strictly dominates the live %-SL=0.75 (FINAL $2933 vs $2726, SAME maxDD
+# 20.8%, TRAIN+HOLDOUT improve together, no single-month driver). Put side has NO
+# viable dollar-SL operating point (eth_dollar_sl_backtest.py) — stays %-of-premium.
+# Env-overridable so the frac can be raised later (0.12-0.15 showed more upside at a
+# small maxDD cost) without a code change.
+CALL_SL_DOLLAR_FRAC = float(os.getenv("CALL_SL_DOLLAR_FRAC", "0.10"))
+
 CB_CONSEC_LIMIT = 5       # consecutive losses before cooldown
 CB_PAUSE_HOURS = 48       # cooldown duration
 
