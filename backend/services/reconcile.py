@@ -50,10 +50,10 @@ def _position_symbol(p: dict) -> str | None:
     return sym or None
 
 
-def exchange_position_sizes(client: Any) -> dict[str, float] | None:
+def exchange_position_sizes(client: Any, base_coin: str = "ETH") -> dict[str, float] | None:
     """Map of {symbol: abs(size)} for the bot's option positions, or None on read
     failure (caller should then block, not assume flat)."""
-    rows = client.positions("ETH")
+    rows = client.positions(base_coin)
     if rows is None:
         return None
     out: dict[str, float] = {}
@@ -84,15 +84,23 @@ def diff_positions(db_open: list[dict], exch_sizes: dict[str, float]) -> tuple[l
     return closed_externally, untracked
 
 
-def reconcile_once(client: Any | None = None) -> ReconcileResult:
+def reconcile_once(client: Any | None = None, *, repo_module: Any | None = None,
+                   base_coin: str = "ETH") -> ReconcileResult:
     """Compare exchange vs DB, heal externally-closed positions, set the block flag.
-    Exchange wins. Returns a ReconcileResult."""
+    Exchange wins. Returns a ReconcileResult.
+
+    ``repo_module`` defaults to ``db.paper_repo`` (the ETH path); pass
+    ``db.btc_straddle_repo`` + ``base_coin="BTC"`` for the BTC straddle loop. The
+    injected module must expose the same ``open_positions``/``close_position``
+    surface as ``paper_repo``.
+    """
     global _blocked
-    from db import paper_repo  # lazy: keeps the module importable without psycopg2
+    if repo_module is None:
+        from db import paper_repo as repo_module  # lazy: importable without psycopg2
     if client is None:
         client = broker._get_client()
 
-    exch = exchange_position_sizes(client)
+    exch = exchange_position_sizes(client, base_coin)
     if exch is None:
         _blocked = True
         msg = "reconcile: could not read exchange positions — BLOCKING opens"
@@ -100,7 +108,7 @@ def reconcile_once(client: Any | None = None) -> ReconcileResult:
         telegram_notify.notify_reconcile_mismatch(detail=msg)
         return ReconcileResult(False, [], [], msg)
 
-    db_open = paper_repo.open_positions()
+    db_open = repo_module.open_positions()
     closed_externally, untracked = diff_positions(db_open, exch)
 
     healed: list[int] = []
@@ -109,7 +117,7 @@ def reconcile_once(client: Any | None = None) -> ReconcileResult:
         pid = int(p["id"])
         # PnL is unknown from here (real result is in the wallet); record 0 and let
         # the wallet/equity be authoritative. The alert tells the user to verify.
-        paper_repo.close_position(
+        repo_module.close_position(
             pid, closed_at_ms=now_ms, exit_debit_usd=0.0,
             pnl_pct=0.0, pnl_usd=0.0, exit_reason="reconciled")
         healed.append(pid)

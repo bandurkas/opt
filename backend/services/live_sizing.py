@@ -77,11 +77,14 @@ def plan_lots(*, available_usdt: float, strike: float, premium_mid: float,
               utilization: float | None = None,
               lots_cap: int | None = None,
               max_capital_usdt: float | None = None,
-              min_wallet_usdt: float | None = None) -> SizingResult:
+              min_wallet_usdt: float | None = None,
+              lot_size: float = LOT_ETH) -> SizingResult:
     """Full live sizing decision off the REAL available USDT balance.
 
     Refuses (n_lots=0) when the wallet is below ``min_wallet_usdt`` or the budget
     can't cover a single lot's IM. Caps default to the live execution config.
+    ``lot_size`` defaults to ``LOT_ETH`` (0.1 ETH) so every existing ETH call site
+    is unaffected; pass e.g. 0.01 for BTC's lot.
     """
     utilization = cfg.LIVE_MARGIN_UTILIZATION if utilization is None else utilization
     lots_cap = cfg.LIVE_PER_TRADE_LOTS_CAP if lots_cap is None else lots_cap
@@ -92,7 +95,7 @@ def plan_lots(*, available_usdt: float, strike: float, premium_mid: float,
         return SizingResult(0, 0.0, 0.0, 0.0,
                             f"available ${available_usdt} < min_wallet ${min_wallet_usdt:.2f}")
 
-    per_lot = estimate_per_lot_im(strike, premium_mid, im_rate=im_rate)
+    per_lot = estimate_per_lot_im(strike, premium_mid, im_rate=im_rate, lot=lot_size)
     if per_lot <= 0:
         return SizingResult(0, 0.0, 0.0, 0.0, f"bad strike/premium (strike={strike}, mid={premium_mid})")
 
@@ -102,7 +105,7 @@ def plan_lots(*, available_usdt: float, strike: float, premium_mid: float,
         budget = available_usdt * utilization
         return SizingResult(0, 0.0, 0.0, round(per_lot, 4),
                             f"budget ${budget:.2f} < 1 lot IM ${per_lot:.2f}")
-    return SizingResult(n, round(n * LOT_ETH, 4), round(n * per_lot, 4), round(per_lot, 4), None)
+    return SizingResult(n, round(n * lot_size, 4), round(n * per_lot, 4), round(per_lot, 4), None)
 
 
 def reduce_lots(n_lots: int, step: int = 1) -> int:

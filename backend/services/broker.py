@@ -63,8 +63,12 @@ def wallet_equity_usdt() -> float | None:
     return _get_client().wallet_usdt()
 
 
-def live_open(symbol: str, strike: float, premium_mid: float) -> LiveFill | None:
+def live_open(symbol: str, strike: float, premium_mid: float, *,
+              lot_size: float = live_sizing.LOT_ETH) -> LiveFill | None:
     """Size off the real wallet and sell-to-open, with reduce-on-reject.
+
+    ``lot_size`` defaults to ETH's 0.1 so the ETH call site is unaffected; pass
+    e.g. 0.01 for BTC's lot.
 
     Returns a LiveFill with REAL avg price / qty / fee, or None if nothing filled
     (insufficient margin all the way down, or unconfirmable fill).
@@ -75,14 +79,15 @@ def live_open(symbol: str, strike: float, premium_mid: float) -> LiveFill | None
         print("[broker] live_open abort — could not read available USDT", flush=True)
         return None
 
-    plan = live_sizing.plan_lots(available_usdt=avail, strike=strike, premium_mid=premium_mid)
+    plan = live_sizing.plan_lots(available_usdt=avail, strike=strike, premium_mid=premium_mid,
+                                 lot_size=lot_size)
     if not plan.ok:
         print(f"[broker] live_open skip — {plan.reason}", flush=True)
         return None
 
     n = plan.n_lots
     while n > 0:
-        qty = round(n * live_sizing.LOT_ETH, 4)
+        qty = round(n * lot_size, 4)
         res = client.sell_to_open(symbol, qty, premium_mid)
         if res is not None and res.is_filled:
             return LiveFill(res.avg_price, res.filled_qty, res.fees, n, res.status)
@@ -94,13 +99,14 @@ def live_open(symbol: str, strike: float, premium_mid: float) -> LiveFill | None
     return None
 
 
-def live_close(symbol: str, qty_eth: float, premium_mid: float) -> LiveFill | None:
+def live_close(symbol: str, qty: float, premium_mid: float, *,
+               lot_size: float = live_sizing.LOT_ETH) -> LiveFill | None:
     """Buy-to-close the short. Returns the REAL fill, or None if NOT confirmed
     filled — in which case the caller must NOT mark the position closed."""
     client = _get_client()
-    res = client.buy_to_close(symbol, qty_eth, premium_mid)
+    res = client.buy_to_close(symbol, qty, premium_mid)
     if res is not None and res.is_filled:
-        n = int(round(res.filled_qty / live_sizing.LOT_ETH))
+        n = int(round(res.filled_qty / lot_size))
         return LiveFill(res.avg_price, res.filled_qty, res.fees, n, res.status)
-    print(f"[broker] live_close NOT filled for {symbol} qty={qty_eth} — leaving open", flush=True)
+    print(f"[broker] live_close NOT filled for {symbol} qty={qty} — leaving open", flush=True)
     return None

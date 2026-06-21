@@ -79,6 +79,20 @@ def test_is_blocked_default_false() -> None:
     assert rc.is_blocked() is False
 
 
+def test_exchange_sizes_base_coin_param() -> None:
+    # Proves the base_coin generalization threads through to client.positions().
+    seen = {}
+
+    class RecordingClient:
+        def positions(self, base_coin="ETH"):
+            seen["base_coin"] = base_coin
+            return [{"symbol": "BTC-26JUN26-65000-C-USDT", "size": "0.02"}]
+
+    sizes = rc.exchange_position_sizes(RecordingClient(), "BTC")
+    assert seen["base_coin"] == "BTC"
+    assert sizes == {"BTC-26JUN26-65000-C-USDT": 0.02}
+
+
 def main() -> int:
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     passed = 0

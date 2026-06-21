@@ -43,13 +43,14 @@ def notify(text: str, *, parse_mode: str = "HTML", silent: bool = False) -> None
 
 def notify_open(*, pid: int, symbol: str, side: str, strike: float, spot: float,
                 n_lots: int, contracts: float, premium_recv: float,
-                margin_locked: float, entry_fee: float, source: str) -> None:
+                margin_locked: float, entry_fee: float, source: str,
+                asset: str = "ETH") -> None:
     side_word = "CALL" if side == "C" else "PUT"
     emoji = "🟢"
     text = (
         f"{emoji} <b>OPENED #{pid}</b> · SELL {side_word}\n"
-        f"  Strike: ${strike:.0f} · ETH at entry: ${spot:.2f}\n"
-        f"  Size: <b>{n_lots} lots</b> ({contracts:.2f} ETH)\n"
+        f"  Strike: ${strike:.0f} · {asset} at entry: ${spot:.2f}\n"
+        f"  Size: <b>{n_lots} lots</b> ({contracts:.4f} {asset})\n"
         f"  Premium received: <b>${premium_recv:.2f}</b>\n"
         f"  Margin locked: ${margin_locked:.2f} · fee ${entry_fee:.2f}\n"
         f"  Symbol: <code>{symbol}</code> · source: {source}"
@@ -82,11 +83,11 @@ def notify_close(*, pid: int, side: str, strike: float, reason: str,
 
 
 def notify_skipped_margin(*, spot: float, strike: float, need_usd: float,
-                          have_usd: float) -> None:
+                          have_usd: float, asset: str = "ETH") -> None:
     """Signal fired but margin didn't fit — useful to know we're capital-bound."""
     text = (
         f"⚠️ <b>Signal skipped</b> — insufficient margin\n"
-        f"  ETH ${spot:.2f} · strike ${strike:.0f}\n"
+        f"  {asset} ${spot:.2f} · strike ${strike:.0f}\n"
         f"  Need ${need_usd:.2f}/lot · equity ${have_usd:.2f}"
     )
     notify(text, silent=True)

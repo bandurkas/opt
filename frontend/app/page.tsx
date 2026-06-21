@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { fetchPaperState, fetchPaperConditions, fetchPaperPositions, fetchRecentTrades, fetchEquityHistory, type PaperState, type PaperConditions, type PaperPosition, type EquityPoint } from "./lib/api";
+import { fetchPaperState, fetchPaperConditions, fetchPaperPositions, fetchRecentTrades, fetchEquityHistory, fetchBtcStraddleState, fetchBtcStraddlePositions, fetchBtcStraddleEquityHistory, type PaperState, type PaperConditions, type PaperPosition, type EquityPoint, type BtcStraddleState, type BtcStraddlePosition } from "./lib/api";
 
 const REFRESH_MS = 15_000;
 
@@ -39,6 +39,41 @@ export default function Dashboard() {
   const [equityHistory, setEquityHistory] = useState<EquityPoint[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+
+  const [btcState, setBtcState] = useState<BtcStraddleState | null>(null);
+  const [btcPositions, setBtcPositions] = useState<BtcStraddlePosition[]>([]);
+  const [btcRecentTrades, setBtcRecentTrades] = useState<BtcStraddlePosition[]>([]);
+  const [btcEquityHistory, setBtcEquityHistory] = useState<EquityPoint[]>([]);
+  const [btcError, setBtcError] = useState<string | null>(null);
+
+  // Separate effect/error state from the ETH book above — the BTC bot is a
+  // distinct deploy (own container/tables) and may lag behind or be absent;
+  // its fetch failures must never blank out the ETH dashboard.
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const [s, p, t, eq] = await Promise.all([
+          fetchBtcStraddleState(),
+          fetchBtcStraddlePositions("open"),
+          fetchBtcStraddlePositions("recent", 200),
+          fetchBtcStraddleEquityHistory(336),
+        ]);
+        if (cancelled) return;
+        setBtcState(s);
+        setBtcPositions(p.positions);
+        setBtcRecentTrades(t.positions.filter((pos) => pos.closed_at_ms !== null));
+        setBtcEquityHistory(eq.points);
+        setBtcError(null);
+      } catch (e) {
+        if (cancelled) return;
+        setBtcError(e instanceof Error ? e.message : String(e));
+      }
+    };
+    load();
+    const id = setInterval(load, REFRESH_MS);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -328,6 +363,115 @@ export default function Dashboard() {
             <p className="text-sm text-slate-400">No activity yet</p>
             <p className="text-xs text-slate-500 mt-1">Waiting for first signal...</p>
           </div>
+        )}
+
+        {/* ───────────────────── BTC Straddle (separate book) ───────────────────── */}
+        <div className="pt-2">
+          <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3">
+            BTC Straddle <span className="text-slate-600 font-normal">· 24h unconditional short ATM</span>
+          </h2>
+        </div>
+
+        {btcError && (
+          <div className="bg-rose-950/30 border border-rose-800/50 rounded-xl px-4 py-3 text-sm text-rose-300">
+            BTC straddle bot unreachable: {btcError}
+          </div>
+        )}
+
+        {btcState && (
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <StatCard
+                label="Equity"
+                value={fmtUsd(btcState.current_equity_usd)}
+                sub={`${(btcState.current_equity_usd - btcState.start_equity_usd) >= 0 ? "+" : ""}${fmtUsd(btcState.current_equity_usd - btcState.start_equity_usd)}`}
+                accent={btcState.current_equity_usd >= btcState.start_equity_usd ? "text-emerald-300" : "text-rose-300"}
+              />
+              <StatCard label="Win Rate" value={btcState.win_rate ? `${(btcState.win_rate * 100).toFixed(0)}%` : "—"} sub={`${btcState.wins}W / ${btcState.losses}L`} />
+              <StatCard label="Legs closed" value={`${btcState.n_closed}`} sub={`${btcState.n_open} open`} />
+              <StatCard label="Max DD" value={`${btcState.max_dd_pct.toFixed(1)}%`} sub={`cycle #${btcState.last_cycle_id}`} />
+            </div>
+
+            {btcEquityHistory.length > 1 && (
+              <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+                <div className="px-4 py-2 bg-slate-800/50 text-xs font-semibold text-slate-400">
+                  Equity (14 days)
+                </div>
+                <div className="p-2">
+                  <EquityChart points={btcEquityHistory} startEquity={btcState.start_equity_usd} />
+                </div>
+              </div>
+            )}
+
+            {btcPositions.length > 0 && (
+              <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+                <div className="px-4 py-2 bg-slate-800/50 text-xs font-semibold text-slate-400">
+                  Open Legs ({btcPositions.length})
+                </div>
+                <div className="divide-y divide-slate-800">
+                  {btcPositions.map((p) => (
+                    <div key={p.id} className="px-4 py-3 flex items-center justify-between">
+                      <div>
+                        <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                          p.leg === "P" ? "bg-rose-500/10 text-rose-300" : "bg-emerald-500/10 text-emerald-300"
+                        }`}>
+                          SELL {p.leg}
+                        </span>
+                        <span className="ml-2 text-sm font-mono">${p.strike}</span>
+                        <span className="ml-2 text-xs text-slate-500">{p.contracts.toFixed(4)} BTC</span>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs text-slate-500">cycle #{p.cycle_id}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {btcRecentTrades.length > 0 && (
+              <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+                <div className="px-4 py-2 bg-slate-800/50 text-xs font-semibold text-slate-400 flex justify-between">
+                  <span>Журнал циклов</span>
+                  <span>{btcRecentTrades.length} total</span>
+                </div>
+                <div className="divide-y divide-slate-800 max-h-80 overflow-y-auto">
+                  {btcRecentTrades.map((t) => {
+                    const isWin = (t.pnl_usd || 0) > 0;
+                    return (
+                      <div key={t.id} className="px-4 py-2.5 flex items-center justify-between text-sm">
+                        <div className="flex items-center gap-2">
+                          <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                            t.leg === "P" ? "bg-rose-500/10 text-rose-300" : "bg-emerald-500/10 text-emerald-300"
+                          }`}>
+                            {t.leg}
+                          </span>
+                          <span className="font-mono text-xs">${t.strike}</span>
+                          <span className="text-xs text-slate-500">{t.closed_at_ms ? fmtDay(t.closed_at_ms) : ""}</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs text-slate-500">{t.exit_reason || ""}</span>
+                          <span className={`font-mono font-bold text-xs ${isWin ? "text-emerald-400" : "text-rose-400"}`}>
+                            {fmtPct(t.pnl_pct || 0)}
+                          </span>
+                          <span className={`font-mono text-xs ${isWin ? "text-emerald-400" : "text-rose-400"}`}>
+                            {t.pnl_usd != null ? fmtUsd(t.pnl_usd) : ""}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {btcPositions.length === 0 && btcRecentTrades.length === 0 && (
+              <div className="bg-slate-900 border border-slate-800 rounded-xl px-4 py-6 text-center">
+                <p className="text-sm text-slate-400">No activity yet</p>
+                <p className="text-xs text-slate-500 mt-1">Next cycle opens at the 24h boundary...</p>
+              </div>
+            )}
+          </>
         )}
       </div>
     </main>

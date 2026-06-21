@@ -53,6 +53,42 @@ services:
       - PAPER_POLL_INTERVAL=${PAPER_POLL_INTERVAL:-30}
     restart: unless-stopped
 
+  # Second poller instance, BTC-only — writes BTCUSDT klines/option snapshots into
+  # the SAME klines/option_snapshots tables (already keyed by symbol), so no new
+  # poller code was needed, just POLLER_BASE_COIN=BTC. Feeds btc_straddle_loop.py's
+  # trailing-realized-vol entry sigma.
+  btc_poller:
+    build:
+      context: ./backend
+    command: python services/poller.py
+    depends_on:
+      - postgres
+    environment:
+      - DATABASE_URL=postgresql://user:password@postgres:5432/options_assistant
+      - POLL_INTERVAL=${POLL_INTERVAL:-30}
+      - ATM_PCT=${ATM_PCT:-8}
+      - POLLER_BASE_COIN=BTC
+    restart: unless-stopped
+
+  # BTC unconditional short-straddle paper bot — separate book from the ETH V3
+  # book above (own btc_straddle_* tables, same Postgres DB). Auto-starts. See
+  # BTC_STRADDLE_HANDOFF.md / services/btc_straddle_loop.py.
+  btc_paper:
+    build:
+      context: ./backend
+    command: python services/btc_straddle_loop.py
+    depends_on:
+      - postgres
+      - btc_poller
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://user:password@postgres:5432/options_assistant
+      - BTC_STRADDLE_POLL_INTERVAL=${BTC_STRADDLE_POLL_INTERVAL:-30}
+      - BTC_STRADDLE_START_EQUITY_USD=${BTC_STRADDLE_START_EQUITY_USD:-2000}
+      - BTC_STRADDLE_MARGIN_PCT=${BTC_STRADDLE_MARGIN_PCT:-0.15}
+    restart: unless-stopped
+
   frontend:
     build:
       context: ./frontend
@@ -106,6 +142,43 @@ services:
     profiles:
       - trader
 
+  # Live real-money BTC straddle trader. Same image as `btc_paper`, same script
+  # (services/btc_straddle_loop.py — broker.is_live() is the only thing that
+  # changes behaviour), but a SEPARATE database (options_trader_btc) so live data
+  # never mixes with the btc_paper shadow, and TRADING_MODE=live. Does NOT
+  # auto-start — launch explicitly:
+  #     docker compose --profile trader up -d btc_trader
+  # Even then it is ARMED-OFF (LIVE_ENABLED_BTC=false) until you set it in .env.
+  # File kill-switch: `touch /data/STOP_TRADING_BTC` (own kill-switch, independent
+  # of the ETH trader's). The `btc_paper` service keeps running unchanged as a
+  # shadow. Capital note: this and `trader` share ONE Bybit UTA account — the
+  # exchange does not partition capital between them, only each container's own
+  # LIVE_MAX_CAPITAL_USDT does. Set both deliberately, summing to ≤ funded capital,
+  # before arming either.
+  btc_trader:
+    build:
+      context: ./backend
+    command: sh -c "python db/bootstrap.py && python services/btc_straddle_loop.py"
+    depends_on:
+      - postgres
+      - btc_poller
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://user:password@postgres:5432/options_trader_btc
+      - BTC_STRADDLE_POLL_INTERVAL=${BTC_STRADDLE_POLL_INTERVAL:-30}
+      - BTC_STRADDLE_START_EQUITY_USD=${BTC_STRADDLE_START_EQUITY_USD:-2000}
+      - BTC_STRADDLE_MARGIN_PCT=${BTC_STRADDLE_MARGIN_PCT:-0.15}
+      - TRADING_MODE=live
+      - LIVE_ENABLED=${LIVE_ENABLED_BTC:-false}
+      - LIVE_KILLSWITCH_FILE=/data/STOP_TRADING_BTC
+    volumes:
+      - btc_trader_data:/data
+    restart: unless-stopped
+    profiles:
+      - trader
+
 volumes:
   postgres_data:
   trader_data:
+  btc_trader_data:

@@ -339,3 +339,63 @@ export async function fetchPaperConditions(): Promise<PaperConditions> {
 export async function fetchRecentTrades(limit = 100): Promise<{ positions: PaperPosition[]; count: number }> {
   return jget(`/paper/positions?status=recent&limit=${limit}`);
 }
+
+// ───────────────────────── BTC straddle bot ─────────────────────────
+// Separate book from the ETH paper trader above — own tables/endpoints, same shape.
+
+export type BtcStraddleState = {
+  start_equity_usd: number;
+  started_at_ms: number;
+  last_cycle_id: number;
+  current_equity_usd: number;
+  realized_usd: number;
+  unrealized_usd: number;
+  max_dd_pct: number;
+  n_open: number;
+  n_closed: number;
+  wins: number;
+  losses: number;
+  win_rate: number | null;
+  avg_pnl_pct: number;
+  exit_counts?: Record<string, number>;
+};
+
+export type BtcStraddlePosition = {
+  id: number;
+  cycle_id: number;
+  leg: "C" | "P";
+  opened_at_ms: number;
+  underlying_at_open: number;
+  strike: number;
+  expiry_ms: number;
+  contracts: number;
+  size_usd: number;
+  entry_credit_usd: number;
+  entry_credit_pct: number;
+  entry_source: string;
+  status: string;
+  margin_per_lot_usd: number;
+  sl_dollar_trip_usd: number;
+  closed_at_ms: number | null;
+  exit_debit_usd: number | null;
+  pnl_pct: number | null;
+  pnl_usd: number | null;
+  exit_reason: string | null;
+};
+
+export async function fetchBtcStraddleState(): Promise<BtcStraddleState> {
+  return jget(`/btc-straddle/state`);
+}
+
+export async function fetchBtcStraddlePositions(
+  status: "open" | "recent" = "open",
+  limit = 50,
+): Promise<{ positions: BtcStraddlePosition[]; count: number }> {
+  return jget(`/btc-straddle/positions?status=${status}&limit=${limit}`);
+}
+
+export async function fetchBtcStraddleEquityHistory(
+  hours = 168,
+): Promise<{ hours: number; points: EquityPoint[] }> {
+  return jget(`/btc-straddle/equity_history?hours=${hours}`);
+}

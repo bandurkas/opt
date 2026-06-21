@@ -79,6 +79,24 @@ def test_plan_uses_config_defaults() -> None:
     assert r.n_lots == 47, r
 
 
+def test_plan_lots_btc_lot_size() -> None:
+    # BTC: lot=0.01, im_rate=0.10, strike=65000, premium=300 ->
+    # per_lot = (0.10*65000 + 300)*0.01 = 68.0
+    r = ls.plan_lots(available_usdt=2000, strike=65000, premium_mid=300,
+                     im_rate=0.10, utilization=0.5, lots_cap=0,
+                     max_capital_usdt=0, min_wallet_usdt=50, lot_size=0.01)
+    assert _approx(r.per_lot_im_usdt, 68.0), r
+    assert _approx(r.qty_eth, r.n_lots * 0.01), r
+
+
+def test_plan_lots_default_lot_size_is_eth_unchanged() -> None:
+    # Same as test_plan_normal — proves adding lot_size didn't change ETH's default path.
+    r = ls.plan_lots(available_usdt=1000, strike=1700, premium_mid=40,
+                     im_rate=0.10, utilization=0.5, lots_cap=0,
+                     max_capital_usdt=0, min_wallet_usdt=50)
+    assert r.n_lots == 23 and _approx(r.qty_eth, 2.3), r
+
+
 def test_reduce_lots() -> None:
     assert ls.reduce_lots(5) == 4
     assert ls.reduce_lots(1) == 0
