@@ -399,3 +399,27 @@ export async function fetchBtcStraddleEquityHistory(
 ): Promise<{ hours: number; points: EquityPoint[] }> {
   return jget(`/btc-straddle/equity_history?hours=${hours}`);
 }
+
+// ───────────────────────── ETH straddle bot ─────────────────────────
+// Separate book from both the ETH signal trader and the BTC straddle above —
+// own tables/endpoints, same shape as BtcStraddle*.
+
+export type EthStraddleState = BtcStraddleState;
+export type EthStraddlePosition = BtcStraddlePosition;
+
+export async function fetchEthStraddleState(): Promise<EthStraddleState> {
+  return jget(`/eth-straddle/state`);
+}
+
+export async function fetchEthStraddlePositions(
+  status: "open" | "recent" = "open",
+  limit = 50,
+): Promise<{ positions: EthStraddlePosition[]; count: number }> {
+  return jget(`/eth-straddle/positions?status=${status}&limit=${limit}`);
+}
+
+export async function fetchEthStraddleEquityHistory(
+  hours = 168,
+): Promise<{ hours: number; points: EquityPoint[] }> {
+  return jget(`/eth-straddle/equity_history?hours=${hours}`);
+}

@@ -185,3 +185,57 @@ CREATE TABLE IF NOT EXISTS btc_straddle_state (
     consec_losses            INT       NOT NULL DEFAULT 0,
     recent_pnls_json         JSONB     NOT NULL DEFAULT '[]'
 );
+
+-- ETH unconditional short-straddle (24h cycle, dollar-margin SL) — separate
+-- paper book from the ETH V3 signal bot (paper_*) and from the BTC straddle
+-- above. Same shape as btc_straddle_* (ETH lot = 0.10, see eth_straddle_sl.py),
+-- per ETH_STRADDLE_PAPER_BOT_HANDOFF.md.
+CREATE TABLE IF NOT EXISTS eth_straddle_positions (
+    id                  BIGSERIAL    PRIMARY KEY,
+    cycle_id            BIGINT       NOT NULL,                -- pairs the C+P legs of one 24h cycle
+    leg                 CHAR(1)      NOT NULL,                -- 'C' or 'P'
+    opened_at_ms        BIGINT       NOT NULL,
+    underlying_at_open  NUMERIC(18,4) NOT NULL,
+    strike              NUMERIC(18,4) NOT NULL,
+    expiry_ms           BIGINT       NOT NULL,
+    contracts           NUMERIC(18,8) NOT NULL,               -- ETH qty (lot = 0.10)
+    size_usd            NUMERIC(18,2) NOT NULL,
+    entry_credit_usd    NUMERIC(18,4) NOT NULL,               -- per-contract premium received
+    entry_credit_pct    NUMERIC(10,4) NOT NULL,
+    entry_source        TEXT         NOT NULL,                -- 'bybit' | 'bs_fallback'
+    status              TEXT         NOT NULL DEFAULT 'open', -- 'open' | 'closed_tp2' | 'closed_sl' | 'closed_time' | 'closed_reconciled'
+    margin_per_lot_usd  NUMERIC(18,4) NOT NULL,                -- IM_RATE*strike+premium, per 0.10 ETH lot
+    sl_dollar_trip_usd  NUMERIC(18,4) NOT NULL,                -- SL_DOLLAR_FRAC * margin_per_lot_usd, constant for the leg's life
+    closed_at_ms        BIGINT,
+    exit_debit_usd      NUMERIC(18,4),
+    pnl_pct             NUMERIC(10,4),
+    pnl_usd             NUMERIC(18,4),
+    exit_reason         TEXT,
+    signal_payload      JSONB
+);
+CREATE INDEX IF NOT EXISTS eth_straddle_positions_status
+    ON eth_straddle_positions (status, opened_at_ms DESC);
+CREATE INDEX IF NOT EXISTS eth_straddle_positions_cycle
+    ON eth_straddle_positions (cycle_id);
+
+CREATE TABLE IF NOT EXISTS eth_straddle_equity_snapshots (
+    ts_ms          BIGINT       PRIMARY KEY,
+    equity_usd     NUMERIC(18,4) NOT NULL,
+    realized_usd   NUMERIC(18,4) NOT NULL,
+    unrealized_usd NUMERIC(18,4) NOT NULL,
+    n_open         INT          NOT NULL,
+    n_closed       INT          NOT NULL,
+    max_dd_pct     NUMERIC(10,4)
+);
+CREATE INDEX IF NOT EXISTS eth_straddle_equity_recent
+    ON eth_straddle_equity_snapshots (ts_ms DESC);
+
+CREATE TABLE IF NOT EXISTS eth_straddle_state (
+    id                       INT       PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+    started_at_ms            BIGINT    NOT NULL,
+    start_equity_usd         NUMERIC(18,4) NOT NULL,
+    last_cycle_id            BIGINT    NOT NULL DEFAULT 0,    -- last 24h cycle boundary opened
+    cb_cooldown_until_ms     BIGINT    NOT NULL DEFAULT 0,
+    consec_losses            INT       NOT NULL DEFAULT 0,
+    recent_pnls_json         JSONB     NOT NULL DEFAULT '[]'
+);

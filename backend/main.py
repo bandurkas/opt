@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from db.engine import apply_schema
 from db import paper_repo
 from db import btc_straddle_repo
+from db import eth_straddle_repo
 from db.repository import (
     latest_snapshot_age_seconds,
     persist_signal,
@@ -392,6 +393,71 @@ def btc_straddle_positions_endpoint(
 @app.get("/api/v1/btc-straddle/equity_history")
 def btc_straddle_equity_history(hours: int = Query(168, ge=1, le=8760)):
     rows = btc_straddle_repo.equity_history(hours=hours)
+    return {
+        "hours": hours,
+        "points": [
+            {
+                "ts_ms": int(r["ts_ms"]),
+                "equity": float(r["equity_usd"]),
+                "realized": float(r["realized_usd"]),
+                "unrealized": float(r["unrealized_usd"]),
+                "n_open": int(r["n_open"]),
+                "n_closed": int(r["n_closed"]),
+            } for r in rows
+        ],
+    }
+
+
+# ───────────────────────── ETH straddle bot API ─────────────────────────
+# Read-only mirror of the /api/v1/btc-straddle/* trio above, against
+# eth_straddle_repo instead — separate book, separate tables, same pattern.
+
+@app.get("/api/v1/eth-straddle/state")
+def eth_straddle_state():
+    from services.eth_straddle_loop import START_EQUITY_USD as ETH_START_EQUITY_USD
+
+    state = eth_straddle_repo.ensure_state(ETH_START_EQUITY_USD)
+    stats = eth_straddle_repo.position_stats()
+    latest = eth_straddle_repo.latest_equity()
+    exit_counts = eth_straddle_repo.exit_reason_counts()
+    cur_eq = float(latest["equity_usd"]) if latest else float(state["start_equity_usd"])
+    return {
+        "start_equity_usd": float(state["start_equity_usd"]),
+        "started_at_ms": int(state["started_at_ms"]),
+        "last_cycle_id": int(state["last_cycle_id"]),
+        "current_equity_usd": cur_eq,
+        "realized_usd": float(latest["realized_usd"]) if latest else 0.0,
+        "unrealized_usd": float(latest["unrealized_usd"]) if latest else 0.0,
+        "max_dd_pct": float(latest["max_dd_pct"]) if latest and latest.get("max_dd_pct") is not None else 0.0,
+        "n_open": stats["n_open"],
+        "n_closed": stats["n_closed"],
+        "wins": stats["wins"],
+        "losses": stats["losses"],
+        "win_rate": (stats["wins"] / stats["n_closed"]) if stats["n_closed"] else None,
+        "avg_pnl_pct": stats["avg_pnl_pct"],
+        "exit_counts": exit_counts,
+    }
+
+
+@app.get("/api/v1/eth-straddle/positions")
+def eth_straddle_positions_endpoint(
+    status: str = Query("open", description="'open' | 'recent' | 'all'"),
+    limit: int = Query(50, ge=1, le=500),
+):
+    if status == "open":
+        rows = eth_straddle_repo.open_positions()
+    else:
+        rows = eth_straddle_repo.recent_positions(limit=limit)
+    out = []
+    for r in rows:
+        out.append({k: (float(v) if hasattr(v, "real") and not isinstance(v, bool) else v)
+                    if v is not None else None for k, v in r.items()})
+    return {"positions": out, "count": len(out)}
+
+
+@app.get("/api/v1/eth-straddle/equity_history")
+def eth_straddle_equity_history(hours: int = Query(168, ge=1, le=8760)):
+    rows = eth_straddle_repo.equity_history(hours=hours)
     return {
         "hours": hours,
         "points": [

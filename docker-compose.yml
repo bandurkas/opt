@@ -89,6 +89,27 @@ services:
       - BTC_STRADDLE_MARGIN_PCT=${BTC_STRADDLE_MARGIN_PCT:-0.15}
     restart: unless-stopped
 
+  # ETH unconditional short-straddle paper bot — separate book from the ETH V3
+  # signal book above (own eth_straddle_* tables, same Postgres DB). Depends on
+  # the default `poller` (already feeds ETHUSDT klines, no second poller needed
+  # unlike the BTC case). Auto-starts. See ETH_STRADDLE_PAPER_BOT_HANDOFF.md /
+  # services/eth_straddle_loop.py.
+  eth_straddle_paper:
+    build:
+      context: ./backend
+    command: python services/eth_straddle_loop.py
+    depends_on:
+      - postgres
+      - poller
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://user:password@postgres:5432/options_assistant
+      - ETH_STRADDLE_POLL_INTERVAL=${ETH_STRADDLE_POLL_INTERVAL:-30}
+      - ETH_STRADDLE_START_EQUITY_USD=${ETH_STRADDLE_START_EQUITY_USD:-1200}
+      - ETH_STRADDLE_MARGIN_PCT=${ETH_STRADDLE_MARGIN_PCT:-0.15}
+    restart: unless-stopped
+
   frontend:
     build:
       context: ./frontend
