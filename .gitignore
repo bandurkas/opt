@@ -36,3 +36,7 @@ backtest_*.py
 __pycache__/
 *.pyc
 docker_images/
+
+# graphify (knowledge-graph tool) artifacts — generated, not project code
+graphify-out/
+.graphifyignore
