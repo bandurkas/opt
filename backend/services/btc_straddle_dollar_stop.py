@@ -38,9 +38,11 @@ CYCLE_H, TP2, MULT = 24.0, 0.80, 1.10
 SIGMA_CLAMP = (0.20, 1.50)
 SPREAD_PCT = 2.0
 HALF_SPREAD = SPREAD_PCT / 200.0
-STRIKE_ROUND = 500.0
+STRIKE_ROUND_BY_COIN = {"btc": 500.0, "btc_long": 500.0, "eth": 25.0, "xaut": 25.0}
+STRIKE_ROUND = STRIKE_ROUND_BY_COIN.get(COIN, 500.0)
 IM_RATE = 0.10
-LOT = 0.01
+LOT_BY_COIN = {"btc": 0.01, "btc_long": 0.01, "eth": 0.10}
+LOT = LOT_BY_COIN.get(COIN, 0.01)
 TRAIN_FRAC = 0.70
 
 
@@ -171,6 +173,7 @@ def main():
     print(f"$-margin-based stop sweep — {len(cycles_by_idx)} candidate cycles\n")
     print(f"{'sl_$_frac':>10}   {'OVERALL (% of margin)':<32}")
     best = None
+    candidates = []
     for frac in (0.30, 0.50, 0.75, 1.00, 1.50, 2.00, 3.00):
         rows = run_sweep(k5, k1h, cycles_by_idx, frac)
         pcts = [p for _, p in rows]
@@ -179,18 +182,26 @@ def main():
         sd = st.stdev(pcts) if len(pcts) > 1 else 0
         sh = (sum(pcts) / len(pcts)) / sd if sd > 0 else 0
         print(f"{frac:>10.2f}   {agg(pcts)}")
-        if best is None or sh > best[1]:
-            best = (frac, sh, rows)
+        candidates.append((frac, rows))
 
-    if best is None:
+    if not candidates:
         print("no valid configs")
         return
-    frac, sh, rows = best
-    ts_all = sorted(t for t, _ in rows)
+    # select by TRAIN-only Sharpe (never peek at holdout during selection,
+    # same discipline as btc_straddle_sweep.py)
+    ts_all = sorted(t for t, _ in candidates[0][1])
     split_ts = ts_all[0] + TRAIN_FRAC * (ts_all[-1] - ts_all[0])
+    for frac, rows in candidates:
+        tr_pcts = [p for t, p in rows if t < split_ts]
+        sd = st.stdev(tr_pcts) if len(tr_pcts) > 1 else 0
+        train_sh = (sum(tr_pcts) / len(tr_pcts)) / sd if sd > 0 else 0
+        if best is None or train_sh > best[1]:
+            best = (frac, train_sh, rows)
+
+    frac, train_sh, rows = best
     tr = [p for t, p in rows if t < split_ts]
     ho = [p for t, p in rows if t >= split_ts]
-    print(f"\n=== BEST sl_$_frac={frac} (by Sharpe) — TRAIN/HOLDOUT check ===")
+    print(f"\n=== BEST sl_$_frac={frac} (by TRAIN Sharpe={train_sh:+.2f}) — TRAIN/HOLDOUT check ===")
     print(f"TRAIN   {agg(tr)}")
     print(f"HOLDOUT {agg(ho)}")
 

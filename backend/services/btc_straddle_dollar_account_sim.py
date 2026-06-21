@@ -20,7 +20,7 @@ from services.btc_straddle_dollar_stop import (
 
 COIN = sys.argv[1] if len(sys.argv) > 1 else "btc_long"
 DAYS_BACK = float(sys.argv[2]) if len(sys.argv) > 2 else 1095.0
-SL_DOLLAR_FRAC = 2.0
+SL_DOLLAR_FRAC = float(sys.argv[3]) if len(sys.argv) > 3 else 2.0
 
 MARGIN_PCT = 0.15
 PORT_MARGIN_CAP = 0.80
