@@ -2,67 +2,85 @@
 
 > **Читай этот файл первым.** Он ориентирует за 2 минуты и говорит, куда идти дальше.
 > Living-доки (всегда актуальны): **этот файл → `SESSION_STATE.md` → `ROADMAP.md`**.
-> **Последнее обновление:** 2026-06-17 · HEAD `main` `49474d1` · local = GitHub = VPS, дерево чистое.
-> ✅ В paper ЗАДЕПЛОЕНЫ короткие Call'ы (`49474d1`, 2026-06-17) + гейдж 2.1 (`ce5867d`). Рантайм подтверждён.
+> **Последнее обновление:** 2026-06-23 · HEAD `main` `f21e512` · local = GitHub = VPS3, дерево чистое.
+> ✅ **Mission Control задеплоен** (auth + pause/close-all + 3 отдельных Bybit-аккаунта). Боты
+> переименованы в позывные: **Boba1**=BTC straddle, **Grogu1**=ETH straddle, **Sniper1**=ETH signal.
 
 ---
 
-## 🚀 НАЧАТЬ ЗДЕСЬ (новая сессия, 2026-06-17) — короткие Call'ы ЗАДЕПЛОЕНЫ, ждём гейт
+## 🚀 НАЧАТЬ ЗДЕСЬ (новая сессия, 2026-06-23)
 
-**✅ `IMPL_SHORT_DATED_CALLS.md` ВНЕДРЁН и ЗАДЕПЛОЕН в paper** (`49474d1`): Call-сторона ETH переведена
-на 24ч экспирацию + перетюненные exits (`tp0.4/0.8 sl0.75 h24`), Put не тронут. Holdout: per-trade
-+7.37%→+14.79%; $400-модель 215→332 сделок, +34%→+53%, maxDD ниже. Workflow пройден полностью
-(architecture→code→review✅→test 68/68✅→deploy✅). Рантайм-конфиг в контейнере подтверждён
-(Call=24/Put=168, CALL_EXIT новый), бот жив, 0 ошибок, гейт цел (8 циклов, equity $457.74).
+**Это уже не один ETH-бот — это 3 бота, каждый со своим Bybit-аккаунтом:**
 
-**Следующий шаг — наблюдение (§5 IMPL):** ждём ≥20-30 циклов в paper, сравнить с бэктестом (в пределах
-30-50%), увидеть вживую SL/CB/dynsize И поведение коротких Call'ов (гамма у экспирации — §6 рисков).
-Прогресс: `ssh root@187.127.114.34 'bash /root/opt-app/monitor_paper.sh'`. Реальный блокер копления
-циклов — рынок в `transition/trend` (вход только в `range`), не баг.
+| Позывной | Стратегия | Paper equity | Реальный Bybit-кошелёк | Статус |
+|---|---|---|---|---|
+| **Boba1** | BTC 24h short straddle | $2005.71 (старт $2000), 5 закрыто (4W/1L, 80% WR), 1 открыта | **$1880** (readOnly исправлен пользователем) | ✅ ключ работает, готов к live по балансу |
+| **Grogu1** | ETH 24h short straddle | $1194.39 (старт $1200), 6 закрыто (4W/2L, но avg −11.7%/trade — один SL утянул) | **$0.82** | ✅ ключ работает, ⚠️ счёт пустой — нужно фондировать перед live |
+| **Sniper1** | ETH signal bot (V3 hybrid) | $800 (старт $800), 0 сделок | ключ НЕ задан | paper работает; ⚠️ см. подозрение на потерю входов ниже |
 
-**НЕ внедрять** (проверено/отклонено): premium-floor (вредит коротким Call'ам), Call@48ч (апгрейд при
-росте счёта, когда маржа перестанет быть узким местом), золото (режим-расщеплённая выборка).
-**Параллельный research-трек** (не блокирует): Derive fair-value коллектор (`IV_DIVERGENCE_SCANNER_RESEARCH.md`).
-Харнесы/доказательства: `iv_short_exit_opt.py`, `iv_mixed_deposit.py`, `iv_expiry_test.py`; память
-`project_options_short_dated_calls`. ⚠️ Бэктест синтетический (168h BS), **live берёт реальный
-ближайший контракт Bybit** — короткая экспирация исполнима (Bybit листит дейли).
+Все 3 бота — **paper-режим** (`broker.is_live()=False` везде), реальные Bybit-ключи уже привязаны
+и проверены (`get_api_key_information`/`get_wallet_balance`/`get_positions(category="option")` —
+все 3 счёта UTA=1, `OptionsTrade`-право есть), но боевые ордера НЕ идут, пока `LIVE_ENABLED` не
+взведён через `docker compose --profile trader up -d trader/btc_trader`.
+
+**Mission Control** (`http://187.127.114.34:3000`, пароль у пользователя) — панель управления:
+пауза/резюм и экстренное закрытие позиций на каждого бота отдельно + общая паник-кнопка
+"Стоп + закрыть всё", плюс смена API-ключа каждого аккаунта прямо из дашборда (без редеплоя,
+подхватывается ботом за ~60с). Подробности архитектуры — память `project_mission_control`
+(`~/.claude/projects/-Users-sabar/memory/project_mission_control.md`).
+
+**⚠️ Открытый вопрос (не баг, требует бэктеста):** у Sniper1 наблюдался гейдж "Условия входа"
+на 100%/ready (макро-фильтры все сошлись), но точный генератор сигнала на закрытии свечи вернул
+"no signal" — сделка не открылась. Пользователь подозревает, что так теряется много сделок,
+просил перепроверить бэктестами. См. память `finding_sniper1_entry_gap_suspected`. **Не трогать
+пороги генератора без свежего train/holdout** (правило проекта, см. §3 ниже).
 
 ---
 
 ## 1. Что это
 
-Бот-продавец опционной премии на **ETH** (Bybit, USDT-settled). Стратегия **V2 hybrid + V3 ADX**
-(source of truth — код: `backend/services/strategy_config.py` + `regime.py` + `paper_strategy.py`).
-Сейчас работает в **paper-режиме** на VPS3, копит сделки к go-live гейту. Live-инфраструктура
-(P2–P6) построена, но **инертна** (за `broker.is_live()`), реальные деньги — только после гейта.
+Три бота продают опционную премию на Bybit (USDT-settled), каждый — отдельный Docker-контейнер,
+отдельные таблицы в Postgres, отдельный Bybit-аккаунт:
+- **Sniper1** (`paper_loop.py`) — направленные сигнальные входы, стратегия V2 hybrid + V3 ADX
+  (source of truth: `backend/services/strategy_config.py` + `regime.py` + `paper_strategy.py`).
+- **Boba1** (`btc_straddle_loop.py`) и **Grogu1** (`eth_straddle_loop.py`) — безусловные 24-часовые
+  short-straddle (продают ATM call+put каждый цикл, чистый VRP-харвест, без входного фильтра).
 
-Стек: FastAPI backend + Next.js 16 frontend + Postgres + Redis + поллер, всё в Docker Compose на VPS3.
+Стек: FastAPI backend + Next.js 16 frontend + Postgres + поллер, всё в Docker Compose на VPS3
+(`187.127.114.34`). Бэкенд гейтится паролем (Mission Control), фронт — Next.js `proxy.ts`.
 
 ---
 
-## 2. Текущее состояние (снимок)
+## 2. Текущее состояние (снимок 2026-06-23)
 
-- **Paper-бот:** жив на свежем образе, `MAX_OPEN_POSITIONS=4` активен. Данные свежие (поллер
-  `Up`, spot живой, свечи ~4 мин). Бот поминутно считает `ret_7d/side/regime/mtf/vol`.
-- **Почему не торгует прямо сейчас:** `regime=transition`, а вход разрешён только в `range` —
-  это **спроектированный фильтр, не баг**. Ждёт смены режима рынка.
-- **Go-live гейт (`PROJECT_DOSSIER.md §8.3`):** **8/≥20–30 циклов** (все TP2, +$57.74,
-  equity $457.74). П.4 (концентрация) ✅ закрыт кэпом. SL/CB/dynsize ещё НЕ наблюдались вживую.
-- **Главный блокер гейта:** рынок не даёт `range`-окон → циклы не копятся. Не пункт бэклога.
-- **Недавно сделано (2026-06-16, сессия 4):** ✅ Fix1 (полный `signal_audit`) + Fix2 (guard)
-  задеплоены (`a436302`); ✅ ADX-сайзинг ОТВЕРГНУТ бэктестом (`§8`, память
-  `project_options_adx_sizing_rejected`); ✅ гейдж 2.1 «Близость ко входу» — код готов, НЕ задеплоен;
-  ✅ авточистка VPS (`vps_cleanup.sh` + cron). Ранее: Фаза A1 CB-race, tail-risk кэп.
+- **Все 3 бота живы**, 0 ошибок в логах после деплоя Mission Control + переименования аккаунтов.
+- **Sniper1 (ETH signal) гейт:** 0/≥20–30 циклов — рынок даёт сигналы редко (см. открытый вопрос
+  выше), реальный блокер — не баг.
+- **Boba1/Grogu1 straddle-боты** копят циклы заметно быстрее (без входного фильтра): 5 и 6 закрытых
+  циклов соответственно, оба профитные по equity, но Grogu1's avg pnl/trade отрицательный
+  (один SL съел несколько TP2) — это ожидаемо для unconditional straddle, не алярм.
+- **Mission Control:** auth + per-bot pause/close-all + 3 раздельных зашифрованных Bybit-ключа —
+  ЗАДЕПЛОЕНО и проверено живым curl + headless-браузер скриншотом (UI — per-bot HUD-панели,
+  Orbitron callsigns, цветовая идентичность на бота).
+- **Реальные Bybit-ключи привязаны** (Boba1, Grogu1) и подтверждены аутентифицированным вызовом
+  Bybit API — НЕ просто "ключ сохранён", а реально протестировано соединение + права + баланс.
+  Sniper1 — слот пустой, пользователь добавит позже через дашборд.
 
 ---
 
 ## 3. ⛔ Рабочий принцип (НЕ нарушать)
 
-1. **Ничто, что трогает edge, не катится без бэктеста** на 365д + holdout (OOS). Урок overfit усвоен.
+1. **Ничто, что трогает edge (входы/выходы стратегии), не катится без бэктеста** на полной истории
+   + holdout (OOS). Урок overfit усвоен на всех 3 ботах.
 2. **Каждое изменение тестируется ПЕРЕД деплоем:** edge-изменение → бэктест+holdout, потом paper;
    баг/корректность → unit-тест; live-путь → unit-тест (в paper инертно).
-3. **Двигаемся по одному шагу**, по заранее заданному критерию. Полный пошаговый план — **`ROADMAP.md`**.
-4. **Деплой только rebuild на Mac** (НЕ на VPS — 1 CPU, >40 мин, стопор SSH). См. `ROADMAP.md §2`.
+3. **Workflow строгий:** архитектура → код → ревью → тест → ревью → деплой. Для live-money-adjacent
+   изменений (Mission Control, ключи) — минимум 2-3 раунда ревью перед деплоем (правило подтверждено
+   пользователем явно 2026-06-23).
+4. **Сборка образов — на VPS3** (2 CPU теперь, нативная сборка работает быстро). Старое правило
+   "собирать на Mac" устарело (было актуально при 1 CPU VPS).
+5. **Каждый бот — свой Bybit-аккаунт.** Никогда не делить капитал/ключи между ботами — архитектура
+   на это рассчитана (`db/accounts_repo.py`, `MC_ACCOUNT_NAME` per service в `docker-compose.yml`).
 
 ---
 
@@ -73,57 +91,70 @@
 |---|---|
 | **`START_HERE.md`** | этот файл — точка входа |
 | **`SESSION_STATE.md`** | подробный handover: что сделано, состояние, доступ, как продолжить |
-| **`ROADMAP.md`** | пошаговый backtest-gated план (гипотеза→тест→критерий→деплой) + инструменты |
-| `PROJECT_DOSSIER.md` | всё о проекте: стратегия, ВСЕ бэктесты, changelog, постмортемы, гейт §8.3 |
-| `FUTURE_WORK.md` | детальный бэклог §1–8 (баги код-ревью, идеи) + вердикты исследований |
+| **`ROADMAP.md`** | пошаговый backtest-gated план (для Sniper1/ETH-сигнального бота) |
+| `PROJECT_DOSSIER.md` | стратегия Sniper1 + бэктесты + changelog + постмортемы |
+| `BTC_STRADDLE_HANDOFF.md` / `ETH_STRADDLE_PAPER_BOT_HANDOFF.md` | архитектура straddle-ботов |
 | `LIVE_TRADING_HANDOFF.md` | сборка live-режима (P2–P6), как армировать |
+| Память `project_mission_control` | архитектура Mission Control + таблица позывной↔аккаунт↔стратегия |
+| Память `finding_sniper1_entry_gap_suspected` | открытый вопрос про потерю входов |
 
-### 🗄️ Исторические (НЕ руководство к действию — только контекст прошлого)
-`HANDOFF.md` (2026-05-21, заброшенная fade-стратегия) · `STRATEGY.md` (эпоха sell-Call) ·
-`CHANGELOG_V3_HYBRID.md` (эпоха V3 ±2%) · `REBUILD_GUIDE.md` · `README.md`.
-⚠️ `HANDOFF.md` содержит УТЁКШИЙ пароль VPS в открытом виде — его надо ротировать и вычистить;
-секреты в репо хранить нельзя (только в `/root/opt-app/.env` на VPS).
+### 🗄️ Исторические (контекст прошлого, НЕ руководство к действию)
+`HANDOFF.md` (2026-05-21, заброшенная fade-стратегия — содержит УТЁКШИЙ старый пароль VPS,
+давно неактуален) · `STRATEGY.md` · `CHANGELOG_V3_HYBRID.md` · `REBUILD_GUIDE.md` · `README.md`.
 
 ---
 
-## 5. Следующий шаг
+## 5. Следующий шаг (на выбор, решение — за пользователем)
 
-Из `ROADMAP.md §3/§4`, на выбор (решение — за пользователем). Фаза A1 (CB race) ✅ закрыта:
-- **Продолжить Фазу A** — A2 отравление пула (`§5.1`), A3 ZeroDiv при spot=0 (`§5.6`),
-  A4 `open_position`→0 (`§5.7`); чистые unit-тесты, без риска для edge, одним rebuild на все.
-- **Фаза B1 — диагностика range-детектора**: прогон `variant_backtest.py`, понять, почему мало
-  циклов (не отсекает ли `regime.py` валидные окна). Без изменений кода.
+- **Разобраться с подозрением Sniper1** — перепроверить бэктестами, не теряет ли генератор сигнала
+  реальные входы при зелёном гейдже (см. §2 выше). Не менять пороги без train/holdout.
+- **Фондировать Grogu1** ($0.82 на реальном кошельке) перед тем как думать про live.
+- **systemd-автозапуск для slow carry бота** — давно отложено (`finding_slow_carry_bot_no_autostart`),
+  предложить пользователю снова.
+- **Postgres-бэкапы (P0 из reliability roadmap)** — до сих пор НЕ реализовано, единственный том с
+  данными всех 3 ботов без бэкапа. См. `project_options_reliability_roadmap`.
 
 ---
 
 ## 6. Доступ и команды
 
 ```bash
-# VPS (секреты только в /root/opt-app/.env; пароль НЕ хранить в репо)
-ssh root@187.127.114.34            # репо /root/opt-app, БД options_assistant, контейнер opt-app-paper-1
+# VPS3 (секреты в /root/opt-app/.env, НЕ в репо)
+ssh root@187.127.114.34            # репо /root/opt-app, дашборд :3000, API :8000
 
-# Прогресс к гейту / здоровье бота
-ssh root@187.127.114.34 'bash /root/opt-app/monitor_paper.sh'
+# Mission Control — войти через UI или curl:
+curl -s -X POST http://187.127.114.34:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" -d '{"password":"<пароль у пользователя>"}'
+# Cookie из ответа (Set-Cookie: mc_session=...) → передавать в Cookie-заголовке дальше:
+#   GET  /api/v1/control/status                       — статус всех 3 ботов
+#   POST /api/v1/control/{bot}/pause|resume            — bot ∈ eth_signal|btc_straddle|eth_straddle
+#   POST /api/v1/control/{bot}/close-all               — экстренное закрытие (per-bot)
+#   POST /api/v1/control/close-all                     — экстренное закрытие ВСЕХ
+#   GET  /api/v1/settings/credentials                  — список 3 аккаунтов (masked)
+#   POST /api/v1/settings/credentials/{Boba1|Grogu1|Sniper1} — смена ключа
 
-# Логи paper-бота — ⚠️ `docker logs` ВИСНЕТ (containerd image-store, 1 CPU). Читать json-логфайл:
+# Логи — `docker logs` может виснуть (1 CPU history). Читать json-логфайл:
 ssh root@187.127.114.34 "tail \$(docker inspect opt-app-paper-1 --format '{{.LogPath}}')"
+#   opt-app-paper-1=Sniper1, opt-app-btc_paper-1=Boba1, opt-app-eth_straddle_paper-1=Grogu1
 
-# Бэктест / тесты (локально). Данные: data/eth_{5m,15m,1h}.json (365д до 2026-05-31)
+# Деплой (теперь — нативно на VPS3, не на Mac):
+ssh root@187.127.114.34 'cd /root/opt-app && git pull && docker compose build <service> && \
+  docker compose up -d --no-build --force-recreate <service>'
+
+# Бэктест / unit-тесты Sniper1-стратегии (локально, нужен py3.11 контейнер):
 cd backend && PYTHONPATH=. python3 services/variant_backtest.py
-cd backend && PYTHONPATH=. python3 services/tail_overlay_sweep.py
-# Unit-тесты: локальный python 3.9 НЕ импортирует код (нужен 3.10+); гонять в контейнере (py3.11):
-#   см. SESSION_STATE.md §7 / ROADMAP.md §2
-
-# Деплой (после прохождения теста) — полный рецепт в ROADMAP.md §2:
-#   правка → commit → git pull на VPS → buildx --platform linux/amd64 на Mac → save/load → recreate
+docker run --rm -v "$(pwd)":/app -w /app opt-app-backend:latest \
+  sh -c "pip install -q pytest cryptography && python -m pytest tests/ -q"
 ```
 
 **Гочи (важно):**
 - `docker logs opt-app-paper-1` зависает → читать json-логфайл (см. выше).
-- Сборка образа — **на Mac** (`--platform linux/amd64`), НЕ на VPS.
-- Локальный `python3` = 3.9 → код (3.10+ синтаксис) импортируется только в контейнере/на VPS (3.11).
+- Сборка образа — **нативно на VPS3** (2 CPU, быстро). Старое правило "только на Mac" устарело.
+- Локальный `python3` на Mac = 3.9 → код (3.10+ синтаксис) импортируется только в контейнере (3.11).
 - `/Users/sabar` (домашняя папка Mac) — тоже git-репо: коммить из `~/Desktop/options`, не из `$HOME`.
+- Пароль/ключи Bybit — **никогда не в репо**, только в `/root/opt-app/.env` на VPS3 + зашифрованно
+  в Postgres (`exchange_credentials`, Fernet, ключ `CREDENTIALS_MASTER_KEY`).
 
 ---
 
-*Когда закончишь сессию — обнови `SESSION_STATE.md` и журнал `ROADMAP.md §1`, держи local=GitHub=VPS в синке.*
+*Когда закончишь сессию — обнови `SESSION_STATE.md` и держи local=GitHub=VPS3 в синке.*

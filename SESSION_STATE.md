@@ -1,16 +1,38 @@
 # Handover / Resume checkpoint — ETH Options project
 
 > 👉 Новый агент: начни с **`START_HERE.md`** (точка входа), затем этот файл и `ROADMAP.md`.
-> Самодостаточный файл, чтобы продолжить в новом чате. **Дата:** 2026-06-17 ·
-> **HEAD:** `49474d1` · ветка `main` · **local = GitHub = VPS**, дерево чистое.
-> ✅ **Короткие Call'ы (24ч) ЗАДЕПЛОЕНЫ в paper** (`49474d1`, 2026-06-17): Call expiry 168→24ч +
-> exits `tp0.4/0.8 sl0.75 h24`, Put не тронут; 68/68 тестов; рантайм-конфиг в контейнере подтверждён,
-> гейт цел (8 циклов, equity $457.74). Ранее: гейдж 2.1 (`ce5867d`) задеплоен; cleanup-cron на VPS.
-> Контекст: открой `PROJECT_DOSSIER.md` (всё о проекте) первым.
+> Самодостаточный файл, чтобы продолжить в новом чате. **Дата:** 2026-06-23 ·
+> **HEAD:** `f21e512` · ветка `main` · **local = GitHub = VPS3**, дерево чистое.
+> ✅ **Mission Control задеплоен** (`01e5d12`..`f21e512`, 2026-06-23): пароль-гейт на весь дашборд,
+> per-bot пауза/резюм/экстренное закрытие, Fernet-шифрованные API-ключи в Postgres с rotation
+> через UI (~60с без редеплоя), 3 ОТДЕЛЬНЫХ Bybit-аккаунта (Boba1/Grogu1/Sniper1, см. §0.1), и
+> per-bot HUD-редизайн панели управления. Подробности — см. `START_HERE.md` §2 и память
+> `project_mission_control`.
 
 ---
 
-## 0. TL;DR — где мы
+## 0.1 Три бота, три аккаунта (с 2026-06-23)
+
+Проект больше не "один ETH-бот" — три отдельных бота, каждый со своим Bybit-ключом и кошельком:
+
+| Позывной | control_repo.BOT_NAMES | Стратегия | Контейнер |
+|---|---|---|---|
+| **Boba1** | `btc_straddle` | BTC 24h short straddle | `opt-app-btc_paper-1` |
+| **Grogu1** | `eth_straddle` | ETH 24h short straddle | `opt-app-eth_straddle_paper-1` |
+| **Sniper1** | `eth_signal` | ETH signal bot (V2/V3 hybrid, весь раздел ниже §1-7 — про него) | `opt-app-paper-1` |
+
+Позывные (`accounts_repo.ACCOUNT_NAMES`) — намеренно ОТДЕЛЬНЫ от технических `BOT_NAMES`
+(control_repo, уже задеплоен) — переименование позывного никогда не трогает рантайм pause/close-all
+состояние. Ключи Boba1/Grogu1 введены и проверены реальным Bybit API-вызовом 2026-06-23 (UTA=1,
+OptionsTrade-право, см. `START_HERE.md` таблицу балансов). Sniper1 — слот пустой, добавит пользователь.
+
+**⚠️ Открытый вопрос (НЕ баг, требует бэктеста):** Sniper1 показал гейдж 100%/ready, но точный
+генератор сигнала на закрытии свечи дал "no signal" — пользователь подозревает потерю входов.
+См. память `finding_sniper1_entry_gap_suspected`. Разбор отложен на следующую сессию.
+
+---
+
+## 0. TL;DR — где мы (история ниже — про Sniper1/ETH-сигнальный бот, до Mission Control)
 
 Бот-продавец опционной премии на ETH (Bybit, USDT-settled), стратегия **V2 hybrid + V3 ADX**
 (source of truth: `backend/services/strategy_config.py` + `regime.py`). Работает **paper**-режим
