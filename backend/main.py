@@ -199,11 +199,11 @@ def control_close_all_global():
 # ───────────────────────── Settings: exchange credentials ─────────────────────────
 # One Bybit account per bot (separate key, separate wallet) — accounts_repo.
 # ACCOUNT_NAMES are the bots' call signs (Boba1/Grogu1/Sniper1, see
-# accounts_repo.ACCOUNT_LABELS for which strategy each one runs); the
-# env-fallback below is generic/legacy and only used for the 'default'
-# pseudo-account, never for a real per-bot account (see execution_config.py).
-
-_ENV_FALLBACK = (os.getenv("BYBIT_API_KEY") or None, os.getenv("BYBIT_API_SECRET") or None)
+# accounts_repo.ACCOUNT_LABELS for which strategy each one runs). NO shared
+# .env fallback here, on purpose — same reasoning as execution_config.py's
+# api_credentials(): showing a masked value that's secretly the leftover
+# shared BYBIT_API_KEY (from before accounts were split) would make an
+# account with NO key actually configured LOOK configured in the UI.
 
 
 @app.get("/api/v1/settings/credentials")
@@ -211,15 +211,15 @@ def get_credentials_masked():
     accounts = accounts_repo.ensure_all_bot_accounts()
     out = []
     for account in accounts:
-        key, secret = creds.get_credentials(account["id"], env_fallback=_ENV_FALLBACK)
         row = accounts_repo.get_credentials_row(account["id"])
+        key, secret = creds.get_credentials(account["id"], env_fallback=(None, None))
         out.append({
             "account_id": account["id"],
             "account_name": account["name"],
             "label": accounts_repo.ACCOUNT_LABELS.get(account["name"], account["name"]),
             "api_key_masked": creds.masked(key),
             "api_secret_masked": creds.masked(secret),
-            "source": "db" if row else "env",
+            "source": "db" if row else "none",
         })
     return out
 

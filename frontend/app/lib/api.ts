@@ -505,7 +505,7 @@ export type CredentialsInfo = {
   label: string;
   api_key_masked: string | null;
   api_secret_masked: string | null;
-  source: "db" | "env";
+  source: "db" | "none";
 };
 
 // One Bybit account per bot (own key, own wallet).
