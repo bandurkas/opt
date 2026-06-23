@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from db import btc_straddle_repo as repo  # noqa: E402
+from db import control_repo  # noqa: E402  (Mission Control pause/close-all flags)
 from db.engine import apply_schema  # noqa: E402
 from db.repository import recent_klines  # noqa: E402
 from services import backtest_bs as bs  # noqa: E402
@@ -39,6 +40,7 @@ POLL_INTERVAL_S = int(os.getenv("BTC_STRADDLE_POLL_INTERVAL", "30"))
 START_EQUITY_USD = float(os.getenv("BTC_STRADDLE_START_EQUITY_USD", "2000"))
 MARGIN_PCT_PER_CYCLE = float(os.getenv("BTC_STRADDLE_MARGIN_PCT", "0.15"))
 
+BOT_NAME = "btc_straddle"
 SPOT_SYMBOL = "BTCUSDT"
 BASE_COIN = "BTC"
 STRIKE_ROUND = 500.0  # $ — Bybit's near-term BTC strike step
@@ -270,6 +272,32 @@ def check_and_close_position(p: dict, spot: float, chain_dict: dict[str, dict] |
     return False
 
 
+def force_close_all(open_pos: list[dict], spot: float, chain_dict: dict[str, dict] | None) -> int:
+    """Mission Control emergency flatten — closes every open leg at its current
+    mark (or BS fallback) regardless of SL/TP2/time-stop state. Returns count
+    actually closed (a live close can fail to fill and is left open, same as
+    the normal monitor path).
+
+    Each leg is isolated: one bad leg (bad data, an exchange error) must not
+    abort the rest of the flatten, and must not propagate up to abort that
+    tick's normal SL/TP monitoring of OTHER positions or the equity snapshot —
+    exactly the opposite of what an emergency "get me out" command should do.
+    """
+    n = 0
+    for p in open_pos:
+        try:
+            mark = current_mark(p["leg"], float(p["strike"]), int(p["expiry_ms"]), chain_dict)
+            if mark is None:
+                mark = price_option_bs(p["leg"], spot, float(p["strike"]), int(p["expiry_ms"]), trailing_sigma())
+            if _do_close(p, mark, "manual_close_all", int(time.time() * 1000)):
+                n += 1
+        except Exception:  # noqa: BLE001
+            print(f"[btc_straddle] ERROR force-closing #{p.get('id')}:\n{traceback.format_exc()}",
+                  flush=True)
+            _report_loop_error(f"force-close #{p.get('id')}")
+    return n
+
+
 def _do_close(p: dict, mark: float, reason: str, now_ms: int) -> bool:
     entry_credit = float(p["entry_credit_usd"])
     contracts = float(p["contracts"])
@@ -316,6 +344,23 @@ def _do_close(p: dict, mark: float, reason: str, now_ms: int) -> bool:
 
 _err_state = {"count": 0, "last_alert_ms": 0}
 _ERR_ALERT_THROTTLE_MS = 30 * 60 * 1000
+
+# Separate throttle for the close-all "stragglers, retrying" alert — without
+# it, a permanently-unclosable leg (delisted contract, sustained exchange
+# outage) would re-alert every poll tick forever (every ~30s).
+_close_all_alert_state = {"last_alert_ms": 0}
+_CLOSE_ALL_ALERT_THROTTLE_MS = 30 * 60 * 1000
+
+
+def _report_close_all_stuck(n_closed: int, n_target: int) -> None:
+    now_ms = int(time.time() * 1000)
+    if now_ms - _close_all_alert_state["last_alert_ms"] < _CLOSE_ALL_ALERT_THROTTLE_MS:
+        return
+    _close_all_alert_state["last_alert_ms"] = now_ms
+    telegram_notify.notify(
+        f"⚠️ BTC straddle close-all: only {n_closed}/{n_target} closed — still retrying "
+        f"every tick. If this persists, check the position manually on Bybit.",
+        silent=False)
 
 
 def _report_loop_error(where: str) -> None:
@@ -396,6 +441,32 @@ async def loop(run_once: bool = False) -> None:
             except Exception as e:  # noqa: BLE001
                 print(f"[btc_straddle] WARN: chain fetch failed: {e!r}", flush=True)
 
+            # 0) Mission Control emergency flatten — takes priority over the
+            # normal SL/TP2/time-stop monitor pass below.
+            if control_repo.is_close_all_requested(BOT_NAME):
+                if broker.is_live() and reconcile.is_blocked():
+                    # Proceed anyway — an operator hitting "close all" wants out
+                    # NOW, and refusing entirely could leave real risk on while
+                    # waiting for reconcile to clear. But DB-tracked open_pos_now
+                    # may not match the exchange right now, so say so loudly:
+                    # the operator should verify the result manually on Bybit.
+                    telegram_notify.notify(
+                        "⚠️ BTC straddle close-all: DB/exchange state is UNRECONCILED — "
+                        "proceeding on DB-tracked positions anyway, but VERIFY MANUALLY on Bybit",
+                        silent=False)
+                n_target = len(open_pos_now)
+                n_closed = force_close_all(open_pos_now, spot, chain_dict)
+                print(f"[btc_straddle] Mission Control close-all: closed {n_closed}/{n_target}",
+                      flush=True)
+                if n_closed >= n_target:
+                    control_repo.clear_close_all_requested(BOT_NAME)
+                else:
+                    # Leave the flag set so the next tick retries the stragglers
+                    # (e.g. a live close that didn't confirm filled) instead of
+                    # silently abandoning open risk under a "flatten everything" command.
+                    _report_close_all_stuck(n_closed, n_target)
+                open_pos_now = repo.open_positions()
+
             # 1) Monitor open legs (SL / TP2 / 24h time-stop)
             for p in open_pos_now:
                 try:
@@ -405,18 +476,28 @@ async def loop(run_once: bool = False) -> None:
                           flush=True)
                     _report_loop_error(f"close #{p.get('id')}")
 
-            # 2) New cycle — open one call + one put if this cycle hasn't fired yet.
+            # 2) New cycle — open one call + one put if this cycle hasn't fired yet
+            # (skipped while Mission Control has paused this bot).
             now_ms = int(time.time() * 1000)
             cyc = current_cycle_id(now_ms)
             if cyc > int(state.get("last_cycle_id") or 0):
-                blocked = _live_preopen_block(now_ms) if broker.is_live() else None
-                if blocked:
-                    print(f"[btc_straddle] LIVE skip cycle {cyc} — {blocked}", flush=True)
-                    telegram_notify.notify(f"⛔ BTC straddle live open blocked: {blocked}")
+                # Also check close_all_requested directly (not just paused): if an
+                # operator resumes while stragglers from an emergency flatten are
+                # still being retried (request_close_all sets paused=true, but
+                # control_resume only clears paused, not close_all_requested),
+                # a new cycle must still not open on top of an in-flight flatten.
+                if control_repo.is_paused(BOT_NAME) or control_repo.is_close_all_requested(BOT_NAME):
+                    print(f"[btc_straddle] paused/close-all via Mission Control — skip cycle {cyc} open",
+                          flush=True)
                 else:
-                    eq = compute_equity(state, spot, chain_dict)
-                    open_leg(cyc, "C", spot, eq["equity"], chain)
-                    open_leg(cyc, "P", spot, eq["equity"], chain)
+                    blocked = _live_preopen_block(now_ms) if broker.is_live() else None
+                    if blocked:
+                        print(f"[btc_straddle] LIVE skip cycle {cyc} — {blocked}", flush=True)
+                        telegram_notify.notify(f"⛔ BTC straddle live open blocked: {blocked}")
+                    else:
+                        eq = compute_equity(state, spot, chain_dict)
+                        open_leg(cyc, "C", spot, eq["equity"], chain)
+                        open_leg(cyc, "P", spot, eq["equity"], chain)
                 repo.update_state(last_cycle_id=cyc)
                 state["last_cycle_id"] = cyc
 

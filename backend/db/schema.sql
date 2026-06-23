@@ -239,3 +239,33 @@ CREATE TABLE IF NOT EXISTS eth_straddle_state (
     consec_losses            INT       NOT NULL DEFAULT 0,
     recent_pnls_json         JSONB     NOT NULL DEFAULT '[]'
 );
+
+-- Mission Control: per-bot pause flag. Loops check `paused` each tick and skip
+-- NEW entries only — monitoring/exits/heartbeat of already-open positions keep
+-- running regardless (pausing must not abandon open risk).
+CREATE TABLE IF NOT EXISTS bot_control (
+    bot_name             TEXT    PRIMARY KEY,   -- 'eth_signal' | 'btc_straddle' | 'eth_straddle'
+    paused               BOOLEAN NOT NULL DEFAULT false,
+    close_all_requested  BOOLEAN NOT NULL DEFAULT false,  -- one-shot flag, loop clears it once done
+    updated_at_ms        BIGINT  NOT NULL,
+    updated_by           TEXT                              -- free-text actor label (e.g. 'dashboard')
+);
+
+-- Exchange accounts — one row today (Bybit default), schema ready for more.
+CREATE TABLE IF NOT EXISTS accounts (
+    id          BIGSERIAL PRIMARY KEY,
+    name        TEXT      NOT NULL UNIQUE,
+    exchange    TEXT      NOT NULL DEFAULT 'bybit',
+    is_active   BOOLEAN   NOT NULL DEFAULT true,
+    created_at_ms BIGINT  NOT NULL
+);
+
+-- Encrypted exchange API credentials, keyed per account. Values are Fernet
+-- ciphertext (services/credentials.py); the master key lives only in .env
+-- (CREDENTIALS_MASTER_KEY), never in the DB.
+CREATE TABLE IF NOT EXISTS exchange_credentials (
+    account_id        BIGINT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+    api_key_encrypted    TEXT NOT NULL,
+    api_secret_encrypted TEXT NOT NULL,
+    updated_at_ms     BIGINT NOT NULL
+);

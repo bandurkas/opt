@@ -2,7 +2,6 @@ fastapi
 uvicorn[standard]
 pybit==5.16.0
 websockets
-redis
 celery
 psycopg2-binary
 sqlalchemy
@@ -12,3 +11,4 @@ pydantic-settings
 python-dotenv
 aiogram
 requests
+cryptography

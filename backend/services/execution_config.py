@@ -122,12 +122,27 @@ def trading_armed() -> bool:
 
 def api_credentials() -> tuple[str | None, str | None]:
     """Return (api_key, api_secret) for the current mode. testnet keys are
-    SEPARATE from mainnet keys on Bybit."""
+    SEPARATE from mainnet keys on Bybit.
+
+    Mainnet keys are read from the encrypted DB store (services.credentials),
+    account-keyed, so the Mission Control settings UI can rotate them within
+    ~60s without a redeploy (see services.broker's matching client TTL);
+    falls back to BYBIT_API_KEY/SECRET in .env if no DB row exists yet, or if
+    the DB read fails for any reason. Testnet always uses .env (not exposed
+    in the UI)."""
     if use_testnet():
         return (os.getenv("BYBIT_TESTNET_API_KEY") or None,
                 os.getenv("BYBIT_TESTNET_API_SECRET") or None)
-    return (os.getenv("BYBIT_API_KEY") or None,
-            os.getenv("BYBIT_API_SECRET") or None)
+    env_fallback = (os.getenv("BYBIT_API_KEY") or None, os.getenv("BYBIT_API_SECRET") or None)
+    try:
+        from db import accounts_repo
+        from services import credentials as creds
+        account = accounts_repo.ensure_default_account()
+        return creds.get_credentials(account["id"], env_fallback=env_fallback)
+    except Exception as e:  # noqa: BLE001 — DB unreachable etc.: don't break live trading on a read error
+        print(f"[execution_config] WARN: DB credential lookup failed ({e!r}), "
+              f"falling back to .env BYBIT_API_KEY/SECRET", flush=True)
+        return env_fallback
 
 
 def summary() -> str:

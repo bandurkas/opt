@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { fetchPaperState, fetchPaperConditions, fetchPaperPositions, fetchRecentTrades, fetchEquityHistory, fetchBtcStraddleState, fetchBtcStraddlePositions, fetchBtcStraddleEquityHistory, fetchEthStraddleState, fetchEthStraddlePositions, fetchEthStraddleEquityHistory, type PaperState, type PaperConditions, type PaperPosition, type EquityPoint, type BtcStraddleState, type BtcStraddlePosition, type EthStraddleState, type EthStraddlePosition } from "./lib/api";
+import MissionControl from "./components/MissionControl";
 
 const REFRESH_MS = 15_000;
 
@@ -203,6 +204,7 @@ export default function Dashboard() {
       </header>
 
       <div className="max-w-5xl mx-auto p-4 space-y-4">
+        <MissionControl />
         {/* Active Side Banner */}
         <div className={`rounded-xl p-4 border ${
           deadZone ? "bg-slate-900 border-slate-700"

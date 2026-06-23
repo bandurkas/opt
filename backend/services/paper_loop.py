@@ -26,6 +26,7 @@ from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from db import control_repo  # noqa: E402  (Mission Control pause/close-all flags)
 from db import paper_repo  # noqa: E402
 from db.engine import apply_schema  # noqa: E402
 from db.repository import recent_klines  # noqa: E402
@@ -67,6 +68,7 @@ from services.strategy_registry import gen_sell_premium_iv_high  # noqa: E402
 from services import telegram_notify  # noqa: E402
 
 
+BOT_NAME = "eth_signal"
 POLL_INTERVAL_S = int(os.getenv("PAPER_POLL_INTERVAL", "30"))
 SIGNAL_CHECK_EVERY_MIN = 5
 # Entry conditions are re-evaluated every minute; the open command is committed
@@ -456,6 +458,31 @@ def check_and_close_position(p: dict, spot: float,
     return _do_close(p, premium_mid, reason, now_ms)
 
 
+def force_close_all(open_pos: list[dict], spot: float, chain_dict: dict[str, dict] | None) -> int:
+    """Mission Control emergency flatten — closes every open position at its
+    current mark (BS fallback allowed here, unlike the normal TP/SL check,
+    since this is an explicit manual action, not an automated trigger).
+    Returns count actually closed (a live close can fail to fill and is left
+    open, same as the normal monitor path).
+
+    Each position is isolated: one bad close must not abort the rest of the
+    flatten, and must not propagate up to abort that tick's normal TP/SL
+    monitoring of OTHER positions or the equity snapshot — exactly the
+    opposite of what an emergency "get me out" command should do.
+    """
+    n = 0
+    for p in open_pos:
+        try:
+            premium_mid = current_mark_or_bs(p, spot, chain_dict)
+            if _do_close(p, premium_mid, "manual_close_all", int(time.time() * 1000)):
+                n += 1
+        except Exception:  # noqa: BLE001
+            print(f"[paper] ERROR force-closing #{p.get('id')}:\n{traceback.format_exc()}",
+                  flush=True)
+            _report_loop_error(f"force-close #{p.get('id')}")
+    return n
+
+
 def _do_close(p: dict, premium_mid: float, reason: str, now_ms: int) -> bool:
     """Apply exit-side friction, record close, notify.
 
@@ -525,6 +552,23 @@ def _do_close(p: dict, premium_mid: float, reason: str, now_ms: int) -> bool:
 # close_position bug ran silently for 3 days). Telegram at most once per window.
 _err_state = {"count": 0, "last_alert_ms": 0}
 _ERR_ALERT_THROTTLE_MS = 30 * 60 * 1000  # 30 min between error alerts
+
+# Separate throttle for the close-all "stragglers, retrying" alert — without
+# it, a permanently-unclosable position (delisted contract, sustained
+# exchange outage) would re-alert every poll tick forever (every ~30s).
+_close_all_alert_state = {"last_alert_ms": 0}
+_CLOSE_ALL_ALERT_THROTTLE_MS = 30 * 60 * 1000
+
+
+def _report_close_all_stuck(n_closed: int, n_target: int) -> None:
+    now_ms = int(time.time() * 1000)
+    if now_ms - _close_all_alert_state["last_alert_ms"] < _CLOSE_ALL_ALERT_THROTTLE_MS:
+        return
+    _close_all_alert_state["last_alert_ms"] = now_ms
+    telegram_notify.notify(
+        f"⚠️ ETH signal bot close-all: only {n_closed}/{n_target} closed — still retrying "
+        f"every tick. If this persists, check the position manually on Bybit.",
+        silent=False)
 
 
 def _report_loop_error(where: str) -> None:
@@ -633,6 +677,24 @@ async def loop():
                 except Exception as e:  # noqa: BLE001
                     print(f"[paper] WARN: chain fetch failed: {e!r}", flush=True)
 
+            # 0) Mission Control emergency flatten — takes priority over the
+            # normal TP/SL/time-stop monitor pass below.
+            if control_repo.is_close_all_requested(BOT_NAME):
+                if broker.is_live() and reconcile.is_blocked():
+                    telegram_notify.notify(
+                        "⚠️ ETH signal bot close-all: DB/exchange state is UNRECONCILED — "
+                        "proceeding on DB-tracked positions anyway, but VERIFY MANUALLY on Bybit",
+                        silent=False)
+                n_target = len(open_pos_now)
+                n_closed = force_close_all(open_pos_now, spot, chain_dict)
+                print(f"[paper] Mission Control close-all: closed {n_closed}/{n_target}",
+                      flush=True)
+                if n_closed >= n_target:
+                    control_repo.clear_close_all_requested(BOT_NAME)
+                else:
+                    _report_close_all_stuck(n_closed, n_target)
+                open_pos_now = paper_repo.open_positions()
+
             # 1) Position monitoring — every iteration. Each position is isolated:
             #    a failure on one (e.g. a bad close) must NOT abort monitoring of
             #    the others, the equity snapshot, or signal evaluation below.
@@ -710,7 +772,19 @@ async def loop():
                 dead_zone_val = side_val is None
                 spot_val = k5_audit[-1]["close"] if k5_audit else spot
 
-                if is_cb_active(state, now_ms):
+                # Also check close_all_requested directly (not just paused): if an
+                # operator resumes while stragglers from an emergency flatten are
+                # still being retried (request_close_all sets paused=true, but
+                # control_resume only clears paused, not close_all_requested), a
+                # new entry must still not open on top of an in-flight flatten.
+                if control_repo.is_paused(BOT_NAME) or control_repo.is_close_all_requested(BOT_NAME):
+                    print("[paper] paused/close-all via Mission Control — no new entries", flush=True)
+                    paper_repo.insert_signal_audit(
+                        ts_ms=now_ms, ret_7d=ret_7d_val, active_side=side_val,
+                        dead_zone=dead_zone_val, signal_generated=False,
+                        accepted=False, reject_reason="paused", spot=spot_val,
+                        signal_payload=None)
+                elif is_cb_active(state, now_ms):
                     cb_remaining_h = (int(state["cb_cooldown_until_ms"]) -
                                        now_ms) / 3_600_000
                     print(f"[paper] CB cooldown active ({cb_remaining_h:.1f}h left), no signals",

@@ -17,6 +17,7 @@ Money-path rules (inherited from execution.py):
 """
 from __future__ import annotations
 
+import time
 from typing import Any, NamedTuple
 
 from . import execution_config as cfg
@@ -36,22 +37,32 @@ def is_live() -> bool:
     return cfg.trading_armed()
 
 
-# Lazily-built singleton so importing this module never touches pybit/network.
+# Lazily-built singleton, rebuilt at most once per _CLIENT_TTL_S so a Bybit
+# key rotated via the Mission Control settings UI (services/credentials.py,
+# also cached for 60s) takes effect within roughly that same window WITHOUT
+# needing a redeploy or a cross-process signal — main.py (the API) and this
+# module run in separate containers, so there is no in-process call that
+# could invalidate a live trader's already-built client from outside.
+# Test-injected clients (via set_client) never expire.
 _client: Any = None
+_client_built_at: float = 0.0
+_CLIENT_TTL_S = 60
 
 
 def _get_client() -> Any:
-    global _client
-    if _client is None:
+    global _client, _client_built_at
+    if _client is None or (time.time() - _client_built_at > _CLIENT_TTL_S):
         from .execution import ExecutionClient
         _client = ExecutionClient()
+        _client_built_at = time.time()
     return _client
 
 
 def set_client(client: Any) -> None:
-    """Inject a client (for tests / reuse)."""
-    global _client
+    """Inject a client (for tests / reuse). Never auto-expires."""
+    global _client, _client_built_at
     _client = client
+    _client_built_at = float("inf")
 
 
 def available_usdt() -> float | None:

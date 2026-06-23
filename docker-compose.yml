@@ -1,8 +1,4 @@
 services:
-  redis:
-    image: redis:alpine
-    restart: unless-stopped
-
   postgres:
     image: postgres:15-alpine
     environment:
@@ -19,11 +15,9 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      - redis
       - postgres
     environment:
       - DATABASE_URL=postgresql://user:password@postgres:5432/options_assistant
-      - REDIS_URL=redis://redis:6379/0
     restart: unless-stopped
 
   poller:

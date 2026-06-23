@@ -2,6 +2,17 @@ export const API_BASE =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "") ||
   "http://localhost:8000/api/v1";
 
+// Every request carries the mc_session cookie (Mission Control auth). A 401
+// means the session is missing/expired — bounce to /login from one place
+// instead of every call site having to handle it.
+async function authedFetch(url: string, init?: RequestInit): Promise<Response> {
+  const res = await fetch(url, { ...init, credentials: "include" });
+  if (res.status === 401 && typeof window !== "undefined" && window.location.pathname !== "/login") {
+    window.location.href = "/login";
+  }
+  return res;
+}
+
 export type Side = "call" | "put" | "both";
 
 export type TFAnalysis = {
@@ -194,7 +205,7 @@ export async function fetchTop(params: {
   if (params.includePullback !== undefined) qs.set("include_pullback", String(params.includePullback));
   if (params.includeContinuation !== undefined) qs.set("include_continuation", String(params.includeContinuation));
 
-  const res = await fetch(`${API_BASE}/analysis/top?${qs.toString()}`, {
+  const res = await authedFetch(`${API_BASE}/analysis/top?${qs.toString()}`, {
     cache: "no-store",
   });
   if (!res.ok) {
@@ -264,7 +275,17 @@ export type EquityPoint = {
 };
 
 async function jget<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, { cache: "no-store" });
+  const res = await authedFetch(`${API_BASE}${path}`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`API ${res.status}: ${await res.text()}`);
+  return res.json();
+}
+
+async function jpost<T>(path: string, body?: unknown): Promise<T> {
+  const res = await authedFetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
   if (!res.ok) throw new Error(`API ${res.status}: ${await res.text()}`);
   return res.json();
 }
@@ -422,4 +443,69 @@ export async function fetchEthStraddleEquityHistory(
   hours = 168,
 ): Promise<{ hours: number; points: EquityPoint[] }> {
   return jget(`/eth-straddle/equity_history?hours=${hours}`);
+}
+
+// ───────────────────────── Mission Control: auth ─────────────────────────
+
+export async function login(password: string): Promise<void> {
+  const res = await authedFetch(`${API_BASE}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ password }),
+  });
+  if (!res.ok) throw new Error(res.status === 401 ? "Неверный пароль" : `API ${res.status}`);
+}
+
+export async function logout(): Promise<void> {
+  await jpost(`/auth/logout`);
+}
+
+// ───────────────────────── Mission Control: bot control ─────────────────────────
+
+export type BotName = "eth_signal" | "btc_straddle" | "eth_straddle";
+
+export type BotControlStatus = {
+  paused: boolean;
+  close_all_requested: boolean;
+  n_open: number;
+};
+
+export type ControlStatusResponse = Record<BotName, BotControlStatus>;
+
+export async function fetchControlStatus(): Promise<ControlStatusResponse> {
+  return jget(`/control/status`);
+}
+
+export async function pauseBot(bot: BotName): Promise<void> {
+  await jpost(`/control/${bot}/pause`);
+}
+
+export async function resumeBot(bot: BotName): Promise<void> {
+  await jpost(`/control/${bot}/resume`);
+}
+
+export async function closeAllBot(bot: BotName): Promise<void> {
+  await jpost(`/control/${bot}/close-all`);
+}
+
+export async function closeAllBotsGlobal(): Promise<void> {
+  await jpost(`/control/close-all`);
+}
+
+// ───────────────────────── Mission Control: settings ─────────────────────────
+
+export type CredentialsInfo = {
+  account_id: number;
+  account_name: string;
+  api_key_masked: string | null;
+  api_secret_masked: string | null;
+  source: "db" | "env";
+};
+
+export async function fetchCredentials(): Promise<CredentialsInfo> {
+  return jget(`/settings/credentials`);
+}
+
+export async function updateCredentials(apiKey: string, apiSecret: string): Promise<void> {
+  await jpost(`/settings/credentials`, { api_key: apiKey, api_secret: apiSecret });
 }

@@ -1,10 +1,14 @@
+import os
 import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from db.engine import apply_schema
+from db import accounts_repo
+from db import control_repo
 from db import paper_repo
 from db import btc_straddle_repo
 from db import eth_straddle_repo
@@ -14,6 +18,9 @@ from db.repository import (
     recent_klines,
     recent_signals,
 )
+from services import auth
+from services import credentials as creds
+from services import telegram_notify
 from services.paper_strategy import START_EQUITY_USD
 from services.signal_freshness import compute_freshness
 from services.analysis import (
@@ -35,6 +42,13 @@ async def lifespan(_app: FastAPI):
         print("[main] DB schema applied", flush=True)
     except Exception as e:  # noqa: BLE001
         print(f"[main] WARN: could not apply schema: {e!r}", flush=True)
+    if not os.getenv("AUTH_SECRET_KEY", "").strip():
+        print("[main] WARN: AUTH_SECRET_KEY is not set — every /api/v1/* request "
+              "will fail with a 500 until it's set in .env (see services/auth.py)", flush=True)
+    if not os.getenv("ADMIN_PASSWORD_HASH", "").strip():
+        print("[main] WARN: ADMIN_PASSWORD_HASH is not set — login will always "
+              "reject with 401 until it's set (generate via `python -m services.auth <password>`)",
+              flush=True)
     yield
 
 
@@ -45,18 +59,171 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# allow_credentials=True (cookie-based auth) requires an explicit origin list —
+# the browser refuses to send/accept cookies with allow_origins=["*"].
+_CORS_ORIGINS = [o.strip() for o in os.getenv(
+    "CORS_ORIGINS", "http://187.127.114.34:3000,http://localhost:3000"
+).split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
+    allow_origins=_CORS_ORIGINS,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Routes that stay reachable without a session (login itself, plus the bare
+# health check Docker/uptime tooling hits).
+_AUTH_EXEMPT_PATHS = {"/", "/api/v1/auth/login", "/api/v1/auth/logout"}
+
+
+@app.middleware("http")
+async def require_auth(request: Request, call_next):
+    # CORS preflight (OPTIONS) never carries cookies by spec — must always pass
+    # through untouched so CORSMiddleware (registered before this one, hence
+    # INNER in Starlette's reversed-registration-order stack) gets a chance to
+    # answer it. Blocking it here would 401 every preflight with no CORS
+    # headers attached, silently breaking every authenticated cross-origin
+    # POST (pause/resume/close-all/credentials) at the browser level.
+    if request.method == "OPTIONS":
+        return await call_next(request)
+    if request.url.path.startswith("/api/v1/") and request.url.path not in _AUTH_EXEMPT_PATHS:
+        token = request.cookies.get(auth.SESSION_COOKIE)
+        try:
+            valid = bool(token) and auth.verify_token(token)
+        except RuntimeError:
+            # AUTH_SECRET_KEY missing — fail closed (401), not a raw 500. The
+            # lifespan startup check above already prints a loud warning.
+            valid = False
+        if not valid:
+            return JSONResponse(status_code=401, content={"detail": "not authenticated"})
+    return await call_next(request)
 
 
 @app.get("/")
 def read_root():
     return {"status": "ok", "version": "3.0.0"}
+
+
+@app.post("/api/v1/auth/login")
+def login(body: dict, request: Request, response: Response):
+    # NOTE: if a reverse proxy (e.g. Caddy/certbot for TLS — see auth.py's
+    # docstring, still open) is ever placed in front of this API, this becomes
+    # the proxy's IP for every client, collapsing rate-limiting into one shared
+    # bucket. At that point this must switch to parsing X-Forwarded-For from a
+    # trusted proxy. Today (port 8000 published directly, no proxy) it's correct.
+    client_id = request.client.host if request.client else "unknown"
+    if auth.login_rate_limited(client_id):
+        telegram_notify.notify(f"⚠️ Mission Control: login rate-limited for {client_id}", silent=False)
+        raise HTTPException(status_code=429, detail="too many failed attempts, try again later")
+    password = str(body.get("password") or "")
+    stored_hash = os.getenv("ADMIN_PASSWORD_HASH", "").strip()
+    if not stored_hash or not auth.verify_password(password, stored_hash):
+        auth.record_failed_login(client_id)
+        telegram_notify.notify(f"⚠️ Mission Control: failed login attempt from {client_id}", silent=False)
+        raise HTTPException(status_code=401, detail="invalid password")
+    auth.clear_failed_logins(client_id)
+    try:
+        token = auth.issue_token()
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=f"server misconfigured: {e}") from e
+    response.set_cookie(
+        auth.SESSION_COOKIE, token,
+        max_age=auth.SESSION_TTL_S, httponly=True, samesite="lax", secure=False,
+    )
+    telegram_notify.notify("🔓 Mission Control: dashboard login", silent=True)
+    return {"status": "ok"}
+
+
+@app.post("/api/v1/auth/logout")
+def logout(response: Response):
+    # Always succeeds, even with an expired/missing session — logging out of a
+    # session that's already gone must not 401 (this route is auth-exempt below).
+    response.delete_cookie(auth.SESSION_COOKIE)
+    return {"status": "ok"}
+
+
+# ───────────────────────── Mission Control ─────────────────────────
+
+_BOT_REPOS = {
+    "eth_signal": paper_repo,
+    "btc_straddle": btc_straddle_repo,
+    "eth_straddle": eth_straddle_repo,
+}
+
+
+@app.get("/api/v1/control/status")
+def control_status():
+    rows = {r["bot_name"]: r for r in control_repo.status_all()}
+    return {
+        bot: {
+            "paused": rows[bot]["paused"],
+            "close_all_requested": rows[bot]["close_all_requested"],
+            "n_open": len(repo.open_positions()),
+        }
+        for bot, repo in _BOT_REPOS.items()
+    }
+
+
+@app.post("/api/v1/control/{bot}/pause")
+def control_pause(bot: str):
+    if bot not in _BOT_REPOS:
+        raise HTTPException(status_code=404, detail="unknown bot")
+    telegram_notify.notify(f"⏸ Mission Control: {bot} paused", silent=True)
+    return control_repo.set_paused(bot, True)
+
+
+@app.post("/api/v1/control/{bot}/resume")
+def control_resume(bot: str):
+    if bot not in _BOT_REPOS:
+        raise HTTPException(status_code=404, detail="unknown bot")
+    telegram_notify.notify(f"▶ Mission Control: {bot} resumed", silent=True)
+    return control_repo.set_paused(bot, False)
+
+
+@app.post("/api/v1/control/{bot}/close-all")
+def control_close_all(bot: str):
+    if bot not in _BOT_REPOS:
+        raise HTTPException(status_code=404, detail="unknown bot")
+    telegram_notify.notify(f"🛑 Mission Control: close-all requested for {bot}", silent=False)
+    return control_repo.request_close_all(bot)
+
+
+@app.post("/api/v1/control/close-all")
+def control_close_all_global():
+    telegram_notify.notify("🛑 Mission Control: GLOBAL close-all requested (all bots)", silent=False)
+    return {bot: control_repo.request_close_all(bot) for bot in _BOT_REPOS}
+
+
+# ───────────────────────── Settings: exchange credentials ─────────────────────────
+
+@app.get("/api/v1/settings/credentials")
+def get_credentials_masked():
+    account = accounts_repo.ensure_default_account()
+    key, secret = creds.get_credentials(
+        account["id"],
+        env_fallback=(os.getenv("BYBIT_API_KEY") or None, os.getenv("BYBIT_API_SECRET") or None),
+    )
+    row = accounts_repo.get_credentials_row(account["id"])
+    return {
+        "account_id": account["id"],
+        "account_name": account["name"],
+        "api_key_masked": creds.masked(key),
+        "api_secret_masked": creds.masked(secret),
+        "source": "db" if row else "env",
+    }
+
+
+@app.post("/api/v1/settings/credentials")
+def update_credentials(body: dict):
+    api_key = str(body.get("api_key") or "").strip()
+    api_secret = str(body.get("api_secret") or "").strip()
+    if not api_key or not api_secret:
+        raise HTTPException(status_code=400, detail="api_key and api_secret are required")
+    account = accounts_repo.ensure_default_account()
+    creds.set_credentials(account["id"], api_key, api_secret)
+    return {"status": "ok", "api_key_masked": creds.masked(api_key)}
 
 
 @app.get("/api/v1/market/eth-price")
