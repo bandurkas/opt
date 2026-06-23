@@ -32,7 +32,7 @@ DAYS_BACK = float(sys.argv[2]) if len(sys.argv) > 3 else 1095.0
 CYCLE_H, TP1, TP2, SL, MULT = 24.0, 0.50, 0.80, 0.75, 1.10
 SIGMA_CLAMP = (0.20, 1.50)
 SPREAD_PCT = 2.0
-STRIKE_ROUND_BY_COIN = {"btc": 500.0, "btc_long": 500.0, "eth": 25.0, "xaut": 25.0}
+STRIKE_ROUND_BY_COIN = {"btc": 500.0, "btc_long": 500.0, "eth": 25.0, "eth_long": 25.0, "xaut": 25.0}
 STRIKE_ROUND = STRIKE_ROUND_BY_COIN.get(COIN, 500.0)
 HALF_SPREAD = SPREAD_PCT / 200.0
 

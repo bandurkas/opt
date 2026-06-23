@@ -38,10 +38,10 @@ CYCLE_H, TP2, MULT = 24.0, 0.80, 1.10
 SIGMA_CLAMP = (0.20, 1.50)
 SPREAD_PCT = 2.0
 HALF_SPREAD = SPREAD_PCT / 200.0
-STRIKE_ROUND_BY_COIN = {"btc": 500.0, "btc_long": 500.0, "eth": 25.0, "xaut": 25.0}
+STRIKE_ROUND_BY_COIN = {"btc": 500.0, "btc_long": 500.0, "eth": 25.0, "eth_long": 25.0, "xaut": 25.0}
 STRIKE_ROUND = STRIKE_ROUND_BY_COIN.get(COIN, 500.0)
 IM_RATE = 0.10
-LOT_BY_COIN = {"btc": 0.01, "btc_long": 0.01, "eth": 0.10}
+LOT_BY_COIN = {"btc": 0.01, "btc_long": 0.01, "eth": 0.10, "eth_long": 0.10}
 LOT = LOT_BY_COIN.get(COIN, 0.01)
 TRAIN_FRAC = 0.70
 
