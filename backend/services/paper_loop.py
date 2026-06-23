@@ -60,6 +60,7 @@ from services.paper_strategy import (  # noqa: E402
     evaluate_conditions,
     fee_per_side,
     is_cb_active,
+    is_new_signal,
     margin_per_lot,
     realistic_size_lots,
     record_trade_result,
@@ -804,6 +805,19 @@ async def loop():
                         signal_payload=None)
                 else:
                     sig = check_new_signal(k5_audit, k15_audit, k1h_audit)
+                    already_consumed = False
+                    if sig and not is_new_signal(int(sig["idx_5m"]), state.get("last_signal_idx_5m")):
+                        # Same cooldown-spaced occurrence the generator already
+                        # surfaced on a previous tick (2-bar acceptance window in
+                        # check_new_signal) — acting on it again would open a
+                        # near-duplicate position 5 min after the first one.
+                        print(f"[paper] skip signal — already consumed at idx_5m={sig['idx_5m']} "
+                              f"(last={state.get('last_signal_idx_5m')})", flush=True)
+                        already_consumed = True
+                        sig = None
+                    elif sig:
+                        paper_repo.update_state(last_signal_idx_5m=int(sig["idx_5m"]))
+                        state["last_signal_idx_5m"] = int(sig["idx_5m"])
                     if sig and broker.is_live():
                         # P4: block live opens on kill-switch / daily-loss limit.
                         blocked = _live_preopen_block(now_ms)
@@ -855,6 +869,12 @@ async def loop():
                                 dead_zone=False, signal_generated=True, accepted=pid is not None,
                                 reject_reason=None if pid else "no_option", spot=spot_val,
                                 signal_payload=sig)
+                    elif already_consumed:
+                        paper_repo.insert_signal_audit(
+                            ts_ms=now_ms, ret_7d=ret_7d_val, active_side=side_val,
+                            dead_zone=False, signal_generated=True, accepted=False,
+                            reject_reason="signal_already_consumed", spot=spot_val,
+                            signal_payload=None)
                     else:
                         print(f"[paper] tick: no signal (spot=${spot_val:.2f}, 7d_ret={ret_7d_val:+.2f}%, "
                               f"side={side_val or '?'}, open={len(open_pos_now)})", flush=True)

@@ -108,6 +108,22 @@ def compute_ret_7d(k5: list, idx: int) -> float:
     return (k5[idx]["close"] - prev_close) / prev_close * 100
 
 
+def is_new_signal(idx_5m: int, last_signal_idx_5m: int | None) -> bool:
+    """Has this generator occurrence already been consumed by an earlier tick?
+
+    check_new_signal() re-walks the FULL k5 history every tick (no memory of
+    its own), and accepts a 2-bar-wide window (idx_5m in {last-1, last}) to
+    tolerate candle-close timing jitter. That same 2-bar slack means the
+    SAME cooldown-spaced occurrence gets rediscovered as "new" on the tick
+    right after it first appeared, opening a second near-duplicate position
+    5 minutes later (confirmed live 2026-06-23: Sniper1 paired entries 5 min
+    apart, pairs spaced exactly 30 min = cooldown_bars). This persists the
+    idx_5m of the last occurrence we actually acted on, in `paper_state`, so
+    a tick can tell "new occurrence" from "same one I saw last tick."
+    """
+    return last_signal_idx_5m is None or idx_5m > int(last_signal_idx_5m)
+
+
 def allowed_sides(ret_7d: float) -> list[str]:
     """V2 trend-following: return list of sides allowed at this 7d return.
 

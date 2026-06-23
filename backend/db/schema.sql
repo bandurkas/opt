@@ -131,6 +131,10 @@ CREATE TABLE IF NOT EXISTS paper_state (
     consec_losses            INT       NOT NULL DEFAULT 0,
     recent_pnls_json         JSONB     NOT NULL DEFAULT '[]'  -- last 10 pnls for dyn sizing
 );
+-- idx_5m of the last generator occurrence already acted on — dedupes the
+-- 2-bar acceptance window in check_new_signal() against repeat ticks
+-- (FUTURE_WORK: Sniper1 double-fire, found 2026-06-23).
+ALTER TABLE paper_state ADD COLUMN IF NOT EXISTS last_signal_idx_5m BIGINT;
 
 -- BTC unconditional short-straddle (24h cycle, dollar-margin SL). Structurally
 -- separate from paper_positions: each cycle opens a CALL leg + a PUT leg sharing

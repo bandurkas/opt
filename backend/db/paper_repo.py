@@ -38,7 +38,8 @@ def ensure_state(start_equity_usd: float) -> dict:
 
 def update_state(*, cb_cooldown_until_ms: int | None = None,
                  consec_losses: int | None = None,
-                 recent_pnls: list[float] | None = None) -> None:
+                 recent_pnls: list[float] | None = None,
+                 last_signal_idx_5m: int | None = None) -> None:
     fields = []
     values: list[Any] = []
     if cb_cooldown_until_ms is not None:
@@ -50,6 +51,9 @@ def update_state(*, cb_cooldown_until_ms: int | None = None,
     if recent_pnls is not None:
         fields.append("recent_pnls_json = %s::jsonb")
         values.append(json.dumps(recent_pnls))
+    if last_signal_idx_5m is not None:
+        fields.append("last_signal_idx_5m = %s")
+        values.append(last_signal_idx_5m)
     if not fields:
         return
     conn = get_conn()
