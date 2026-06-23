@@ -496,16 +496,17 @@ export async function closeAllBotsGlobal(): Promise<void> {
 
 export type CredentialsInfo = {
   account_id: number;
-  account_name: string;
+  account_name: BotName;
   api_key_masked: string | null;
   api_secret_masked: string | null;
   source: "db" | "env";
 };
 
-export async function fetchCredentials(): Promise<CredentialsInfo> {
+// One Bybit account per bot (own key, own wallet) — same 3 names as BotName.
+export async function fetchCredentials(): Promise<CredentialsInfo[]> {
   return jget(`/settings/credentials`);
 }
 
-export async function updateCredentials(apiKey: string, apiSecret: string): Promise<void> {
-  await jpost(`/settings/credentials`, { api_key: apiKey, api_secret: apiSecret });
+export async function updateCredentials(accountName: BotName, apiKey: string, apiSecret: string): Promise<void> {
+  await jpost(`/settings/credentials/${accountName}`, { api_key: apiKey, api_secret: apiSecret });
 }

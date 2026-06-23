@@ -77,27 +77,21 @@ function ConfirmModal({
   );
 }
 
-function CredentialsPanel() {
-  const [info, setInfo] = useState<CredentialsInfo | null>(null);
-  const [open, setOpen] = useState(false);
+function CredentialAccountRow({ info, onSaved }: { info: CredentialsInfo; onSaved: () => void }) {
   const [apiKey, setApiKey] = useState("");
   const [apiSecret, setApiSecret] = useState("");
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchCredentials().then(setInfo).catch(() => setInfo(null));
-  }, []);
-
   const save = async () => {
     setSaving(true);
     setMsg(null);
     try {
-      await updateCredentials(apiKey, apiSecret);
+      await updateCredentials(info.account_name, apiKey, apiSecret);
       setApiKey("");
       setApiSecret("");
       setMsg("Ключ обновлён");
-      setInfo(await fetchCredentials());
+      onSaved();
     } catch (e) {
       setMsg(e instanceof Error ? e.message : String(e));
     } finally {
@@ -106,41 +100,65 @@ function CredentialsPanel() {
   };
 
   return (
+    <div className="space-y-2 p-3 rounded-lg bg-slate-800/40">
+      <p className="text-sm font-medium">
+        {BOT_LABELS[info.account_name]} <span className="text-xs text-slate-500">(источник: {info.source})</span>
+      </p>
+      <p className="text-xs text-slate-400">
+        Текущий: <span className="font-mono">{info.api_key_masked ?? "—"}</span> / secret{" "}
+        <span className="font-mono">{info.api_secret_masked ?? "—"}</span>
+      </p>
+      <input
+        placeholder="Новый API key"
+        value={apiKey}
+        onChange={(e) => setApiKey(e.target.value)}
+        className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm font-mono"
+      />
+      <input
+        placeholder="Новый API secret"
+        type="password"
+        value={apiSecret}
+        onChange={(e) => setApiSecret(e.target.value)}
+        className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm font-mono"
+      />
+      <button
+        onClick={save}
+        disabled={!apiKey || !apiSecret || saving}
+        className="px-3 py-1.5 text-sm rounded-lg bg-sky-700 hover:bg-sky-600 disabled:opacity-40"
+      >
+        {saving ? "Сохранение…" : "Сохранить"}
+      </button>
+      {msg && <p className="text-xs text-slate-400">{msg}</p>}
+    </div>
+  );
+}
+
+function CredentialsPanel() {
+  const [accounts, setAccounts] = useState<CredentialsInfo[]>([]);
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = () => {
+    fetchCredentials().then(setAccounts).catch((e) => setError(e instanceof Error ? e.message : String(e)));
+  };
+
+  useEffect(load, []);
+
+  return (
     <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
       <button
         onClick={() => setOpen(!open)}
         className="w-full px-4 py-2 bg-slate-800/50 text-xs font-semibold text-slate-400 flex justify-between items-center"
       >
-        <span>Bybit API-ключ ({info?.account_name ?? "default"}) — источник: {info?.source ?? "?"}</span>
+        <span>Bybit API-ключи — 3 отдельных аккаунта (свой ключ и баланс на каждый бот)</span>
         <span>{open ? "▲" : "▼"}</span>
       </button>
       {open && (
         <div className="p-4 space-y-3 text-sm">
-          <p className="text-slate-400">
-            Текущий: <span className="font-mono">{info?.api_key_masked ?? "—"}</span> / secret{" "}
-            <span className="font-mono">{info?.api_secret_masked ?? "—"}</span>
-          </p>
-          <input
-            placeholder="Новый API key"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm font-mono"
-          />
-          <input
-            placeholder="Новый API secret"
-            type="password"
-            value={apiSecret}
-            onChange={(e) => setApiSecret(e.target.value)}
-            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm font-mono"
-          />
-          <button
-            onClick={save}
-            disabled={!apiKey || !apiSecret || saving}
-            className="px-3 py-1.5 text-sm rounded-lg bg-sky-700 hover:bg-sky-600 disabled:opacity-40"
-          >
-            {saving ? "Сохранение…" : "Сохранить"}
-          </button>
-          {msg && <p className="text-slate-400">{msg}</p>}
+          {error && <p className="text-rose-400">{error}</p>}
+          {accounts.map((info) => (
+            <CredentialAccountRow key={info.account_name} info={info} onSaved={load} />
+          ))}
           <div className="pt-2 border-t border-slate-800">
             <button
               disabled

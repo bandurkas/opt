@@ -47,6 +47,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://user:password@postgres:5432/options_assistant
       - PAPER_POLL_INTERVAL=${PAPER_POLL_INTERVAL:-30}
+      - MC_ACCOUNT_NAME=eth_signal
     restart: unless-stopped
 
   # Second poller instance, BTC-only — writes BTCUSDT klines/option snapshots into
@@ -83,6 +84,7 @@ services:
       - BTC_STRADDLE_POLL_INTERVAL=${BTC_STRADDLE_POLL_INTERVAL:-30}
       - BTC_STRADDLE_START_EQUITY_USD=${BTC_STRADDLE_START_EQUITY_USD:-2000}
       - BTC_STRADDLE_MARGIN_PCT=${BTC_STRADDLE_MARGIN_PCT:-0.15}
+      - MC_ACCOUNT_NAME=btc_straddle
     restart: unless-stopped
 
   # ETH unconditional short-straddle paper bot — separate book from the ETH V3
@@ -104,6 +106,7 @@ services:
       - ETH_STRADDLE_POLL_INTERVAL=${ETH_STRADDLE_POLL_INTERVAL:-30}
       - ETH_STRADDLE_START_EQUITY_USD=${ETH_STRADDLE_START_EQUITY_USD:-1200}
       - ETH_STRADDLE_MARGIN_PCT=${ETH_STRADDLE_MARGIN_PCT:-0.15}
+      - MC_ACCOUNT_NAME=eth_straddle
     restart: unless-stopped
 
   frontend:
@@ -150,6 +153,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://user:password@postgres:5432/options_trader
       - PAPER_POLL_INTERVAL=${PAPER_POLL_INTERVAL:-30}
+      - MC_ACCOUNT_NAME=eth_signal
       - TRADING_MODE=live
       - LIVE_ENABLED=${LIVE_ENABLED:-false}
       - LIVE_KILLSWITCH_FILE=/data/STOP_TRADING
@@ -168,10 +172,11 @@ services:
   # Even then it is ARMED-OFF (LIVE_ENABLED_BTC=false) until you set it in .env.
   # File kill-switch: `touch /data/STOP_TRADING_BTC` (own kill-switch, independent
   # of the ETH trader's). The `btc_paper` service keeps running unchanged as a
-  # shadow. Capital note: this and `trader` share ONE Bybit UTA account — the
-  # exchange does not partition capital between them, only each container's own
-  # LIVE_MAX_CAPITAL_USDT does. Set both deliberately, summing to ≤ funded capital,
-  # before arming either.
+  # shadow. Capital note: this and `trader` now run on SEPARATE Bybit accounts
+  # (one key + wallet per bot — see services/execution_config.py's
+  # MC_ACCOUNT_NAME / Mission Control settings UI), so the old shared-capital
+  # split is no longer a concern; LIVE_MAX_CAPITAL_USDT is just a per-bot cap
+  # on its own account's funds.
   btc_trader:
     build:
       context: ./backend
@@ -186,6 +191,7 @@ services:
       - BTC_STRADDLE_POLL_INTERVAL=${BTC_STRADDLE_POLL_INTERVAL:-30}
       - BTC_STRADDLE_START_EQUITY_USD=${BTC_STRADDLE_START_EQUITY_USD:-2000}
       - BTC_STRADDLE_MARGIN_PCT=${BTC_STRADDLE_MARGIN_PCT:-0.15}
+      - MC_ACCOUNT_NAME=btc_straddle
       - TRADING_MODE=live
       - LIVE_ENABLED=${LIVE_ENABLED_BTC:-false}
       - LIVE_KILLSWITCH_FILE=/data/STOP_TRADING_BTC

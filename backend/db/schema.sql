@@ -251,7 +251,9 @@ CREATE TABLE IF NOT EXISTS bot_control (
     updated_by           TEXT                              -- free-text actor label (e.g. 'dashboard')
 );
 
--- Exchange accounts — one row today (Bybit default), schema ready for more.
+-- Exchange accounts — one Bybit account PER BOT (own key, own wallet, no
+-- shared capital): 'eth_signal', 'btc_straddle', 'eth_straddle'. Pre-seeded by
+-- db.accounts_repo.ensure_all_bot_accounts(); see services/execution_config.py.
 CREATE TABLE IF NOT EXISTS accounts (
     id          BIGSERIAL PRIMARY KEY,
     name        TEXT      NOT NULL UNIQUE,

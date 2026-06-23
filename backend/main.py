@@ -197,33 +197,43 @@ def control_close_all_global():
 
 
 # ───────────────────────── Settings: exchange credentials ─────────────────────────
+# One Bybit account per bot (separate key, separate wallet) — accounts_repo.
+# ACCOUNT_NAMES mirrors control_repo.BOT_NAMES (eth_signal/btc_straddle/
+# eth_straddle); the env-fallback below is generic/legacy and only matters if
+# the DB has never had a row written for that account yet.
+
+_ENV_FALLBACK = (os.getenv("BYBIT_API_KEY") or None, os.getenv("BYBIT_API_SECRET") or None)
+
 
 @app.get("/api/v1/settings/credentials")
 def get_credentials_masked():
-    account = accounts_repo.ensure_default_account()
-    key, secret = creds.get_credentials(
-        account["id"],
-        env_fallback=(os.getenv("BYBIT_API_KEY") or None, os.getenv("BYBIT_API_SECRET") or None),
-    )
-    row = accounts_repo.get_credentials_row(account["id"])
-    return {
-        "account_id": account["id"],
-        "account_name": account["name"],
-        "api_key_masked": creds.masked(key),
-        "api_secret_masked": creds.masked(secret),
-        "source": "db" if row else "env",
-    }
+    accounts = accounts_repo.ensure_all_bot_accounts()
+    out = []
+    for account in accounts:
+        key, secret = creds.get_credentials(account["id"], env_fallback=_ENV_FALLBACK)
+        row = accounts_repo.get_credentials_row(account["id"])
+        out.append({
+            "account_id": account["id"],
+            "account_name": account["name"],
+            "api_key_masked": creds.masked(key),
+            "api_secret_masked": creds.masked(secret),
+            "source": "db" if row else "env",
+        })
+    return out
 
 
-@app.post("/api/v1/settings/credentials")
-def update_credentials(body: dict):
+@app.post("/api/v1/settings/credentials/{account_name}")
+def update_credentials(account_name: str, body: dict):
+    if account_name not in accounts_repo.ACCOUNT_NAMES:
+        raise HTTPException(status_code=404, detail="unknown account")
     api_key = str(body.get("api_key") or "").strip()
     api_secret = str(body.get("api_secret") or "").strip()
     if not api_key or not api_secret:
         raise HTTPException(status_code=400, detail="api_key and api_secret are required")
-    account = accounts_repo.ensure_default_account()
+    account = accounts_repo.ensure_account(account_name)
     creds.set_credentials(account["id"], api_key, api_secret)
-    return {"status": "ok", "api_key_masked": creds.masked(api_key)}
+    telegram_notify.notify(f"🔑 Mission Control: API key rotated for account '{account_name}'", silent=False)
+    return {"status": "ok", "account_name": account_name, "api_key_masked": creds.masked(api_key)}
 
 
 @app.get("/api/v1/market/eth-price")

@@ -1,6 +1,10 @@
-"""Exchange accounts + encrypted credentials. One row exists today (the
-default Bybit account the bots already trade); the schema is account_id-keyed
-so adding more accounts later is a data change, not a schema change."""
+"""Exchange accounts + encrypted credentials. Three accounts exist — ONE
+Bybit account per bot, each with its own key and its own wallet balance (no
+shared-capital-split bookkeeping needed, unlike a single account split across
+strategies): 'eth_signal' (ETH signal bot), 'btc_straddle' (BTC 24h straddle),
+'eth_straddle' (ETH 24h straddle). Names mirror db.control_repo.BOT_NAMES —
+same bot, same identity, used as the join key between pause/close-all state
+and which Bybit credentials that bot's process authenticates with."""
 from __future__ import annotations
 
 import time
@@ -9,14 +13,20 @@ from psycopg2.extras import RealDictCursor
 
 from .engine import get_conn, put_conn
 
-DEFAULT_ACCOUNT_NAME = "default"
+# Mirrors db.control_repo.BOT_NAMES — not imported from there to keep this
+# module importable standalone (control_repo pulls in no extra deps either,
+# but the two lists are conceptually independent: this is "which Bybit
+# account", that is "which bot's pause/close-all flag").
+ACCOUNT_NAMES = ("eth_signal", "btc_straddle", "eth_straddle")
+
+DEFAULT_ACCOUNT_NAME = "default"  # last-resort fallback if MC_ACCOUNT_NAME is unset
 
 
-def ensure_default_account() -> dict:
+def ensure_account(name: str) -> dict:
     conn = get_conn()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT * FROM accounts WHERE name = %s", (DEFAULT_ACCOUNT_NAME,))
+            cur.execute("SELECT * FROM accounts WHERE name = %s", (name,))
             row = cur.fetchone()
             if row:
                 return dict(row)
@@ -24,14 +34,25 @@ def ensure_default_account() -> dict:
                 """
                 INSERT INTO accounts (name, exchange, is_active, created_at_ms)
                 VALUES (%s, 'bybit', true, %s)
+                ON CONFLICT (name) DO NOTHING
                 RETURNING *
                 """,
-                (DEFAULT_ACCOUNT_NAME, int(time.time() * 1000)),
+                (name, int(time.time() * 1000)),
             )
             conn.commit()
+            row = cur.fetchone()
+            if row:
+                return dict(row)
+            cur.execute("SELECT * FROM accounts WHERE name = %s", (name,))
             return dict(cur.fetchone())
     finally:
         put_conn(conn)
+
+
+def ensure_all_bot_accounts() -> list[dict]:
+    """Pre-seed the 3 bot accounts so the settings UI always has 3 slots to
+    show, even before any key has ever been entered."""
+    return [ensure_account(name) for name in ACCOUNT_NAMES]
 
 
 def list_accounts() -> list[dict]:

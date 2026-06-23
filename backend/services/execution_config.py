@@ -120,28 +120,50 @@ def trading_armed() -> bool:
     return (not is_paper()) and LIVE_ENABLED and not killswitch_engaged()
 
 
+# Which Bybit account this process authenticates as — one account per bot
+# (separate key, separate wallet balance). Set per docker-compose service
+# (paper/trader=eth_signal, btc_paper/btc_trader=btc_straddle,
+# eth_straddle_paper=eth_straddle); defaults to 'default' for anything that
+# doesn't set it (e.g. ad-hoc scripts, tests).
+_LEGACY_DEFAULT_ACCOUNT = "default"  # mirrors db.accounts_repo.DEFAULT_ACCOUNT_NAME
+ACCOUNT_NAME = (os.getenv("MC_ACCOUNT_NAME", "").strip() or _LEGACY_DEFAULT_ACCOUNT)
+
+
 def api_credentials() -> tuple[str | None, str | None]:
     """Return (api_key, api_secret) for the current mode. testnet keys are
     SEPARATE from mainnet keys on Bybit.
 
     Mainnet keys are read from the encrypted DB store (services.credentials),
-    account-keyed, so the Mission Control settings UI can rotate them within
-    ~60s without a redeploy (see services.broker's matching client TTL);
-    falls back to BYBIT_API_KEY/SECRET in .env if no DB row exists yet, or if
-    the DB read fails for any reason. Testnet always uses .env (not exposed
-    in the UI)."""
+    keyed by ACCOUNT_NAME (one Bybit account per bot), so the Mission Control
+    settings UI can rotate them within ~60s without a redeploy (see
+    services.broker's matching client TTL).
+
+    For a real per-bot account (ACCOUNT_NAME in accounts_repo.ACCOUNT_NAMES),
+    there is NO .env fallback on a missing row or a DB error — returning
+    (None, None) and letting the caller fail closed (ExecutionClient refuses
+    to construct without keys) is deliberate: falling back to the single
+    shared BYBIT_API_KEY/SECRET would silently point one bot's real orders at
+    a DIFFERENT bot's Bybit account/wallet, exactly what per-account
+    separation exists to prevent. The shared .env fallback only applies to the
+    legacy 'default' pseudo-account (ad-hoc scripts/tests that never set
+    MC_ACCOUNT_NAME). Testnet always uses .env (not exposed in the UI, and not
+    per-account — there's one shared testnet sandbox key)."""
     if use_testnet():
         return (os.getenv("BYBIT_TESTNET_API_KEY") or None,
                 os.getenv("BYBIT_TESTNET_API_SECRET") or None)
-    env_fallback = (os.getenv("BYBIT_API_KEY") or None, os.getenv("BYBIT_API_SECRET") or None)
+    is_real_bot_account = ACCOUNT_NAME != _LEGACY_DEFAULT_ACCOUNT
+    env_fallback = ((None, None) if is_real_bot_account else
+                    (os.getenv("BYBIT_API_KEY") or None, os.getenv("BYBIT_API_SECRET") or None))
     try:
         from db import accounts_repo
         from services import credentials as creds
-        account = accounts_repo.ensure_default_account()
+        account = accounts_repo.ensure_account(ACCOUNT_NAME)
         return creds.get_credentials(account["id"], env_fallback=env_fallback)
-    except Exception as e:  # noqa: BLE001 — DB unreachable etc.: don't break live trading on a read error
-        print(f"[execution_config] WARN: DB credential lookup failed ({e!r}), "
-              f"falling back to .env BYBIT_API_KEY/SECRET", flush=True)
+    except Exception as e:  # noqa: BLE001 — DB unreachable etc.
+        print(f"[execution_config] WARN: DB credential lookup failed for account "
+              f"'{ACCOUNT_NAME}' ({e!r})"
+              + (", refusing to fall back to a shared .env key" if is_real_bot_account
+                 else ", falling back to .env BYBIT_API_KEY/SECRET"), flush=True)
         return env_fallback
 
 
