@@ -19,6 +19,7 @@ premium per unit in USDT (Bybit ETH options are USDT-settled).
 from __future__ import annotations
 
 import time
+import uuid
 from typing import Any, NamedTuple
 
 from . import execution_config as cfg
@@ -182,10 +183,16 @@ class ExecutionClient:
                     order_type: str, price: float | None = None,
                     reduce_only: bool = False, tif: str = "GTC") -> str | None:
         """Place an order. Returns orderId or None on failure."""
+        # Bybit's option-order endpoint rejects an empty orderLinkId (ErrCode
+        # 10001) — confirmed live 2026-06-24 via a real (unfillable, cancelled)
+        # test order on Grogu1; every place_order call was failing silently
+        # before this, since the caller just sees None and treats it as
+        # "didn't fill" rather than "request was rejected."
         params: dict[str, Any] = {
             "category": self.CATEGORY, "symbol": symbol, "side": side,
             "orderType": order_type, "qty": str(qty),
             "timeInForce": tif, "reduceOnly": reduce_only,
+            "orderLinkId": uuid.uuid4().hex,
         }
         if order_type == "Limit" and price is not None:
             params["price"] = str(price)

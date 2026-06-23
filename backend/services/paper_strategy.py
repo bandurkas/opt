@@ -44,6 +44,9 @@ LOT_MIN_ETH = 0.1
 IM_RATE = 0.10
 # Maximum percentage of total equity that can be locked in margin across all open positions.
 MAX_PORTFOLIO_MARGIN_PCT = 0.80
+# Below this equity, the min-lot floor stops rescuing trades — a genuinely dead
+# account should sit out, not force-trade circuit-breaker-style.
+ABS_FLOOR_EQUITY = float(os.getenv("PAPER_ABS_FLOOR_EQUITY", "50"))
 # Bybit taker fee on notional, capped at 12.5% of premium per side.
 FEE_RATE = 0.0003
 FEE_CAP_PCT_OF_PREMIUM = 0.125
@@ -67,7 +70,18 @@ def dyn_size_factor(state: dict) -> float:
 
 def realistic_size_lots(free_margin_usd: float, equity_usd: float, strike: float,
                         premium_mid: float, state: dict) -> int:
-    """How many 0.1-ETH lots fit in our margin budget at this signal."""
+    """How many 0.1-ETH lots fit in our margin budget at this signal.
+
+    Min-lot floor: %-of-equity sizing alone can self-reinforce a drawdown —
+    once equity*MARGIN_PCT_PER_TRADE drops below one lot's margin, the budget
+    shrinks with the very equity it can no longer recover, permanently
+    locking the account out of an edge that backtesting shows stays positive
+    at every equity level (see finding_grogu_sl_incident_deploy_gap.md /
+    eth_capital_aware_sizing_test.py — 24/24 historical starts improved,
+    +96%..+496%, by guaranteeing 1 lot whenever the PORTFOLIO cap still has
+    room). Only suppressed below ABS_FLOOR_EQUITY, where the account is
+    genuinely dead rather than just drawn down.
+    """
     if strike <= 0 or premium_mid <= 0 or equity_usd <= 0:
         return 0
     margin_per_lot = (IM_RATE * strike + premium_mid) * LOT_MIN_ETH
@@ -75,7 +89,10 @@ def realistic_size_lots(free_margin_usd: float, equity_usd: float, strike: float
         return 0
     trade_budget = equity_usd * MARGIN_PCT_PER_TRADE * dyn_size_factor(state)
     budget = min(trade_budget, free_margin_usd)
-    return max(0, int(budget // margin_per_lot))
+    n_lots = int(budget // margin_per_lot)
+    if n_lots < 1 and margin_per_lot <= free_margin_usd and equity_usd >= ABS_FLOOR_EQUITY:
+        return 1
+    return n_lots
 
 
 def margin_per_lot(strike: float, premium_mid: float) -> float:
