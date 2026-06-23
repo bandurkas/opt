@@ -102,7 +102,8 @@ function CredentialAccountRow({ info, onSaved }: { info: CredentialsInfo; onSave
   return (
     <div className="space-y-2 p-3 rounded-lg bg-slate-800/40">
       <p className="text-sm font-medium">
-        {BOT_LABELS[info.account_name]} <span className="text-xs text-slate-500">(источник: {info.source})</span>
+        {info.account_name} <span className="text-slate-500 font-normal">— {info.label}</span>{" "}
+        <span className="text-xs text-slate-500">(источник: {info.source})</span>
       </p>
       <p className="text-xs text-slate-400">
         Текущий: <span className="font-mono">{info.api_key_masked ?? "—"}</span> / secret{" "}

@@ -198,9 +198,10 @@ def control_close_all_global():
 
 # ───────────────────────── Settings: exchange credentials ─────────────────────────
 # One Bybit account per bot (separate key, separate wallet) — accounts_repo.
-# ACCOUNT_NAMES mirrors control_repo.BOT_NAMES (eth_signal/btc_straddle/
-# eth_straddle); the env-fallback below is generic/legacy and only matters if
-# the DB has never had a row written for that account yet.
+# ACCOUNT_NAMES are the bots' call signs (Boba1/Grogu1/Sniper1, see
+# accounts_repo.ACCOUNT_LABELS for which strategy each one runs); the
+# env-fallback below is generic/legacy and only used for the 'default'
+# pseudo-account, never for a real per-bot account (see execution_config.py).
 
 _ENV_FALLBACK = (os.getenv("BYBIT_API_KEY") or None, os.getenv("BYBIT_API_SECRET") or None)
 
@@ -215,6 +216,7 @@ def get_credentials_masked():
         out.append({
             "account_id": account["id"],
             "account_name": account["name"],
+            "label": accounts_repo.ACCOUNT_LABELS.get(account["name"], account["name"]),
             "api_key_masked": creds.masked(key),
             "api_secret_masked": creds.masked(secret),
             "source": "db" if row else "env",

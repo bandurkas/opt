@@ -1,10 +1,16 @@
 """Exchange accounts + encrypted credentials. Three accounts exist — ONE
 Bybit account per bot, each with its own key and its own wallet balance (no
 shared-capital-split bookkeeping needed, unlike a single account split across
-strategies): 'eth_signal' (ETH signal bot), 'btc_straddle' (BTC 24h straddle),
-'eth_straddle' (ETH 24h straddle). Names mirror db.control_repo.BOT_NAMES —
-same bot, same identity, used as the join key between pause/close-all state
-and which Bybit credentials that bot's process authenticates with."""
+strategies). Account names are the bots' call signs (user-assigned), kept
+deliberately SEPARATE from db.control_repo.BOT_NAMES (the technical
+pause/close-all key, already deployed/in use): this module is "which Bybit
+account", control_repo is "which bot's pause/close-all flag" — renaming a
+call sign here never touches already-running control state.
+
+  - 'Boba1'   — BTC 24h straddle    (control_repo.BOT_NAMES: 'btc_straddle')
+  - 'Grogu1'  — ETH 24h straddle    (control_repo.BOT_NAMES: 'eth_straddle')
+  - 'Sniper1' — ETH signal bot      (control_repo.BOT_NAMES: 'eth_signal')
+"""
 from __future__ import annotations
 
 import time
@@ -13,11 +19,14 @@ from psycopg2.extras import RealDictCursor
 
 from .engine import get_conn, put_conn
 
-# Mirrors db.control_repo.BOT_NAMES — not imported from there to keep this
-# module importable standalone (control_repo pulls in no extra deps either,
-# but the two lists are conceptually independent: this is "which Bybit
-# account", that is "which bot's pause/close-all flag").
-ACCOUNT_NAMES = ("eth_signal", "btc_straddle", "eth_straddle")
+ACCOUNT_NAMES = ("Boba1", "Grogu1", "Sniper1")
+
+# Human-readable strategy label per account, for UI display alongside the call sign.
+ACCOUNT_LABELS = {
+    "Boba1": "BTC 24h straddle",
+    "Grogu1": "ETH 24h straddle",
+    "Sniper1": "ETH signal bot",
+}
 
 DEFAULT_ACCOUNT_NAME = "default"  # last-resort fallback if MC_ACCOUNT_NAME is unset
 

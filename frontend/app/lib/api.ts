@@ -494,19 +494,25 @@ export async function closeAllBotsGlobal(): Promise<void> {
 
 // ───────────────────────── Mission Control: settings ─────────────────────────
 
+// Bybit account call signs — deliberately separate from BotName (the
+// control_repo pause/close-all key): Boba1=BTC straddle, Grogu1=ETH straddle,
+// Sniper1=ETH signal bot.
+export type AccountName = "Boba1" | "Grogu1" | "Sniper1";
+
 export type CredentialsInfo = {
   account_id: number;
-  account_name: BotName;
+  account_name: AccountName;
+  label: string;
   api_key_masked: string | null;
   api_secret_masked: string | null;
   source: "db" | "env";
 };
 
-// One Bybit account per bot (own key, own wallet) — same 3 names as BotName.
+// One Bybit account per bot (own key, own wallet).
 export async function fetchCredentials(): Promise<CredentialsInfo[]> {
   return jget(`/settings/credentials`);
 }
 
-export async function updateCredentials(accountName: BotName, apiKey: string, apiSecret: string): Promise<void> {
+export async function updateCredentials(accountName: AccountName, apiKey: string, apiSecret: string): Promise<void> {
   await jpost(`/settings/credentials/${accountName}`, { api_key: apiKey, api_secret: apiSecret });
 }
