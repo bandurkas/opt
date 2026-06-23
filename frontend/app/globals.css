@@ -35,3 +35,20 @@ body {
   color: rgb(251 191 36);
   filter: drop-shadow(0 0 8px rgb(251 191 36 / 0.5));
 }
+
+/* Mission Control: faint instrument-panel grid, sits behind bot panels. */
+@utility console-grid {
+  background-image:
+    linear-gradient(rgb(148 163 184 / 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(148 163 184 / 0.06) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+@keyframes led-pulse {
+  0%, 100% { opacity: 1; filter: drop-shadow(0 0 6px currentColor); }
+  50% { opacity: 0.55; filter: drop-shadow(0 0 2px currentColor); }
+}
+
+@utility led-armed {
+  animation: led-pulse 1.8s ease-in-out infinite;
+}
