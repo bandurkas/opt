@@ -131,12 +131,52 @@ def main():
         v = at_or_before(lsr, row["ts"])
         return abs(v - 1.0) if v is not None else None  # deviation from balanced 1.0
 
+    # ---- IV Rank sweep ----
+    # eth_dvol_1h.json is OHLCV data: [ts, open, high, low, close]
+    import json
+    dvol_raw = json.loads((find_data_dir(None) / "eth_dvol_1h.json").read_text())
+    dvol = [(int(row[0]), float(row[4])) for row in dvol_raw]  # (ts, close)
+
+    def feat_iv_rank(row, window_h=720):
+        """IV Rank: percentile of DVOL over trailing window (hours)."""
+        ts = row["ts"]
+        dvol_now = at_or_before(dvol, ts)
+        if dvol_now is None:
+            return None
+        window_ms = window_h * 3600 * 1000
+        window = [v for t, v in dvol if ts - window_ms <= t <= ts]
+        if len(window) < max(10, window_h // 100):  # at least 10 points or 1% of window
+            return None
+        window_sorted = sorted(window)
+        rank = sum(1 for x in window_sorted if x <= dvol_now) / len(window_sorted)
+        return rank  # 0..1, higher = more expensive IV
+
+    def feat_vrp(row, window_h=720):
+        """VRP: DVOL - Realized Vol (vol risk premium)."""
+        ts = row["ts"]
+        dvol_now = at_or_before(dvol, ts)
+        if dvol_now is None:
+            return None
+        i = row["idx_1h"]
+        rv = indicators.realized_vol(closes_1h[max(0, i - window_h):i + 1], lookback=window_h)
+        if rv is None:
+            return None
+        return dvol_now - rv  # >0 = expensive IV (good for sellers)
+
     metrics = {
         "RSI(14) extremity (|50-RSI|)": lambda r: (abs(50 - feat_rsi(r)) if feat_rsi(r) is not None else None),
         "Vol-regime jump (RV24/RV168)": feat_vol_regime,
         "Funding rate |extremity|":     feat_funding,
         "OI 24h %Δ":                    feat_oi_delta,
         "Long/short ratio extremity":   feat_lsr_extreme,
+        # IV Rank sweeps — 6 windows
+        "IV Rank 10d (p of DVOL)":      lambda r: feat_iv_rank(r, 240),
+        "IV Rank 30d (p of DVOL)":      lambda r: feat_iv_rank(r, 720),
+        "IV Rank 60d (p of DVOL)":      lambda r: feat_iv_rank(r, 1440),
+        "IV Rank 90d (p of DVOL)":      lambda r: feat_iv_rank(r, 2160),
+        # VRP sweeps
+        "VRP 30d (DVOL - RV30)":        lambda r: feat_vrp(r, 720),
+        "VRP 60d (DVOL - RV60)":        lambda r: feat_vrp(r, 1440),
     }
 
     print(f"\n{'metric':<32}{'n':>6}{'train n':>9}{'hold n':>8}{'thr(p75)':>10}"
