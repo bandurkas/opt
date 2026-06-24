@@ -124,11 +124,19 @@ def test_sl_config(frac, rows, k5, k1h):
             "count": len(results),
         }
 
-    # Bad-cycle definition
-    bad_cut = sorted(r["pnl_pct"] for r in results)[max(0, len(results) // 4 - 1)]
+    # Split train/holdout FIRST (no data leakage)
+    split_ts = results[0]["ts"] + TRAIN_FRAC * (results[-1]["ts"] - results[0]["ts"])
+    train = [r for r in results if r["ts"] < split_ts]
+    hold = [r for r in results if r["ts"] >= split_ts]
+
+    # Bad-cycle threshold computed ONLY from TRAIN data
+    bad_cut = sorted(r["pnl_pct"] for r in train)[max(0, len(train) // 4 - 1)]
+
+    # Apply train-derived threshold to ALL data (train + hold)
     for r in results:
         r["bad"] = r["any_sl"] or (r["pnl_pct"] <= bad_cut)
 
+    # Full period metrics
     bad_rate = sum(1 for r in results if r["bad"]) / len(results) * 100
     win_rate = sum(1 for r in results if r["pnl_pct"] > 0) / len(results) * 100
     pnls = [r["pnl_pct"] for r in results]
@@ -137,11 +145,7 @@ def test_sl_config(frac, rows, k5, k1h):
     std_pnl = st.stdev(pnls) if len(pnls) > 1 else 0
     sharpe = (avg_pnl / std_pnl * (252**0.5)) if std_pnl > 0 else 0
 
-    # Split train/holdout
-    split_ts = results[0]["ts"] + TRAIN_FRAC * (results[-1]["ts"] - results[0]["ts"])
-    train = [r for r in results if r["ts"] < split_ts]
-    hold = [r for r in results if r["ts"] >= split_ts]
-
+    # Holdout metrics (true OOS validation)
     hold_bad = sum(1 for r in hold if r["bad"]) / len(hold) * 100 if hold else 0
     hold_pnls = [r["pnl_pct"] for r in hold]
     hold_avg_pnl = st.mean(hold_pnls) if hold_pnls else 0

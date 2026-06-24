@@ -106,14 +106,6 @@ def main():
     n = len(rows)
     print(f"    {n} total cycles")
 
-    # Bad-cycle definition
-    bad_cut = sorted(r["pnl_pct"] for r in rows)[max(0, n // 4 - 1)]
-    for r in rows:
-        r["bad"] = r["any_sl"] or (r["pnl_pct"] <= bad_cut)
-
-    print(f"    Bad-cycle rate overall: {sum(r['bad'] for r in rows)/n*100:.1f}%")
-    print(f"    Bad-cycle threshold (bottom-quartile): {bad_cut:.2f}%")
-
     # Load DVOL data
     print("\n[2] Loading DVOL (implied vol) data...")
     dvol_raw = json.loads((find_data_dir(None) / "eth_dvol_1h.json").read_text())
@@ -129,10 +121,17 @@ def main():
     rows_with_vrp = [r for r in rows if r["vrp"] is not None]
     print(f"    {len(rows_with_vrp)} cycles with valid VRP data")
 
-    # Train/holdout split
+    # Train/holdout split FIRST (no data leakage)
     split_ts = rows_with_vrp[0]["ts"] + TRAIN_FRAC * (rows_with_vrp[-1]["ts"] - rows_with_vrp[0]["ts"])
     train = [r for r in rows_with_vrp if r["ts"] < split_ts]
     hold = [r for r in rows_with_vrp if r["ts"] >= split_ts]
+
+    # Bad-cycle definition computed ONLY from TRAIN
+    bad_cut = sorted(r["pnl_pct"] for r in train)[max(0, len(train) // 4 - 1)]
+    for r in rows_with_vrp:
+        r["bad"] = r["any_sl"] or (r["pnl_pct"] <= bad_cut)
+
+    print(f"    Bad-cycle threshold (from train, bottom-quartile): {bad_cut:.2f}%")
 
     print(f"    Train: {len(train)} cycles")
     print(f"    Holdout: {len(hold)} cycles")

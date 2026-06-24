@@ -79,10 +79,7 @@ def build_base_data():
         })
 
     rows.sort(key=lambda r: r["ts"])
-    bad_cut = sorted(r["pnl_pct"] for r in rows)[max(0, len(rows) // 4 - 1)]
-    for r in rows:
-        r["bad"] = r["any_sl"] or (r["pnl_pct"] <= bad_cut)
-
+    # NOTE: bad_cut will be calculated per-filter in test_filter() to avoid data leakage
     return rows, k1h, k5
 
 
@@ -174,7 +171,14 @@ def test_filter(filter_spec):
             "count": len(rows_with_feat),
         }
 
-    # Find threshold on train (p75)
+    # Bad-cycle threshold computed ONLY from TRAIN data (no data leakage)
+    bad_cut = sorted(r["pnl_pct"] for r in train)[max(0, len(train) // 4 - 1)]
+
+    # Apply train-derived threshold to ALL data (train + hold)
+    for r in rows_with_feat:
+        r["bad"] = r["any_sl"] or (r["pnl_pct"] <= bad_cut)
+
+    # Find filter threshold on train (p75)
     vals_train = sorted([r.get(feature_key) for r in train])
     thr = vals_train[int(len(vals_train) * 0.75)]
 

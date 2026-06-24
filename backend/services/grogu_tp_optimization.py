@@ -162,8 +162,12 @@ def analyze_tp_version(rows, tp_version):
     if len(results) < 50:
         return {"status": "insufficient", "count": len(results)}
 
-    # Bad-cycle analysis
-    bad_cut = sorted(r["pnl_pct"] for r in results)[max(0, len(results) // 4 - 1)]
+    # Split train/holdout FIRST (no data leakage)
+    split_ts = results[0]["ts"] + TRAIN_FRAC * (results[-1]["ts"] - results[0]["ts"])
+    train_res = [r for r in results if r["ts"] < split_ts]
+
+    # Bad-cycle threshold computed ONLY from TRAIN
+    bad_cut = sorted(r["pnl_pct"] for r in train_res)[max(0, len(train_res) // 4 - 1)]
     for r in results:
         r["bad"] = r["any_sl"] or (r["pnl_pct"] <= bad_cut)
 

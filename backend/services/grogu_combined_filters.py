@@ -135,8 +135,15 @@ def test_filter_combo(name, rows, filter_fn):
     if len(rows_filt) < 50:
         return {"name": name, "status": "insufficient", "count": len(rows_filt)}
 
-    # Bad-cycle definition
-    bad_cut = sorted(r["pnl_pct"] for r in rows_filt)[max(0, len(rows_filt) // 4 - 1)]
+    # Split train/holdout FIRST (no data leakage)
+    split_ts = rows_filt[0]["ts"] + TRAIN_FRAC * (rows_filt[-1]["ts"] - rows_filt[0]["ts"])
+    train = [r for r in rows_filt if r["ts"] < split_ts]
+    hold = [r for r in rows_filt if r["ts"] >= split_ts]
+
+    # Bad-cycle threshold computed ONLY from TRAIN data
+    bad_cut = sorted(r["pnl_pct"] for r in train)[max(0, len(train) // 4 - 1)]
+
+    # Apply train-derived threshold to ALL filtered data
     for r in rows_filt:
         r["bad"] = r["any_sl"] or (r["pnl_pct"] <= bad_cut)
 
@@ -147,11 +154,7 @@ def test_filter_combo(name, rows, filter_fn):
     std_pnl = st.stdev(pnls) if len(pnls) > 1 else 0
     sharpe = (avg_pnl / std_pnl * (252**0.5)) if std_pnl > 0 else 0
 
-    # Split train/holdout
-    split_ts = rows_filt[0]["ts"] + TRAIN_FRAC * (rows_filt[-1]["ts"] - rows_filt[0]["ts"])
-    train = [r for r in rows_filt if r["ts"] < split_ts]
-    hold = [r for r in rows_filt if r["ts"] >= split_ts]
-
+    # Holdout metrics (true OOS validation)
     hold_bad = sum(1 for r in hold if r["bad"]) / len(hold) * 100 if hold else 0
     hold_pnls = [r["pnl_pct"] for r in hold]
     hold_avg_pnl = st.mean(hold_pnls) if hold_pnls else 0

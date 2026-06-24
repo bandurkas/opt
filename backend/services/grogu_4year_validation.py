@@ -172,8 +172,15 @@ def test_4year_config(frac, rows, k5, k1h, years):
             "count": len(results),
         }
 
-    # Bad-cycle definition
-    bad_cut = sorted(r["pnl_pct"] for r in results)[max(0, len(results) // 4 - 1)]
+    # Split train/holdout FIRST (no data leakage)
+    split_ts = results[0]["ts"] + 0.70 * (results[-1]["ts"] - results[0]["ts"])
+    train = [r for r in results if r["ts"] < split_ts]
+    hold = [r for r in results if r["ts"] >= split_ts]
+
+    # Bad-cycle threshold computed ONLY from TRAIN data
+    bad_cut = sorted(r["pnl_pct"] for r in train)[max(0, len(train) // 4 - 1)]
+
+    # Apply train-derived threshold to ALL data
     for r in results:
         r["bad"] = r["any_sl"] or (r["pnl_pct"] <= bad_cut)
 
