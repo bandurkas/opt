@@ -1,0 +1,24 @@
+{
+  "total_cycles": 381,
+  "valid_both_windows": 358,
+  "skip_rate_30d": 32.402234636871505,
+  "skip_rate_6d": 40.22346368715084,
+  "skip_rate_delta": 7.821229050279335,
+  "agreement": {
+    "both_skip": 111,
+    "both_trade": 209,
+    "skip_30_trade_6d": 5,
+    "trade_30_skip_6d": 33,
+    "agreement_rate": 89.3854748603352,
+    "disagreement_rate": 10.614525139664805
+  },
+  "holdout": {
+    "cycles_30d": 74,
+    "cycles_6d": 66,
+    "bad_rate_30d": 8.108108108108109,
+    "bad_rate_6d": 7.575757575757576,
+    "avg_pnl_30d": 3.2948536504190393,
+    "avg_pnl_6d": 3.7610147036913846,
+    "bad_rate_delta": -0.5323505323505326
+  }
+}
