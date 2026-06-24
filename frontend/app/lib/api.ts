@@ -445,6 +445,32 @@ export async function fetchEthStraddleEquityHistory(
   return jget(`/eth-straddle/equity_history?hours=${hours}`);
 }
 
+export type Kline = {
+  start_ms: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+};
+
+export type EthStraddleChartLeg = {
+  id: number;
+  leg: "C" | "P";
+  strike: number;
+  expiry_ms: number;
+  entry_credit_usd: number;
+  current_mark_usd: number | null;
+  sl_dollar_trip_usd: number;
+  sl_progress_pct: number | null;
+};
+
+export async function fetchEthStraddleChart(
+  klineLimit = 288,
+): Promise<{ spot: number | null; klines: Kline[]; legs: EthStraddleChartLeg[] }> {
+  return jget(`/eth-straddle/chart?kline_limit=${klineLimit}`);
+}
+
 // ───────────────────────── Mission Control: auth ─────────────────────────
 
 export async function login(password: string): Promise<void> {

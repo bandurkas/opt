@@ -652,6 +652,69 @@ def eth_straddle_equity_history(hours: int = Query(168, ge=1, le=8760)):
     }
 
 
+@app.get("/api/v1/eth-straddle/chart")
+def eth_straddle_chart(kline_limit: int = Query(288, ge=10, le=1000)):
+    """ETH spot klines for chart context, plus per-leg SL-trip progress.
+
+    The SL trips on OPTION PREMIUM drift, not on a fixed underlying price —
+    so this deliberately returns a progress ratio per leg (unrealized loss
+    vs. its dollar trip), not a price level to draw on the spot chart.
+    Mirrors the math in eth_straddle_sl.is_tripped() exactly.
+    """
+    from services import eth_straddle_sl as sl
+    from services.eth_straddle_loop import (
+        SPOT_SYMBOL, current_mark, price_option_bs, trailing_sigma,
+    )
+
+    klines = recent_klines(SPOT_SYMBOL, "5m", limit=kline_limit)
+    spot = klines[-1]["close"] if klines else None
+
+    open_positions = eth_straddle_repo.open_positions()
+
+    chain_dict: dict[str, dict] | None = None
+    if open_positions:
+        try:
+            chain = bybit_client.get_options_tickers("ETH")
+            chain_dict = {
+                f"{o.get('side')}-{int(o.get('strike'))}-{o.get('expiry_ms')}": o
+                for o in chain
+                if o.get("side") and o.get("strike") and o.get("expiry_ms")
+            }
+        except Exception:  # noqa: BLE001
+            chain_dict = None
+
+    legs = []
+    for p in open_positions:
+        strike = float(p["strike"])
+        expiry_ms = int(p["expiry_ms"])
+        contracts = float(p["contracts"])
+        entry_credit = float(p["entry_credit_usd"])
+        sl_trip = float(p["sl_dollar_trip_usd"])
+
+        mark = current_mark(p["leg"], strike, expiry_ms, chain_dict)
+        if mark is None and spot is not None:
+            mark = price_option_bs(p["leg"], spot, strike, expiry_ms, trailing_sigma())
+
+        sl_progress_pct = None
+        if mark is not None:
+            unrealized_loss = (mark - entry_credit) * contracts
+            trip = sl_trip * (contracts / sl.LOT_ETH)
+            sl_progress_pct = max(0.0, unrealized_loss) / trip * 100.0 if trip > 0 else None
+
+        legs.append({
+            "id": int(p["id"]),
+            "leg": p["leg"],
+            "strike": strike,
+            "expiry_ms": expiry_ms,
+            "entry_credit_usd": entry_credit,
+            "current_mark_usd": mark,
+            "sl_dollar_trip_usd": sl_trip,
+            "sl_progress_pct": sl_progress_pct,
+        })
+
+    return {"spot": spot, "klines": klines, "legs": legs}
+
+
 @app.get("/api/v1/analysis/test")
 def test_analysis(current_price: float = 2121.0, strike: float = 2150.0, hours_to_expiry: int = 18):
     """Legacy stub kept for the Telegram bot's /eth command."""
