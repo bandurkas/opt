@@ -1,0 +1,23 @@
+{
+  "$schema": "https://remotion.dev/json-schema/v4.0.0.json",
+  "configs": [
+    {
+      "output": "out",
+      "codec": "h264",
+      "pixelFormat": "yuv420",
+      "audioCodec": "aac",
+      "numberOfGifLoops": null,
+      "concurrency": 4,
+      "imagSequence": false,
+      "quality": 100,
+      "scale": 1,
+      "logLevel": "info",
+      "proResProfile": "4444",
+      "x264Preset": "fast",
+      "crf": 18,
+      "publicDir": "public",
+      "webpack": null,
+      "enableKeyboardShortcuts": true
+    }
+  ]
+}

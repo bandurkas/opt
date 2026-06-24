@@ -1,0 +1,948 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sergei Bandurka — CV 2026</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Playfair+Display:wght@700&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --navy: #0d1b2e;
+    --navy-mid: #1a2d45;
+    --gold: #c9963a;
+    --gold-light: #e8b85c;
+    --white: #ffffff;
+    --light: #f4f6f9;
+    --text: #2c3e50;
+    --text-muted: #6b7a8d;
+    --border: #e2e8f0;
+    --ai-accent: #6366f1;
+    --ai-light: #eef2ff;
+  }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    background: #e8ecf0;
+    color: var(--text);
+    font-size: 13px;
+    line-height: 1.5;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .page {
+    width: 210mm;
+    min-height: 297mm;
+    margin: 20px auto;
+    background: var(--white);
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+  }
+
+  /* ─── SIDEBAR ─── */
+  .sidebar {
+    background: var(--navy);
+    color: var(--white);
+    padding: 36px 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+  }
+
+  .avatar-wrap {
+    text-align: center;
+  }
+
+  .avatar {
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    border: 3px solid var(--gold);
+    object-fit: cover;
+    margin-bottom: 12px;
+  }
+
+  .avatar-placeholder {
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    border: 3px solid var(--gold);
+    background: var(--navy-mid);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--gold);
+    margin: 0 auto 12px;
+    letter-spacing: 1px;
+  }
+
+  .sidebar-name {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--white);
+    letter-spacing: 0.3px;
+  }
+
+  .sidebar-title {
+    font-size: 10px;
+    color: var(--gold);
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    margin-top: 4px;
+    line-height: 1.6;
+  }
+
+  .s-section-label {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--gold);
+    border-bottom: 1px solid rgba(201,150,58,0.3);
+    padding-bottom: 6px;
+    margin-bottom: 12px;
+  }
+
+  .contact-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    margin-bottom: 9px;
+    font-size: 11.5px;
+    color: rgba(255,255,255,0.85);
+  }
+
+  .contact-icon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    margin-top: 1px;
+    opacity: 0.7;
+  }
+
+  .contact-item a {
+    color: rgba(255,255,255,0.85);
+    text-decoration: none;
+  }
+
+  .skill-bar-wrap { margin-bottom: 10px; }
+
+  .skill-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: rgba(255,255,255,0.85);
+    margin-bottom: 4px;
+  }
+
+  .skill-bar {
+    height: 4px;
+    background: rgba(255,255,255,0.12);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .skill-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--gold), var(--gold-light));
+    border-radius: 2px;
+  }
+
+  .tag-cloud {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+
+  .tag {
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.15);
+    color: rgba(255,255,255,0.8);
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 20px;
+  }
+
+  .tag.ai {
+    background: rgba(99,102,241,0.25);
+    border-color: rgba(99,102,241,0.5);
+    color: #c7d2fe;
+  }
+
+  .lang-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+
+  .lang-name { font-size: 11.5px; color: rgba(255,255,255,0.85); }
+  .lang-level { font-size: 10px; color: var(--gold); }
+
+  .dots {
+    display: flex;
+    gap: 3px;
+    margin-top: 3px;
+  }
+
+  .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.2);
+  }
+
+  .dot.filled { background: var(--gold); }
+
+  .available-badge {
+    background: rgba(34,197,94,0.15);
+    border: 1px solid rgba(34,197,94,0.4);
+    border-radius: 8px;
+    padding: 10px 14px;
+    text-align: center;
+  }
+
+  .available-dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    background: #22c55e;
+    border-radius: 50%;
+    margin-right: 5px;
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .available-text {
+    font-size: 11px;
+    font-weight: 600;
+    color: #86efac;
+  }
+
+  .available-sub {
+    font-size: 10px;
+    color: rgba(255,255,255,0.5);
+    margin-top: 3px;
+  }
+
+  /* ─── MAIN CONTENT ─── */
+  .main {
+    padding: 36px 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+
+  .header-block { border-bottom: 2px solid var(--border); padding-bottom: 18px; }
+
+  .main-name {
+    font-family: 'Playfair Display', serif;
+    font-size: 34px;
+    color: var(--navy);
+    letter-spacing: -0.5px;
+    line-height: 1.1;
+  }
+
+  .main-subtitle {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin: 6px 0 12px;
+  }
+
+  .meta-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .meta-tag {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11.5px;
+    color: var(--text-muted);
+  }
+
+  .meta-tag svg { color: var(--gold); }
+
+  /* Stats row */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+  }
+
+  .stat-card {
+    background: var(--light);
+    border-radius: 10px;
+    padding: 12px 10px;
+    text-align: center;
+    border: 1px solid var(--border);
+  }
+
+  .stat-num {
+    font-size: 24px;
+    font-weight: 800;
+    color: var(--navy);
+    line-height: 1;
+  }
+
+  .stat-num span { color: var(--gold); }
+  .stat-label { font-size: 9.5px; color: var(--text-muted); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+  /* Section */
+  .section-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 2.5px;
+    text-transform: uppercase;
+    color: var(--gold);
+    border-bottom: 1.5px solid var(--border);
+    padding-bottom: 6px;
+    margin-bottom: 14px;
+  }
+
+  /* Summary */
+  .summary-text {
+    font-size: 12.5px;
+    line-height: 1.65;
+    color: var(--text);
+  }
+
+  .summary-text strong { color: var(--navy); }
+
+  /* Work experience */
+  .job { margin-bottom: 18px; }
+  .job:last-child { margin-bottom: 0; }
+
+  .job-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 3px; }
+
+  .job-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--navy);
+  }
+
+  .job-date {
+    font-size: 10.5px;
+    font-weight: 600;
+    color: var(--gold);
+    white-space: nowrap;
+    background: rgba(201,150,58,0.1);
+    padding: 2px 8px;
+    border-radius: 20px;
+  }
+
+  .job-company {
+    font-size: 11.5px;
+    color: var(--text-muted);
+    margin-bottom: 7px;
+  }
+
+  .job-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-bottom: 8px;
+  }
+
+  .badge {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 20px;
+    background: rgba(13,27,46,0.07);
+    color: var(--navy);
+    font-weight: 500;
+  }
+
+  .job-bullets { list-style: none; padding: 0; }
+
+  .job-bullets li {
+    font-size: 12px;
+    color: var(--text);
+    padding: 3px 0 3px 14px;
+    position: relative;
+    line-height: 1.5;
+  }
+
+  .job-bullets li::before {
+    content: '—';
+    position: absolute;
+    left: 0;
+    color: var(--gold);
+    font-weight: 700;
+  }
+
+  .job-bullets li strong { color: var(--navy); }
+
+  /* Timeline dot */
+  .job-wrap {
+    display: grid;
+    grid-template-columns: 14px 1fr;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .timeline-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: 4px;
+  }
+
+  .tl-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--gold);
+    border: 2px solid var(--white);
+    outline: 1.5px solid var(--gold);
+    flex-shrink: 0;
+  }
+
+  .tl-line {
+    flex: 1;
+    width: 1.5px;
+    background: var(--border);
+    margin-top: 4px;
+  }
+
+  /* ─── AI SECTION ─── */
+  .ai-section {
+    background: linear-gradient(135deg, #0d1b2e 0%, #1e1b4b 100%);
+    border-radius: 12px;
+    padding: 20px 22px;
+    color: white;
+  }
+
+  .ai-section-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 2.5px;
+    text-transform: uppercase;
+    color: #a5b4fc;
+    border-bottom: 1px solid rgba(165,180,252,0.2);
+    padding-bottom: 8px;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .ai-badge-new {
+    background: var(--ai-accent);
+    color: white;
+    font-size: 8px;
+    padding: 1px 6px;
+    border-radius: 20px;
+    letter-spacing: 1px;
+  }
+
+  .ai-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-bottom: 14px;
+  }
+
+  .ai-col-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: #a5b4fc;
+    margin-bottom: 8px;
+    letter-spacing: 0.5px;
+  }
+
+  .ai-bullets { list-style: none; }
+
+  .ai-bullets li {
+    font-size: 11.5px;
+    color: rgba(255,255,255,0.82);
+    padding: 3px 0 3px 14px;
+    position: relative;
+    line-height: 1.45;
+  }
+
+  .ai-bullets li::before {
+    content: '▸';
+    position: absolute;
+    left: 0;
+    color: #818cf8;
+    font-size: 10px;
+  }
+
+  .ai-tools-row {
+    border-top: 1px solid rgba(165,180,252,0.15);
+    padding-top: 12px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+  }
+
+  .ai-tool-group-label {
+    font-size: 9.5px;
+    font-weight: 600;
+    color: #818cf8;
+    margin-bottom: 6px;
+    letter-spacing: 0.5px;
+  }
+
+  .ai-tool-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .ai-tool-tag {
+    background: rgba(99,102,241,0.2);
+    border: 1px solid rgba(99,102,241,0.35);
+    color: #c7d2fe;
+    font-size: 9.5px;
+    padding: 2px 7px;
+    border-radius: 20px;
+  }
+
+  .ai-projects-row {
+    border-top: 1px solid rgba(165,180,252,0.15);
+    padding-top: 10px;
+    margin-top: 10px;
+  }
+
+  .ai-projects-label {
+    font-size: 10px;
+    font-weight: 700;
+    color: #a5b4fc;
+    margin-bottom: 7px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .ai-projects-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .ai-project-item {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 6px;
+    padding: 7px 10px;
+    font-size: 11px;
+    color: rgba(255,255,255,0.8);
+    line-height: 1.4;
+  }
+
+  .ai-project-item a {
+    color: #93c5fd;
+    font-size: 10px;
+    text-decoration: none;
+  }
+
+  /* Education */
+  .edu-block {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+  }
+
+  .edu-degree {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--navy);
+  }
+
+  .edu-school {
+    font-size: 11.5px;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+
+  .edu-year {
+    font-size: 11px;
+    color: var(--gold);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  @media print {
+    body { background: white; }
+    .page { margin: 0; box-shadow: none; width: 100%; }
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <!-- ═══ SIDEBAR ═══ -->
+  <aside class="sidebar">
+
+    <div class="avatar-wrap">
+      <div class="avatar-placeholder">SB</div>
+      <div class="sidebar-name">Sergei Bandurka</div>
+      <div class="sidebar-title">IT Director · Product Owner<br>Project Manager</div>
+    </div>
+
+    <!-- Contact -->
+    <div>
+      <div class="s-section-label">Contact</div>
+
+      <div class="contact-item">
+        <svg class="contact-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg>
+        +62 812 1901 0408
+      </div>
+
+      <div class="contact-item">
+        <svg class="contact-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+        bandurkas@gmail.com
+      </div>
+
+      <div class="contact-item">
+        <svg class="contact-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 8a6 6 0 016 6v7h-4v-7a2 2 0 00-2-2 2 2 0 00-2 2v7h-4v-7a6 6 0 016-6zM2 9h4v12H2z"/><circle cx="4" cy="4" r="2" stroke="currentColor" stroke-width="2"/></svg>
+        <a href="https://linkedin.com/in/sergey-bandurka">linkedin.com/in/sergey-bandurka</a>
+      </div>
+
+      <div class="contact-item">
+        <svg class="contact-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+        Indonesia (Remote)
+      </div>
+
+      <div class="contact-item">
+        <svg class="contact-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        Target: $4,000 net/mo
+      </div>
+    </div>
+
+    <!-- Expertise -->
+    <div>
+      <div class="s-section-label">Expertise</div>
+
+      <div class="skill-bar-wrap">
+        <div class="skill-label"><span>IT Director / IT Mgmt</span><span>95%</span></div>
+        <div class="skill-bar"><div class="skill-fill" style="width:95%"></div></div>
+      </div>
+      <div class="skill-bar-wrap">
+        <div class="skill-label"><span>Product Owner</span><span>90%</span></div>
+        <div class="skill-bar"><div class="skill-fill" style="width:90%"></div></div>
+      </div>
+      <div class="skill-bar-wrap">
+        <div class="skill-label"><span>Project Manager</span><span>95%</span></div>
+        <div class="skill-bar"><div class="skill-fill" style="width:95%"></div></div>
+      </div>
+      <div class="skill-bar-wrap">
+        <div class="skill-label"><span>Business Development</span><span>88%</span></div>
+        <div class="skill-bar"><div class="skill-fill" style="width:88%"></div></div>
+      </div>
+      <div class="skill-bar-wrap">
+        <div class="skill-label"><span>P&L / Digital Transf.</span><span>92%</span></div>
+        <div class="skill-bar"><div class="skill-fill" style="width:92%"></div></div>
+      </div>
+      <div class="skill-bar-wrap">
+        <div class="skill-label"><span style="color:#a5b4fc">AI / Vibe Coding</span><span style="color:#a5b4fc">89%</span></div>
+        <div class="skill-bar"><div class="skill-fill" style="width:89%; background: linear-gradient(90deg,#6366f1,#a5b4fc)"></div></div>
+      </div>
+    </div>
+
+    <!-- Toolset -->
+    <div>
+      <div class="s-section-label">Toolset</div>
+      <div class="tag-cloud">
+        <span class="tag">Agile</span>
+        <span class="tag">Scrum</span>
+        <span class="tag">Jira</span>
+        <span class="tag">Confluence</span>
+        <span class="tag">CRM / ERP</span>
+        <span class="tag">Meta Ads</span>
+        <span class="tag">Google Ads</span>
+        <span class="tag">TikTok Ads</span>
+        <span class="tag">MS Visio</span>
+        <span class="tag">Roadmapping</span>
+        <span class="tag ai">Claude Code</span>
+        <span class="tag ai">ChatGPT</span>
+        <span class="tag ai">Make / n8n</span>
+        <span class="tag ai">WhatsApp API</span>
+        <span class="tag ai">Telegram Bot</span>
+      </div>
+    </div>
+
+    <!-- Languages -->
+    <div>
+      <div class="s-section-label">Languages</div>
+
+      <div class="lang-item">
+        <div>
+          <div class="lang-name">Russian</div>
+          <div class="dots">
+            <div class="dot filled"></div><div class="dot filled"></div>
+            <div class="dot filled"></div><div class="dot filled"></div><div class="dot filled"></div>
+          </div>
+        </div>
+        <div class="lang-level">Native</div>
+      </div>
+
+      <div class="lang-item">
+        <div>
+          <div class="lang-name">English</div>
+          <div class="dots">
+            <div class="dot filled"></div><div class="dot filled"></div>
+            <div class="dot filled"></div><div class="dot filled"></div><div class="dot"></div>
+          </div>
+        </div>
+        <div class="lang-level">C1 Advanced</div>
+      </div>
+    </div>
+
+    <!-- Education -->
+    <div>
+      <div class="s-section-label">Education</div>
+      <div class="edu-degree" style="color:white;font-size:12px">Master of Engineering</div>
+      <div style="font-size:11px;color:rgba(255,255,255,0.6);margin-top:4px">Moscow Aviation Institute (NRU)<br>Aircraft & Rocket Construction</div>
+      <div style="font-size:10px;color:var(--gold);margin-top:4px">Graduated 2006</div>
+    </div>
+
+    <!-- Available -->
+    <div class="available-badge">
+      <div><span class="available-dot"></span><span class="available-text">AVAILABLE NOW</span></div>
+      <div class="available-sub">Remote · Worldwide</div>
+    </div>
+
+  </aside>
+
+  <!-- ═══ MAIN CONTENT ═══ -->
+  <main class="main">
+
+    <!-- Header -->
+    <div class="header-block">
+      <div class="main-name">Sergei Bandurka</div>
+      <div class="main-subtitle">IT Director · Product Owner · Project Manager</div>
+      <div class="meta-tags">
+        <div class="meta-tag">
+          <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="#c9963a" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+          11+ years
+        </div>
+        <div class="meta-tag">
+          <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="#c9963a" stroke-width="2"><path d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+          SEA · Europe · CIS
+        </div>
+        <div class="meta-tag">
+          <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="#c9963a" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+          Remote-first
+        </div>
+        <div class="meta-tag" style="color:#818cf8">
+          <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="#6366f1" stroke-width="2"><path d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17H4a2 2 0 01-2-2V5a2 2 0 012-2h16a2 2 0 012 2v10a2 2 0 01-2 2h-1"/></svg>
+          AI / Vibe Coder
+        </div>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-num">11<span>+</span></div>
+        <div class="stat-label">Years Experience</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num"><span>4</span></div>
+        <div class="stat-label">SEA Markets Managed</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num"><span>+</span>35<span>%</span></div>
+        <div class="stat-label">Revenue Growth YoY</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num">25<span>+</span></div>
+        <div class="stat-label">Team Members Led</div>
+      </div>
+    </div>
+
+    <!-- Summary -->
+    <div>
+      <div class="section-label">Professional Summary</div>
+      <div class="summary-text">
+        Results-driven <strong>IT Director</strong> and <strong>Product Owner</strong> with 11+ years across IT management, digital transformation, business development, and <strong>P&L leadership</strong> in Russia, CIS, Europe, and Southeast Asia. Proven record of building high-performance teams, launching data-driven products from 0 to scale, and delivering <strong>35%+ revenue growth</strong> through CRM/ERP implementations, Agile delivery, and performance marketing. Additionally a hands-on <strong>AI practitioner</strong> — building multi-agent systems, automating business workflows with LLMs, and shipping production-ready solutions through vibe coding.
+      </div>
+    </div>
+
+    <!-- Work Experience -->
+    <div>
+      <div class="section-label">Work Experience</div>
+
+      <div class="job-wrap">
+        <div class="timeline-col"><div class="tl-dot"></div><div class="tl-line"></div></div>
+        <div class="job">
+          <div class="job-header">
+            <div class="job-title">Regional Director — SEA Region</div>
+            <div class="job-date">Feb 2024 – Present</div>
+          </div>
+          <div class="job-company">ITSTEP Academy · Educational Institutions · Malaysia · Indonesia · Thailand · Philippines</div>
+          <div class="job-badges">
+            <span class="badge">4-Country P&L</span>
+            <span class="badge">Full EBITDA Accountability</span>
+            <span class="badge">Regional KPI Ownership</span>
+          </div>
+          <ul class="job-bullets">
+            <li>Full regional P&L ownership — budget planning, revenue forecasting, EBITDA monitoring per branch, cost optimisation across 4 markets</li>
+            <li>Built the sales engine: redesigned funnels, <strong>CRM discipline</strong>, performance dashboards with full CPL & ROI accountability across Meta, Google, TikTok & local partnerships</li>
+            <li>Led new course launches from market validation to scale — Design + AI, Data Analytics, AI Tools for Business; ran structured pricing & format hypothesis tests</li>
+            <li>Achieved <strong>35% YoY revenue growth</strong> transforming Sales & Marketing into a data-driven framework; expanded to Northern Europe & SEA — <strong>+40% client acquisitions</strong> in 12 months</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="job-wrap">
+        <div class="timeline-col"><div class="tl-dot"></div><div class="tl-line"></div></div>
+        <div class="job">
+          <div class="job-header">
+            <div class="job-title">CBDO — Chief Business Development Officer</div>
+            <div class="job-date">Feb 2023 – Present</div>
+          </div>
+          <div class="job-company">Perfect Systems · Software Development</div>
+          <div class="job-badges">
+            <span class="badge">+35% YoY Revenue</span>
+            <span class="badge">+40% Client Acquisition</span>
+            <span class="badge">25+ Team Led</span>
+          </div>
+          <ul class="job-bullets">
+            <li>Led cross-functional IT product development (25+ professionals); implemented KPIs, incentive structures and real-time dashboards to maximise ROMI</li>
+            <li>Key products: Route4Me (Transport CRM, USA) · VIP Care (Medical analytics CRM, FL) · KnowMate (AI agents for WhatsApp/Telegram)</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="job-wrap">
+        <div class="timeline-col"><div class="tl-dot"></div><div class="tl-line"></div></div>
+        <div class="job">
+          <div class="job-header">
+            <div class="job-title">IT Manager</div>
+            <div class="job-date">Dec 2020 – May 2023</div>
+          </div>
+          <div class="job-company">Mars LLC · FMCG · Russia / CIS</div>
+          <div class="job-badges">
+            <span class="badge">4 Factories</span>
+            <span class="badge">5 Sales Offices</span>
+            <span class="badge">Digital Transformation Lead</span>
+          </div>
+          <ul class="job-bullets">
+            <li>Full IT ownership across 9 sites (Russia, CIS, Georgia, Belarus, Azerbaijan, Turkey); led <strong>Digital Transformation</strong> — infrastructure vision, strategy, end-to-end global deployments</li>
+            <li>Acted as <strong>Product Owner</strong>: product strategy, hypothesis testing, A/B testing, roadmap & backlog; coordinated Mobile/Web, Backend, QA, UI/UX teams via Agile/Scrum</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="job-wrap">
+        <div class="timeline-col"><div class="tl-dot"></div><div class="tl-line"></div></div>
+        <div class="job">
+          <div class="job-header">
+            <div class="job-title">Head of IT Department</div>
+            <div class="job-date">May 2016 – Oct 2019</div>
+          </div>
+          <div class="job-company">TWI Services · Finland, Helsinki</div>
+          <ul class="job-bullets">
+            <li>Strategic IT leadership for visa enrollment centers across Finland & Sweden — full rollout management, infrastructure audits, best practices, end-to-end <strong>Project Management</strong></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="job-wrap">
+        <div class="timeline-col"><div class="tl-dot"></div></div>
+        <div class="job">
+          <div class="job-header">
+            <div class="job-title">Regional IT Manager</div>
+            <div class="job-date">Sep 2013 – Apr 2016</div>
+          </div>
+          <div class="job-company">VFS Global · Visa Services · Russia / Eastern Europe</div>
+          <ul class="job-bullets">
+            <li>Managed Russian visa centre IT operations; led rollouts in Romania, Poland, Czech Republic, Latvia, Lithuania — vendor selection, procurement, installation through go-live</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── AI EXPERTISE SECTION ─── -->
+    <div class="ai-section">
+      <div class="ai-section-label">
+        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="#a5b4fc" stroke-width="2"><path d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17H4a2 2 0 01-2-2V5a2 2 0 012-2h16a2 2 0 012 2v10a2 2 0 01-2 2h-1"/></svg>
+        AI &amp; Automation / Vibe Coding Expertise
+        <span class="ai-badge-new">NEW</span>
+      </div>
+
+      <div class="ai-grid">
+        <div>
+          <div class="ai-col-title">Core Capabilities</div>
+          <ul class="ai-bullets">
+            <li>Advanced hands-on <strong style="color:white">vibe coding</strong> using Claude, ChatGPT, Google AI Studio for rapid prototyping and production-ready solutions</li>
+            <li><strong style="color:white">Prompt engineering</strong>: structured prompts, iterative refinement, context-driven queries for deterministic LLM outputs</li>
+            <li>Built and deployed <strong style="color:white">multi-agent systems</strong> with orchestration logic, shared memory, and cross-channel communication</li>
+          </ul>
+        </div>
+        <div>
+          <div class="ai-col-title">Business Applications</div>
+          <ul class="ai-bullets">
+            <li>Integrating <strong style="color:white">AI agents into business workflows</strong>: lead processing, sales automation, customer communication, CRM pipelines</li>
+            <li>Telegram bot infrastructure with role-based workflows, lead assignment, and interaction tracking</li>
+            <li>AI-powered WhatsApp communication flows with chatbot logic and API integrations</li>
+            <li><strong style="color:white">No-code / low-code + AI hybrid</strong> development combining backend logic with automation tools</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="ai-tools-row">
+        <div>
+          <div class="ai-tool-group-label">⚡ AI & Dev Tools</div>
+          <div class="ai-tool-tags">
+            <span class="ai-tool-tag">Claude Code</span>
+            <span class="ai-tool-tag">Google AI Studio</span>
+            <span class="ai-tool-tag">ChatGPT</span>
+          </div>
+        </div>
+        <div>
+          <div class="ai-tool-group-label">⚙️ Automation</div>
+          <div class="ai-tool-tags">
+            <span class="ai-tool-tag">Make / Integromat</span>
+            <span class="ai-tool-tag">Webhooks</span>
+            <span class="ai-tool-tag">REST APIs</span>
+          </div>
+        </div>
+        <div>
+          <div class="ai-tool-group-label">🚀 Launched Platforms</div>
+          <div class="ai-tool-tags">
+            <span class="ai-tool-tag">gdifuture.works</span>
+            <span class="ai-tool-tag">gdiconsult.online</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="ai-projects-row">
+        <div class="ai-projects-label">
+          <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="#a5b4fc" stroke-width="2"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+          AI Product Highlights
+        </div>
+        <div class="ai-projects-grid">
+          <div class="ai-project-item">Multiple AI-driven automation systems for sales and education funnels — lead routing, messaging automation, CRM integration</div>
+          <div class="ai-project-item">KnowMate — AI agents for WhatsApp/Telegram with NLP-driven lead qualification and automated follow-up sequences</div>
+          <div class="ai-project-item">Telegram bot infrastructure with role-based workflows, lead assignment, and real-time interaction tracking for 4-country operations</div>
+          <div class="ai-project-item">Digital learning platforms with AI-assisted content delivery: <a href="https://gdifuture.works/" target="_blank">gdifuture.works</a> · <a href="https://gdiconsult.online/" target="_blank">gdiconsult.online</a></div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+</body>
+</html>
