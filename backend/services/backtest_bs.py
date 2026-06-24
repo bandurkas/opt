@@ -59,3 +59,35 @@ def theta_per_day(side: str, S: float, K: float, T: float, sigma: float, r: floa
     else:
         theta_y = first + r * K * math.exp(-r * T) * _N(-d2)
     return theta_y / 365.0
+
+
+def implied_spot(side: str, target_premium: float, K: float, T: float, sigma: float,
+                 r: float = 0.0) -> float | None:
+    """Inverse of price(): the spot S that makes price(side, S, K, T, sigma, r)
+    equal target_premium, via bisection. price() is monotonic in S (calls
+    increasing, puts decreasing), so a fixed-iteration bisection converges.
+    Returns None if target_premium is outside the reachable range (e.g. T<=0
+    or a premium beyond what any spot in the search window can produce) —
+    callers should treat this as "no approx line to draw", not an error.
+    """
+    if T <= 0 or sigma <= 0 or K <= 0 or target_premium < 0:
+        return None
+    lo, hi = K * 0.1, K * 10.0
+    f_lo = price(side, lo, K, T, sigma, r) - target_premium
+    f_hi = price(side, hi, K, T, sigma, r) - target_premium
+    if f_lo == 0:
+        return lo
+    if f_hi == 0:
+        return hi
+    if (f_lo > 0) == (f_hi > 0):
+        return None  # target unreachable within [0.1K, 10K]
+    for _ in range(60):
+        mid = (lo + hi) / 2.0
+        f_mid = price(side, mid, K, T, sigma, r) - target_premium
+        if f_mid == 0:
+            return mid
+        if (f_mid > 0) == (f_lo > 0):
+            lo, f_lo = mid, f_mid
+        else:
+            hi = mid
+    return (lo + hi) / 2.0

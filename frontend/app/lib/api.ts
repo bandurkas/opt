@@ -454,7 +454,9 @@ export type Kline = {
   volume: number;
 };
 
-export type EthStraddleChartLeg = {
+// Generic shape — the same straddle-chart UI will be reused for Boba1 (BTC)
+// and Sniper1 once their bots expose an analogous /chart endpoint.
+export type StraddleChartLeg = {
   id: number;
   leg: "C" | "P";
   strike: number;
@@ -463,11 +465,14 @@ export type EthStraddleChartLeg = {
   current_mark_usd: number | null;
   sl_dollar_trip_usd: number;
   sl_progress_pct: number | null;
+  sl_price_approx: number | null;
+  tp_price_approx: number | null;
 };
+export type EthStraddleChartLeg = StraddleChartLeg;
 
 export async function fetchEthStraddleChart(
   klineLimit = 288,
-): Promise<{ spot: number | null; klines: Kline[]; legs: EthStraddleChartLeg[] }> {
+): Promise<{ spot: number | null; klines: Kline[]; legs: StraddleChartLeg[] }> {
   return jget(`/eth-straddle/chart?kline_limit=${klineLimit}`);
 }
 

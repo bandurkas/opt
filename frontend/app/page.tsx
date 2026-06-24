@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { fetchPaperState, fetchPaperConditions, fetchPaperPositions, fetchRecentTrades, fetchEquityHistory, fetchBtcStraddleState, fetchBtcStraddlePositions, fetchBtcStraddleEquityHistory, fetchEthStraddleState, fetchEthStraddlePositions, fetchEthStraddleEquityHistory, fetchEthStraddleChart, type PaperState, type PaperConditions, type PaperPosition, type EquityPoint, type BtcStraddleState, type BtcStraddlePosition, type EthStraddleState, type EthStraddlePosition, type Kline, type EthStraddleChartLeg } from "./lib/api";
 import MissionControl from "./components/MissionControl";
+import StraddleChart from "./components/StraddleChart";
 
 const REFRESH_MS = 15_000;
 
@@ -581,49 +582,12 @@ export default function Dashboard() {
             )}
 
             {ethStraddleKlines.length > 1 && (
-              <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-                <div className="px-4 py-2 bg-slate-800/50 text-xs font-semibold text-slate-400">
-                  ETH Spot (24h) <span className="text-slate-600 font-normal">· context only, SL/TP is premium-based — see gauges below</span>
-                </div>
-                <div className="p-2">
-                  <SpotChart klines={ethStraddleKlines} />
-                </div>
-              </div>
-            )}
-
-            {ethStraddleChartLegs.length > 0 && (
-              <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-                <div className="px-4 py-2 bg-slate-800/50 text-xs font-semibold text-slate-400">
-                  SL Risk (premium vs. dollar trip)
-                </div>
-                <div className="p-4 space-y-3">
-                  {ethStraddleChartLegs.map((leg) => (
-                    <div key={leg.id}>
-                      <div className="flex justify-between text-xs text-slate-400 mb-1">
-                        <span>
-                          <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold mr-2 ${
-                            leg.leg === "P" ? "bg-rose-500/10 text-rose-300" : "bg-emerald-500/10 text-emerald-300"
-                          }`}>
-                            {leg.leg}
-                          </span>
-                          ${leg.strike} premium {leg.current_mark_usd != null ? fmtUsd(leg.current_mark_usd) : "—"} / entry {fmtUsd(leg.entry_credit_usd)}
-                        </span>
-                        <span className="font-mono">
-                          {leg.sl_progress_pct != null ? `${leg.sl_progress_pct.toFixed(0)}% to SL` : "no live mark"}
-                        </span>
-                      </div>
-                      <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full rounded-full ${
-                            (leg.sl_progress_pct ?? 0) >= 80 ? "bg-rose-500" : (leg.sl_progress_pct ?? 0) >= 50 ? "bg-amber-400" : "bg-emerald-500"
-                          }`}
-                          style={{ width: `${Math.max(0, Math.min(100, leg.sl_progress_pct ?? 0))}%` }}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <StraddleChart
+                callsign="GROGU-1"
+                symbol="ETH"
+                klines={ethStraddleKlines}
+                legs={ethStraddleChartLegs}
+              />
             )}
 
             {ethStraddleRecentTrades.length > 0 && (
@@ -768,36 +732,6 @@ function StatCard({ label, value, sub, accent }: { label: string; value: React.R
       <p className={`text-xl font-bold font-mono mt-1 ${accent ?? "text-slate-100"}`}>{value}</p>
       {sub && <p className="text-[11px] text-slate-500 mt-0.5">{sub}</p>}
     </div>
-  );
-}
-
-function SpotChart({ klines }: { klines: Kline[] }) {
-  if (klines.length < 2) return null;
-
-  const w = 800, h = 120, pad = 4;
-  const minP = Math.min(...klines.map(k => k.low));
-  const maxP = Math.max(...klines.map(k => k.high));
-  const range = maxP - minP || 1;
-
-  const toX = (i: number) => pad + (i / (klines.length - 1)) * (w - pad * 2);
-  const toY = (v: number) => h - pad - ((v - minP) / range) * (h - pad * 2);
-
-  const linePath = klines.map((k, i) => `${i === 0 ? "M" : "L"} ${toX(i)} ${toY(k.close)}`).join(" ");
-  const areaPath = linePath + ` L ${toX(klines.length - 1)} ${h} L ${toX(0)} ${h} Z`;
-
-  const first = klines[0].close, last = klines[klines.length - 1].close;
-  const isUp = last >= first;
-  const lineColor = isUp ? "#10b981" : "#f43f5e";
-  const fillColor = isUp ? "rgba(16,185,129,0.1)" : "rgba(244,63,94,0.1)";
-
-  return (
-    <svg viewBox={`0 0 ${w} ${h}`} className="w-full h-28" preserveAspectRatio="none">
-      <path d={areaPath} fill={fillColor} />
-      <path d={linePath} fill="none" stroke={lineColor} strokeWidth="2" />
-      <text x={toX(klines.length - 1)} y={toY(last) - 6} fill={lineColor} fontSize="11" fontWeight="bold" textAnchor="end">
-        {fmtUsd(last)}
-      </text>
-    </svg>
   );
 }
 

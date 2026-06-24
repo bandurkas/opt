@@ -654,13 +654,19 @@ def eth_straddle_equity_history(hours: int = Query(168, ge=1, le=8760)):
 
 @app.get("/api/v1/eth-straddle/chart")
 def eth_straddle_chart(kline_limit: int = Query(288, ge=10, le=1000)):
-    """ETH spot klines for chart context, plus per-leg SL-trip progress.
+    """ETH spot klines for chart context, plus per-leg SL/TP as APPROXIMATE
+    underlying price levels.
 
-    The SL trips on OPTION PREMIUM drift, not on a fixed underlying price —
-    so this deliberately returns a progress ratio per leg (unrealized loss
-    vs. its dollar trip), not a price level to draw on the spot chart.
-    Mirrors the math in eth_straddle_sl.is_tripped() exactly.
+    The SL/TP actually trip on OPTION PREMIUM (a function of spot, vol, and
+    time-to-expiry), not on a fixed underlying price. We back-solve (Black-
+    Scholes inversion) the spot price that would currently produce the
+    trigger premium, given trailing vol and time-left-to-expiry — this is a
+    real but MOVING approximation (theta decay shifts it every tick, most
+    visibly near expiry), not the literal trigger. The frontend must label
+    these "approx". sl_progress_pct (unrealized loss vs. dollar trip) is the
+    ground truth and mirrors eth_straddle_sl.is_tripped() exactly.
     """
+    from services import backtest_bs as bs
     from services import eth_straddle_sl as sl
     from services.eth_straddle_loop import (
         SPOT_SYMBOL, current_mark, price_option_bs, trailing_sigma,
@@ -683,6 +689,11 @@ def eth_straddle_chart(kline_limit: int = Query(288, ge=10, le=1000)):
         except Exception:  # noqa: BLE001
             chain_dict = None
 
+    now_ms = int(time.time() * 1000)
+    # Trailing vol is the same lookback window for every leg in this request
+    # (it only depends on SPOT_SYMBOL's recent klines) — compute once rather
+    # than re-querying 168h of klines per leg.
+    sigma = trailing_sigma() if open_positions else 0.0
     legs = []
     for p in open_positions:
         strike = float(p["strike"])
@@ -690,10 +701,11 @@ def eth_straddle_chart(kline_limit: int = Query(288, ge=10, le=1000)):
         contracts = float(p["contracts"])
         entry_credit = float(p["entry_credit_usd"])
         sl_trip = float(p["sl_dollar_trip_usd"])
+        leg_side = p["leg"]
 
-        mark = current_mark(p["leg"], strike, expiry_ms, chain_dict)
+        mark = current_mark(leg_side, strike, expiry_ms, chain_dict)
         if mark is None and spot is not None:
-            mark = price_option_bs(p["leg"], spot, strike, expiry_ms, trailing_sigma())
+            mark = price_option_bs(leg_side, spot, strike, expiry_ms, sigma)
 
         sl_progress_pct = None
         if mark is not None:
@@ -701,15 +713,23 @@ def eth_straddle_chart(kline_limit: int = Query(288, ge=10, le=1000)):
             trip = sl_trip * (contracts / sl.LOT_ETH)
             sl_progress_pct = max(0.0, unrealized_loss) / trip * 100.0 if trip > 0 else None
 
+        T_years = max(1 / 365 / 24, (expiry_ms - now_ms) / 1000 / 86400 / 365)
+        sl_target_premium = entry_credit + (sl_trip / sl.LOT_ETH)
+        tp_target_premium = entry_credit * (1 - sl.TP2_PCT)
+        sl_price_approx = bs.implied_spot(leg_side, sl_target_premium, strike, T_years, sigma)
+        tp_price_approx = bs.implied_spot(leg_side, tp_target_premium, strike, T_years, sigma)
+
         legs.append({
             "id": int(p["id"]),
-            "leg": p["leg"],
+            "leg": leg_side,
             "strike": strike,
             "expiry_ms": expiry_ms,
             "entry_credit_usd": entry_credit,
             "current_mark_usd": mark,
             "sl_dollar_trip_usd": sl_trip,
             "sl_progress_pct": sl_progress_pct,
+            "sl_price_approx": sl_price_approx,
+            "tp_price_approx": tp_price_approx,
         })
 
     return {"spot": spot, "klines": klines, "legs": legs}
