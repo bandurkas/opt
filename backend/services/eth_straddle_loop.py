@@ -130,7 +130,11 @@ def shadow_filter_check(spot: float) -> dict:
 
     kl = recent_klines(SPOT_SYMBOL, "1h", limit=SHADOW_WINDOW_H + 1)
     closes = [float(k["close"]) for k in kl]
-    rv = indicators.realized_vol(closes, lookback=SHADOW_WINDOW_H)  # FRACTION scale — kept unconverted, see module docstring above
+    # klines retention is exactly 30d (cleanup_old's klines_days=30), so the
+    # available count sits right at SHADOW_WINDOW_H — capping the lookback to
+    # what's actually there (instead of hard-requiring +1) avoids VRP
+    # flickering null purely from cleanup-cron timing, not real data gaps.
+    rv = indicators.realized_vol(closes, lookback=min(SHADOW_WINDOW_H, max(0, len(closes) - 1)))  # FRACTION scale — kept unconverted, see module docstring above
     vrp = (current_iv_pct - rv) if rv is not None else None
     skip = (iv_rank > SHADOW_IV_RANK_THRESHOLD) or (vrp is not None and vrp > SHADOW_VRP_THRESHOLD)
     return {"skip": skip, "iv_rank": round(iv_rank, 3),
