@@ -465,6 +465,8 @@ export type StraddleChartLeg = {
   current_mark_usd: number | null;
   sl_dollar_trip_usd: number;
   sl_progress_pct: number | null;
+  risk_per_contract_usd: number;
+  reward_per_contract_usd: number;
   sl_price_approx: number | null;
   tp_price_approx: number | null;
 };

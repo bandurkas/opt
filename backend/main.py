@@ -718,6 +718,10 @@ def eth_straddle_chart(kline_limit: int = Query(288, ge=10, le=1000)):
         tp_target_premium = entry_credit * (1 - sl.TP2_PCT)
         sl_price_approx = bs.implied_spot(leg_side, sl_target_premium, strike, T_years, sigma)
         tp_price_approx = bs.implied_spot(leg_side, tp_target_premium, strike, T_years, sigma)
+        # Per-contract premium distance to each trigger — lets the frontend
+        # show risk/reward without hardcoding TP2_PCT/LOT_ETH itself.
+        risk_per_contract_usd = max(0.0, sl_target_premium - entry_credit)
+        reward_per_contract_usd = max(0.0, entry_credit - tp_target_premium)
 
         legs.append({
             "id": int(p["id"]),
@@ -728,6 +732,8 @@ def eth_straddle_chart(kline_limit: int = Query(288, ge=10, le=1000)):
             "current_mark_usd": mark,
             "sl_dollar_trip_usd": sl_trip,
             "sl_progress_pct": sl_progress_pct,
+            "risk_per_contract_usd": risk_per_contract_usd,
+            "reward_per_contract_usd": reward_per_contract_usd,
             "sl_price_approx": sl_price_approx,
             "tp_price_approx": tp_price_approx,
         })
