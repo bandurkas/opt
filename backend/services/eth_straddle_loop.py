@@ -17,6 +17,7 @@ reconcile.py's coin-keyed (not strategy-keyed) untracked-position check.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import sys
 import time
@@ -33,6 +34,7 @@ from services import backtest_bs as bs  # noqa: E402
 from services import broker  # noqa: E402  (live order routing; inert in paper mode)
 from services import eth_straddle_sl as sl  # noqa: E402
 from services import execution_config as cfg  # noqa: E402
+from services import indicators  # noqa: E402
 from services import live_safety  # noqa: E402  (inert in paper mode)
 from services import reconcile  # noqa: E402  (inert in paper mode)
 from services.bybit_client import bybit_client  # noqa: E402
@@ -55,6 +57,85 @@ SPREAD_HALF_PCT = 1.0       # half of handoff's 2.0% round-trip spread assumptio
 FEE_RATE = 0.0003           # Bybit option taker fee (same schedule as BTC, exchange-level)
 FEE_CAP_PCT_OF_PREMIUM = 0.125
 RV_WINDOW_H = 168
+
+# ───────────────────── shadow entry filter (NOT live yet) ───────────
+# Backtested filter (SESSION_HANDOFF_GROGU_VALIDATION.md, corrected for the
+# train/holdout leakage bug found 2026-06-24): skip if IV Rank 30d > 0.81 OR
+# VRP 30d > 70.9. Holdout: 8.1% bad-rate / +3.29% avg P&L vs unfiltered.
+#
+# IMPORTANT — this is NOT the same metric the backtest used:
+#   - Backtest read data/eth_dvol_1h.json (frozen 2026-06-18, no longer
+#     updates). The only live-updating source is iv_collector.py's
+#     ATM-option markIv (cron, started ~2026-06-19) — a different metric,
+#     ~20% off from the static DVOL series at the one point we could compare
+#     them. Window-length sensitivity (30d vs 6d, SAME static DVOL source)
+#     was tested separately: sweep_results/grogu_window_sensitivity.json
+#     (89.4% decision agreement, holdout bad-rate 8.1% vs 7.6% — window
+#     length alone isn't the risk; the metric swap is the untested part).
+#   - "VRP" here is also not a true variance-risk-premium spread: the
+#     upstream backtest scripts subtract a FRACTION-scale realized-vol
+#     (~0.3-0.8) from a PERCENTAGE-POINT-scale DVOL (~50-90), so VRP ends up
+#     within ~1 point of DVOL itself — functionally a second IV-level gate,
+#     not IV-minus-RV. Replicated as-is below so SHADOW_VRP_THRESHOLD=70.9
+#     still means what it meant when it was validated.
+#
+# SHADOW_FILTER_LIVE=false (default): every cycle-open logs what the filter
+# would have done (signal_payload.shadow_filter) without changing behavior.
+# Flip to true (env var, redeploy) to make it actually skip entries — the
+# fast path for "Grogu turns net-negative before 30d live history exists,
+# deploy the filter immediately" per the 2026-06-24 conversation.
+IV_HISTORY_PATH = os.getenv("IV_HISTORY_PATH", "/app/data/iv_history.jsonl")
+SHADOW_WINDOW_H = 720
+SHADOW_IV_RANK_THRESHOLD = 0.81
+SHADOW_VRP_THRESHOLD = 70.9
+SHADOW_FILTER_LIVE = os.getenv("ETH_STRADDLE_SHADOW_FILTER_LIVE", "false").strip().lower() == "true"
+
+
+def _load_iv_history_atm_pct(window_h: int) -> list[tuple[int, float]]:
+    """[(ts_ms, markIv_pct)] from iv_collector.py's live ATM-IV log, last
+    window_h hours. markIv_pct is markIv*100 to match the static DVOL
+    series' percentage-point scale (e.g. 47.84, not 0.4784)."""
+    cutoff_ms = int(time.time() * 1000) - window_h * 3_600_000
+    out: list[tuple[int, float]] = []
+    try:
+        with open(IV_HISTORY_PATH) as f:
+            for line in f:
+                try:
+                    row = json.loads(line)
+                except ValueError:
+                    continue
+                ts_ms = row.get("ts_ms")
+                if ts_ms is None or ts_ms < cutoff_ms:
+                    continue
+                iv = (row.get("atm_call") or {}).get("markIv")
+                if iv:
+                    out.append((int(ts_ms), float(iv) * 100.0))
+    except FileNotFoundError:
+        return []
+    return out
+
+
+def shadow_filter_check(spot: float) -> dict:
+    """Returns {'skip': bool|None, 'iv_rank': float|None, 'vrp': float|None,
+    'history_points': int, 'reason': str}. skip=None means too little live
+    history to evaluate yet — log it, but don't treat it as a real signal."""
+    history = _load_iv_history_atm_pct(SHADOW_WINDOW_H)
+    if len(history) < 20:
+        return {"skip": None, "iv_rank": None, "vrp": None,
+                "history_points": len(history), "reason": "insufficient_history"}
+
+    current_iv_pct = history[-1][1]
+    ivs_sorted = sorted(v for _, v in history)
+    iv_rank = sum(1 for x in ivs_sorted if x <= current_iv_pct) / len(ivs_sorted)
+
+    kl = recent_klines(SPOT_SYMBOL, "1h", limit=SHADOW_WINDOW_H + 1)
+    closes = [float(k["close"]) for k in kl]
+    rv = indicators.realized_vol(closes, lookback=SHADOW_WINDOW_H)  # FRACTION scale — kept unconverted, see module docstring above
+    vrp = (current_iv_pct - rv) if rv is not None else None
+    skip = (iv_rank > SHADOW_IV_RANK_THRESHOLD) or (vrp is not None and vrp > SHADOW_VRP_THRESHOLD)
+    return {"skip": skip, "iv_rank": round(iv_rank, 3),
+            "vrp": round(vrp, 2) if vrp is not None else None,
+            "history_points": len(history), "reason": "ok"}
 
 
 # ───────────────────── option pricing (live + fallback) ─────────────
@@ -164,7 +245,7 @@ def compute_equity(state: dict, spot: float, chain_dict: dict[str, dict] | None)
 # ───────────────────── open / close one leg ─────────────────────────
 
 def open_leg(cycle_id: int, leg: str, spot: float, equity_usd: float,
-            chain: list[dict]) -> int | None:
+            chain: list[dict], shadow: dict | None = None) -> int | None:
     pick = pick_bybit_atm_option(chain, spot, leg)
     sigma = None  # only computed below if the bs_fallback path actually needs it
 
@@ -234,7 +315,8 @@ def open_leg(cycle_id: int, leg: str, spot: float, equity_usd: float,
         sl_dollar_trip_usd=sl_trip,
         signal_payload={"symbol": symbol, "premium_mid": round(premium_mid, 4),
                         "sigma": round(sigma, 4) if sigma is not None else None,
-                        "entry_fee_usd": round(entry_fee, 4)},
+                        "entry_fee_usd": round(entry_fee, 4),
+                        "shadow_filter": shadow},
     )
     print(f"[eth_straddle] OPENED #{pid} cycle={cycle_id} SELL {symbol} "
           f"contracts={contracts:.4f}ETH credit_net=${entry_credit_net:.2f} "
@@ -490,9 +572,22 @@ async def loop(run_once: bool = False) -> None:
                         print(f"[eth_straddle] LIVE skip cycle {cyc} — {blocked}", flush=True)
                         telegram_notify.notify(f"⛔ ETH straddle live open blocked: {blocked}")
                     else:
-                        eq = compute_equity(state, spot, chain_dict)
-                        open_leg(cyc, "C", spot, eq["equity"], chain)
-                        open_leg(cyc, "P", spot, eq["equity"], chain)
+                        shadow = shadow_filter_check(spot)
+                        if shadow["reason"] == "ok":
+                            print(f"[eth_straddle] shadow-filter cycle={cyc} "
+                                  f"skip={shadow['skip']} iv_rank={shadow['iv_rank']} "
+                                  f"vrp={shadow['vrp']} (live_gate={'ON' if SHADOW_FILTER_LIVE else 'off'})",
+                                  flush=True)
+                        if SHADOW_FILTER_LIVE and shadow["skip"]:
+                            print(f"[eth_straddle] FILTER-LIVE skip cycle {cyc} "
+                                  f"(iv_rank={shadow['iv_rank']} vrp={shadow['vrp']})", flush=True)
+                            telegram_notify.notify(
+                                f"⏭️ ETH straddle cycle {cyc} skipped — entry filter "
+                                f"(iv_rank={shadow['iv_rank']}, vrp={shadow['vrp']})")
+                        else:
+                            eq = compute_equity(state, spot, chain_dict)
+                            open_leg(cyc, "C", spot, eq["equity"], chain, shadow=shadow)
+                            open_leg(cyc, "P", spot, eq["equity"], chain, shadow=shadow)
                 repo.update_state(last_cycle_id=cyc)
                 state["last_cycle_id"] = cyc
 

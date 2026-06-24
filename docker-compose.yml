@@ -101,6 +101,10 @@ services:
       - poller
     env_file:
       - .env
+    volumes:
+      # read-only access to iv_collector.py's live ATM-IV log (host cron
+      # writes here directly, outside Docker) — shadow entry filter only.
+      - ./data:/app/data:ro
     environment:
       - DATABASE_URL=postgresql://user:password@postgres:5432/options_assistant
       - ETH_STRADDLE_POLL_INTERVAL=${ETH_STRADDLE_POLL_INTERVAL:-30}

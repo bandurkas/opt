@@ -180,31 +180,41 @@ def analyze_window_pair(rows, rows_with_both_windows, train_mask):
         "disagreement_rate": (skip_30_trade_6d + trade_30_skip_6d) / len(rows_with_both_windows) * 100,
     }
 
-    # Holdout performance (using train-derived bad_cut for each window)
-    train_rows = [r for r in rows_with_both_windows if train_mask[rows.index(r)]]
-    hold_rows = [r for r in rows_with_both_windows if not train_mask[rows.index(r)]]
+    # Holdout performance — bad-rate must be measured on the cycles EACH
+    # window's filter would actually have traded (not the unfiltered holdout
+    # set), with bad_cut derived from that same window's train-traded subset.
+    # (Previous version computed both bad_cuts from the identical unfiltered
+    # train_rows, so bad_30d/bad_6d were always identical by construction —
+    # the +0.0pp delta it reported was a tautology, not a measurement.)
+    traded_30d = [r for r in rows_with_both_windows if r["skip_30d"] is False]
+    traded_6d = [r for r in rows_with_both_windows if r["skip_6d"] is False]
 
-    # Bad cut from train ONLY (30d)
-    bad_cut_30d = sorted(r["pnl_pct"] for r in train_rows)[max(0, len(train_rows) // 4 - 1)]
-    for r in rows_with_both_windows:
+    train_traded_30d = [r for r in traded_30d if train_mask[rows.index(r)]]
+    hold_traded_30d = [r for r in traded_30d if not train_mask[rows.index(r)]]
+    train_traded_6d = [r for r in traded_6d if train_mask[rows.index(r)]]
+    hold_traded_6d = [r for r in traded_6d if not train_mask[rows.index(r)]]
+
+    bad_cut_30d = sorted(r["pnl_pct"] for r in train_traded_30d)[max(0, len(train_traded_30d) // 4 - 1)]
+    for r in traded_30d:
         r["bad_30d"] = r["any_sl"] or (r["pnl_pct"] <= bad_cut_30d)
 
-    # Bad cut from train ONLY (6d)
-    bad_cut_6d = sorted(r["pnl_pct"] for r in train_rows)[max(0, len(train_rows) // 4 - 1)]
-    for r in rows_with_both_windows:
+    bad_cut_6d = sorted(r["pnl_pct"] for r in train_traded_6d)[max(0, len(train_traded_6d) // 4 - 1)]
+    for r in traded_6d:
         r["bad_6d"] = r["any_sl"] or (r["pnl_pct"] <= bad_cut_6d)
 
-    # Holdout metrics
-    hold_bad_30d = sum(1 for r in hold_rows if r["bad_30d"])
-    hold_bad_6d = sum(1 for r in hold_rows if r["bad_6d"])
-    hold_pnls = [r["pnl_pct"] for r in hold_rows]
+    hold_bad_30d = sum(1 for r in hold_traded_30d if r["bad_30d"])
+    hold_bad_6d = sum(1 for r in hold_traded_6d if r["bad_6d"])
+    bad_rate_30d = hold_bad_30d / len(hold_traded_30d) * 100 if hold_traded_30d else 0
+    bad_rate_6d = hold_bad_6d / len(hold_traded_6d) * 100 if hold_traded_6d else 0
 
     results["holdout"] = {
-        "cycles": len(hold_rows),
-        "bad_rate_30d": hold_bad_30d / len(hold_rows) * 100 if hold_rows else 0,
-        "bad_rate_6d": hold_bad_6d / len(hold_rows) * 100 if hold_rows else 0,
-        "avg_pnl": st.mean(hold_pnls) if hold_pnls else 0,
-        "bad_rate_delta": (hold_bad_6d - hold_bad_30d) / len(hold_rows) * 100 if hold_rows else 0,
+        "cycles_30d": len(hold_traded_30d),
+        "cycles_6d": len(hold_traded_6d),
+        "bad_rate_30d": bad_rate_30d,
+        "bad_rate_6d": bad_rate_6d,
+        "avg_pnl_30d": st.mean([r["pnl_pct"] for r in hold_traded_30d]) if hold_traded_30d else 0,
+        "avg_pnl_6d": st.mean([r["pnl_pct"] for r in hold_traded_6d]) if hold_traded_6d else 0,
+        "bad_rate_delta": bad_rate_6d - bad_rate_30d,
     }
 
     return results
@@ -271,13 +281,15 @@ def main():
     print(f"  Agreement rate:      {ag['agreement_rate']:.1f}%")
     print(f"  Disagreement rate:   {ag['disagreement_rate']:.1f}%")
 
-    print(f"\n📈 HOLDOUT PERFORMANCE")
+    print(f"\n📈 HOLDOUT PERFORMANCE (bad-rate measured on each window's OWN traded subset)")
     ho = results["holdout"]
-    print(f"  Cycles in holdout:   {ho['cycles']}")
+    print(f"  Traded cycles (30d): {ho['cycles_30d']}")
+    print(f"  Traded cycles (6d):  {ho['cycles_6d']}")
     print(f"  Bad-rate (30d):      {ho['bad_rate_30d']:.1f}%")
     print(f"  Bad-rate (6d):       {ho['bad_rate_6d']:.1f}%")
     print(f"  Delta:               {ho['bad_rate_delta']:+.1f}pp {'(WORSE with 6d)' if ho['bad_rate_delta'] > 0 else '(BETTER with 6d)'}")
-    print(f"  Avg P&L:             {ho['avg_pnl']:.2f}%")
+    print(f"  Avg P&L (30d):       {ho['avg_pnl_30d']:.2f}%")
+    print(f"  Avg P&L (6d):        {ho['avg_pnl_6d']:.2f}%")
 
     # Recommendation
     print("\n" + "="*80)
