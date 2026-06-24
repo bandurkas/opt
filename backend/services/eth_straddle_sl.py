@@ -3,9 +3,22 @@
 Same rationale as btc_straddle_sl.py (a %-of-premium stop understates real
 tail loss near expiry since margin doesn't collapse the way premium does) —
 see ETH_STRADDLE_PAPER_BOT_HANDOFF.md. Parameters are ETH's OWN re-swept
-optimum, NOT a copy of BTC's: SL_DOLLAR_FRAC=0.3 (not BTC's 2.0), confirmed
-via the account-sim sweep (totRet +47.5%->+64.5%, maxDD 25.4%->12.0% at
-$2000 going from frac=2.0 to frac=0.3 on ETH).
+optimum, NOT a copy of BTC's. Original sweep: SL_DOLLAR_FRAC=0.3 (not BTC's
+2.0), confirmed via the account-sim sweep (totRet +47.5%->+64.5%, maxDD
+25.4%->12.0% at $2000 going from frac=2.0 to frac=0.3 on ETH).
+
+2026-06-24: grogu_sl_optimization.py re-swept this with the leakage bug
+fixed and reported FRAC=0.35 as best (Sharpe 5.44 holdout) — but that sweep
+runs with USE_IV_RANK_FILTER=True (services/grogu_sl_optimization.py:39),
+i.e. on the IV-Rank-PRE-FILTERED cycle population, not the unconditional
+population this bot currently trades. Confirmed via eth_straddle_sl_resweep.py
+(no filter, same leakage fix, all 381 cycles): best train-only frac is 0.15,
+not 0.35, and the whole grid's Sharpe is weak (0.10-0.21) — not a confident
+signal on its own. FRAC=0.35 is therefore NOT deployed standalone; it's only
+valid bundled with the IV Rank + VRP entry filter (currently shadow-only,
+see eth_straddle_loop.py's shadow_filter_check()). Revisit together when/if
+that filter goes live — see sweep_results/grogu_sl_optimization.json and
+sweep_results/grogu_window_sensitivity.json.
 
 Pure / dependency-free — unit-tests without DB or network, same as
 btc_straddle_sl.py / live_safety.py.
@@ -14,7 +27,7 @@ from __future__ import annotations
 
 IM_RATE = 0.10          # initial-margin rate estimate: IM_RATE * strike + premium
 LOT_ETH = 0.10          # Bybit ETH option lot (min qty / qty step)
-SL_DOLLAR_FRAC = 0.3    # ETH's own leg-Sharpe optimum — do NOT reuse BTC's 2.0
+SL_DOLLAR_FRAC = 0.3    # ETH's own leg-Sharpe optimum — do NOT reuse BTC's 2.0 (see note above re: 0.35)
 TP2_PCT = 0.80          # take-profit at 80% of premium decayed
 CYCLE_H = 24.0          # hours per cycle
 

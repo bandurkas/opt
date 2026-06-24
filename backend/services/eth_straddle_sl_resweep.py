@@ -140,7 +140,7 @@ def main():
     k5, k1h, cycles_by_idx = build_cycles_full(COIN)
     print(f"ETH straddle deep SL analysis — {len(cycles_by_idx)} candidate cycles\n")
 
-    fracs = (0.10, 0.15, 0.20, 0.25, 0.30, 0.40, 0.50, 0.75, 1.00, 1.50, 2.00, 3.00)
+    fracs = (0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.50, 0.75, 1.00, 1.50, 2.00, 3.00)
     ncore = min(cpu_count(), len(fracs))
     print(f"[parallel] {ncore} workers across {len(fracs)} frac values", flush=True)
 
