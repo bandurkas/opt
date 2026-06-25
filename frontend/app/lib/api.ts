@@ -480,6 +480,12 @@ export async function fetchEthStraddleChart(
   return jget(`/eth-straddle/chart?kline_limit=${klineLimit}`);
 }
 
+// BTC straddle has no /chart endpoint (no candlestick view built for it yet) —
+// just the live spot, which is all ITM/OTM status needs.
+export async function fetchBtcPrice(): Promise<{ symbol: string; price: number }> {
+  return jget(`/market/btc-price`);
+}
+
 // ───────────────────────── Mission Control: auth ─────────────────────────
 
 export async function login(password: string): Promise<void> {

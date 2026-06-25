@@ -244,6 +244,12 @@ def get_eth_price():
     return {"symbol": "ETHUSDT", "price": price}
 
 
+@app.get("/api/v1/market/btc-price")
+def get_btc_price():
+    price = bybit_client.get_spot_price("BTCUSDT")
+    return {"symbol": "BTCUSDT", "price": price}
+
+
 @app.get("/api/v1/market/snapshot")
 def get_market_snapshot(symbol: str = "ETHUSDT"):
     spot = bybit_client.get_spot_price(symbol)

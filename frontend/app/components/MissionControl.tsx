@@ -22,7 +22,7 @@ const REFRESH_MS = 15_000;
 // wallet) it authenticates as, plus an accent color for visual identity that
 // stays separate from STATUS color (paused=amber, running=emerald, danger=
 // rose below) so the two meanings never collide.
-const BOT_META: Record<
+export const BOT_META: Record<
   BotName,
   { callsign: string; strategy: string; account: AccountName; accent: string; glow: string }
 > = {

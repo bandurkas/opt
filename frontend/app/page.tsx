@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { fetchPaperState, fetchPaperConditions, fetchPaperPositions, fetchRecentTrades, fetchEquityHistory, fetchBtcStraddleState, fetchBtcStraddlePositions, fetchBtcStraddleEquityHistory, fetchEthStraddleState, fetchEthStraddlePositions, fetchEthStraddleEquityHistory, fetchEthStraddleChart, type PaperState, type PaperConditions, type PaperPosition, type EquityPoint, type BtcStraddleState, type BtcStraddlePosition, type EthStraddleState, type EthStraddlePosition, type Kline, type EthStraddleChartLeg } from "./lib/api";
+import { useEffect, useMemo, useState } from "react";
+import { fetchPaperState, fetchPaperConditions, fetchPaperPositions, fetchRecentTrades, fetchEquityHistory, fetchBtcStraddleState, fetchBtcStraddlePositions, fetchBtcStraddleEquityHistory, fetchEthStraddleState, fetchEthStraddlePositions, fetchEthStraddleEquityHistory, fetchEthStraddleChart, fetchBtcPrice, type PaperState, type PaperConditions, type PaperPosition, type EquityPoint, type BtcStraddleState, type BtcStraddlePosition, type EthStraddleState, type EthStraddlePosition, type Kline, type EthStraddleChartLeg } from "./lib/api";
 import MissionControl from "./components/MissionControl";
 import StraddleChart from "./components/StraddleChart";
+import { ActiveContractsRail, ItmBadge, Countdown, useLiveNow, type Contract } from "./components/ActiveContracts";
 
 const REFRESH_MS = 15_000;
 
@@ -34,6 +35,7 @@ const condDotColor = (met: boolean, ready: boolean) =>
   !met ? "bg-rose-500" : ready ? "bg-emerald-500" : "bg-amber-400";
 
 export default function Dashboard() {
+  const now = useLiveNow(1000);
   const [state, setState] = useState<PaperState | null>(null);
   const [conditions, setConditions] = useState<PaperConditions | null>(null);
   const [positions, setPositions] = useState<PaperPosition[]>([]);
@@ -47,6 +49,7 @@ export default function Dashboard() {
   const [btcRecentTrades, setBtcRecentTrades] = useState<BtcStraddlePosition[]>([]);
   const [btcEquityHistory, setBtcEquityHistory] = useState<EquityPoint[]>([]);
   const [btcError, setBtcError] = useState<string | null>(null);
+  const [btcSpot, setBtcSpot] = useState<number | null>(null);
 
   const [ethStraddleState, setEthStraddleState] = useState<EthStraddleState | null>(null);
   const [ethStraddlePositions, setEthStraddlePositions] = useState<EthStraddlePosition[]>([]);
@@ -55,6 +58,7 @@ export default function Dashboard() {
   const [ethStraddleError, setEthStraddleError] = useState<string | null>(null);
   const [ethStraddleKlines, setEthStraddleKlines] = useState<Kline[]>([]);
   const [ethStraddleChartLegs, setEthStraddleChartLegs] = useState<EthStraddleChartLeg[]>([]);
+  const [ethStraddleSpot, setEthStraddleSpot] = useState<number | null>(null);
 
   // Separate effect/error state from the ETH signal book above — the BTC bot is a
   // distinct deploy (own container/tables) and may lag behind or be absent;
@@ -63,17 +67,19 @@ export default function Dashboard() {
     let cancelled = false;
     const load = async () => {
       try {
-        const [s, p, t, eq] = await Promise.all([
+        const [s, p, t, eq, priceRes] = await Promise.all([
           fetchBtcStraddleState(),
           fetchBtcStraddlePositions("open"),
           fetchBtcStraddlePositions("recent", 200),
           fetchBtcStraddleEquityHistory(336),
+          fetchBtcPrice().catch(() => null),
         ]);
         if (cancelled) return;
         setBtcState(s);
         setBtcPositions(p.positions);
         setBtcRecentTrades(t.positions.filter((pos) => pos.closed_at_ms !== null));
         setBtcEquityHistory(eq.points);
+        setBtcSpot(priceRes?.price ?? null);
         setBtcError(null);
       } catch (e) {
         if (cancelled) return;
@@ -106,6 +112,7 @@ export default function Dashboard() {
         setEthStraddleEquityHistory(eq.points);
         setEthStraddleKlines(chart.klines);
         setEthStraddleChartLegs(chart.legs);
+        setEthStraddleSpot(chart.spot ?? null);
         setEthStraddleError(null);
       } catch (e) {
         if (cancelled) return;
@@ -193,6 +200,28 @@ export default function Dashboard() {
     }] : []),
   ] : [];
 
+  // Unified, live-spot-aware view of every open short-option position across
+  // all 3 bots — feeds the global "Active Contracts" rail/drawer. Built with
+  // useMemo so the 1s countdown ticker (inside ActiveContractsRail) doesn't
+  // force this mapping to rerun every second, only when positions/spots change.
+  const allContracts: Contract[] = useMemo(() => [
+    ...positions.map((p): Contract => ({
+      key: `sniper1-${p.id}`, bot: "eth_signal", side: p.side, strike: p.strike,
+      expiryMs: p.expiry_ms, contracts: p.contracts, spot: conditions?.spot ?? null,
+      entryCreditUsd: p.entry_credit_usd, openedAtMs: p.opened_at_ms,
+    })),
+    ...btcPositions.map((p): Contract => ({
+      key: `boba1-${p.id}`, bot: "btc_straddle", side: p.leg, strike: p.strike,
+      expiryMs: p.expiry_ms, contracts: p.contracts, spot: btcSpot,
+      entryCreditUsd: p.entry_credit_usd, openedAtMs: p.opened_at_ms, cycleId: p.cycle_id,
+    })),
+    ...ethStraddlePositions.map((p): Contract => ({
+      key: `grogu1-${p.id}`, bot: "eth_straddle", side: p.leg, strike: p.strike,
+      expiryMs: p.expiry_ms, contracts: p.contracts, spot: ethStraddleSpot,
+      entryCreditUsd: p.entry_credit_usd, openedAtMs: p.opened_at_ms, cycleId: p.cycle_id,
+    })),
+  ], [positions, btcPositions, ethStraddlePositions, conditions?.spot, btcSpot, ethStraddleSpot]);
+
   return (
     <main className="min-h-screen bg-slate-950 text-white">
       {/* Header */}
@@ -210,6 +239,7 @@ export default function Dashboard() {
       </header>
 
       <div className="max-w-5xl mx-auto p-4 space-y-4">
+        <ActiveContractsRail contracts={allContracts} now={now} />
         <MissionControl />
         {/* Active Side Banner */}
         <div className={`rounded-xl p-4 border ${
@@ -355,17 +385,19 @@ export default function Dashboard() {
             <div className="divide-y divide-slate-800">
               {positions.map((p) => (
                 <div key={p.id} className="px-4 py-3 flex items-center justify-between">
-                  <div>
+                  <div className="flex items-center gap-2">
                     <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold ${
                       p.side === "P" ? "bg-rose-500/10 text-rose-300" : "bg-emerald-500/10 text-emerald-300"
                     }`}>
                       SELL {p.side}
                     </span>
-                    <span className="ml-2 text-sm font-mono">${p.strike}</span>
-                    <span className="ml-2 text-xs text-slate-500">{p.contracts.toFixed(2)} ETH</span>
+                    <span className="text-sm font-mono">${p.strike}</span>
+                    <span className="text-xs text-slate-500">{p.contracts.toFixed(2)} ETH</span>
+                    <ItmBadge side={p.side} strike={p.strike} spot={conditions?.spot ?? null} compact />
                   </div>
                   <div className="text-right">
-                    <p className="text-xs text-slate-500">{fmtRemaining(p.hold_h, p.opened_at_ms)}</p>
+                    <Countdown expiryMs={p.expiry_ms} now={now} />
+                    <p className="text-[10px] text-slate-600 mt-0.5">{fmtRemaining(p.hold_h, p.opened_at_ms)}</p>
                   </div>
                 </div>
               ))}
@@ -464,17 +496,19 @@ export default function Dashboard() {
                 <div className="divide-y divide-slate-800">
                   {btcPositions.map((p) => (
                     <div key={p.id} className="px-4 py-3 flex items-center justify-between">
-                      <div>
+                      <div className="flex items-center gap-2">
                         <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold ${
                           p.leg === "P" ? "bg-rose-500/10 text-rose-300" : "bg-emerald-500/10 text-emerald-300"
                         }`}>
                           SELL {p.leg}
                         </span>
-                        <span className="ml-2 text-sm font-mono">${p.strike}</span>
-                        <span className="ml-2 text-xs text-slate-500">{p.contracts.toFixed(4)} BTC</span>
+                        <span className="text-sm font-mono">${p.strike}</span>
+                        <span className="text-xs text-slate-500">{p.contracts.toFixed(4)} BTC</span>
+                        <ItmBadge side={p.leg} strike={p.strike} spot={btcSpot} compact />
                       </div>
                       <div className="text-right">
-                        <p className="text-xs text-slate-500">cycle #{p.cycle_id}</p>
+                        <Countdown expiryMs={p.expiry_ms} now={now} />
+                        <p className="text-[10px] text-slate-600 mt-0.5">cycle #{p.cycle_id}</p>
                       </div>
                     </div>
                   ))}
@@ -573,17 +607,19 @@ export default function Dashboard() {
                 <div className="divide-y divide-slate-800">
                   {ethStraddlePositions.map((p) => (
                     <div key={p.id} className="px-4 py-3 flex items-center justify-between">
-                      <div>
+                      <div className="flex items-center gap-2">
                         <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold ${
                           p.leg === "P" ? "bg-rose-500/10 text-rose-300" : "bg-emerald-500/10 text-emerald-300"
                         }`}>
                           SELL {p.leg}
                         </span>
-                        <span className="ml-2 text-sm font-mono">${p.strike}</span>
-                        <span className="ml-2 text-xs text-slate-500">{p.contracts.toFixed(4)} ETH</span>
+                        <span className="text-sm font-mono">${p.strike}</span>
+                        <span className="text-xs text-slate-500">{p.contracts.toFixed(4)} ETH</span>
+                        <ItmBadge side={p.leg} strike={p.strike} spot={ethStraddleSpot} compact />
                       </div>
                       <div className="text-right">
-                        <p className="text-xs text-slate-500">cycle #{p.cycle_id}</p>
+                        <Countdown expiryMs={p.expiry_ms} now={now} />
+                        <p className="text-[10px] text-slate-600 mt-0.5">cycle #{p.cycle_id}</p>
                       </div>
                     </div>
                   ))}

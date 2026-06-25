@@ -52,3 +52,12 @@ body {
 @utility led-armed {
   animation: led-pulse 1.8s ease-in-out infinite;
 }
+
+@keyframes drawer-slide-in {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+@utility drawer-panel {
+  animation: drawer-slide-in 0.22s ease-out;
+}
