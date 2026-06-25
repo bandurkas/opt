@@ -1,9 +1,9 @@
 """Unit tests for eth_straddle_sl — dollar-margin stop math, no network/DB.
 
 Mirrors test_btc_straddle_sl.py with ETH's own constants (IM_RATE=0.10,
-LOT_ETH=0.10, SL_DOLLAR_FRAC=0.30 — see eth_straddle_sl.py's module
-docstring for why 0.35 was investigated 2026-06-24 and NOT deployed
-standalone (it's only valid bundled with the shadow entry filter).
+LOT_ETH=0.10, SL_DOLLAR_FRAC=0.15 — see eth_straddle_sl.py's module
+docstring for why 0.35 (filter-bundled) and 0.30 (the old default) are
+NOT deployed standalone.
 
 Run: cd backend && PYTHONPATH=. python3 tests/test_eth_straddle_sl.py
 """
@@ -31,8 +31,8 @@ def test_margin_per_lot_guards() -> None:
 
 
 def test_sl_dollar_trip_default_frac() -> None:
-    # trip = 0.30 * margin_per_lot (current SL_DOLLAR_FRAC)
-    assert _approx(sl.sl_dollar_trip(42.5), 12.75)
+    # trip = 0.15 * margin_per_lot (current SL_DOLLAR_FRAC)
+    assert _approx(sl.sl_dollar_trip(42.5), 6.375)
     assert _approx(sl.sl_dollar_trip(42.5, sl_dollar_frac=1.0), 42.5)
 
 

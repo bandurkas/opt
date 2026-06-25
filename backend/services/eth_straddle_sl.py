@@ -20,6 +20,19 @@ see eth_straddle_loop.py's shadow_filter_check()). Revisit together when/if
 that filter goes live — see sweep_results/grogu_sl_optimization.json and
 sweep_results/grogu_window_sensitivity.json.
 
+2026-06-25: live paper trading on FRAC=0.3 showed the real problem isn't
+Sharpe, it's win/loss size asymmetry — TP2 wins land $5-6/leg, SL losses hit
+$25-40/leg (4-8x), because the dollar-stop is sized off margin (~$19-23/leg)
+while TP2 only captures 80% of a much smaller premium. Replayed the shadow
+filter against the actual SL events: it would have blocked the cheaper SL
+(-$24.58) but let the worse one (-$39.64) straight through, AND skipped both
+profitable cycles — its IV-rank is unreliable this early (collector only
+~8 days deep vs the 720h/30d window it needs), so bundling with it is
+premature. Deployed the honest unconditional optimum (0.15) standalone
+instead: it roughly halves the dollar-stop ($11-12/leg), closing most of the
+win/loss gap without depending on the immature filter. Revisit 0.35+filter
+together once the filter has ~30d of real IV history (~early Aug 2026).
+
 Pure / dependency-free — unit-tests without DB or network, same as
 btc_straddle_sl.py / live_safety.py.
 """
@@ -27,7 +40,7 @@ from __future__ import annotations
 
 IM_RATE = 0.10          # initial-margin rate estimate: IM_RATE * strike + premium
 LOT_ETH = 0.10          # Bybit ETH option lot (min qty / qty step)
-SL_DOLLAR_FRAC = 0.3    # ETH's own leg-Sharpe optimum — do NOT reuse BTC's 2.0 (see note above re: 0.35)
+SL_DOLLAR_FRAC = 0.15   # honest unconditional-population optimum (eth_straddle_sl_resweep.py) — do NOT reuse BTC's 2.0 or the filter-bundled 0.35 (see note above)
 TP2_PCT = 0.80          # take-profit at 80% of premium decayed
 CYCLE_H = 24.0          # hours per cycle
 
