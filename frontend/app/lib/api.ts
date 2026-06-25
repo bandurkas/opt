@@ -336,8 +336,10 @@ export type PaperConditions = {
   proximity?: {
     proximity_pct: number;
     zone: "waiting" | "preparing" | "ready" | "entry";
-    factors: { adx: number; mtf: number; vol: number; bull: number };
-    weights: { adx: number; mtf: number; vol: number; bull: number };
+    factors: { adx: number; mtf: number; vol: number; regime: number; bull: number };
+    weights: { adx: number; mtf: number; vol: number; regime: number; bull: number };
+    debounce_unknown: boolean;
+    window_disqualified: boolean;
   };
   thresholds?: {
     ret_threshold_put: number;

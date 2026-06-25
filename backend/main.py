@@ -454,7 +454,9 @@ def paper_conditions():
     # ADX readiness score + entry-proximity gauge (display only — see entry_proximity).
     adx = compute_adx_score(k1h)
     cond["adx"] = adx
-    cond["proximity"] = entry_proximity(cond, adx.get("score", 0.0))
+    state = paper_repo.get_state() or {}
+    window_status = state.get("window_status_json")
+    cond["proximity"] = entry_proximity(cond, adx.get("score", 0.0), window_status)
 
     active_side = cond.get("active_side")
     # V2 thresholds: Put when ret > +T, Call when ret < -T. UI fields kept

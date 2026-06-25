@@ -35,6 +35,19 @@ from services.strategy_config import (
 # (volatile) periods (train taken 187→264 at $800); above $800 ROI% is flat (~+39% OOS)
 # and $ scales linearly. So $800 = capacity headroom for active periods at no ROI/maxDD
 # cost. MO6 was REJECTED (halves ROI), BESTPICK REJECTED (overfit). Reversible via env.
+# 5m debounce window id — shared by paper_loop (writer) and entry_proximity
+# (reader) so the gauge can detect a window_status row that belongs to a
+# DIFFERENT window than the live cond snapshot it's being paired with (e.g.
+# right after a window rollover, before paper_loop's first per-minute check
+# of the new window has run) instead of trusting it purely by clock age.
+SIGNAL_CHECK_EVERY_MIN = 5
+
+
+def window_id(epoch_min: int) -> int:
+    """5m-window id: floor(minute / 5). minute % 5 gives position 0..4 in window."""
+    return epoch_min // SIGNAL_CHECK_EVERY_MIN
+
+
 START_EQUITY_USD = float(os.getenv("PAPER_START_EQUITY_USD", "400"))
 # Per trade: up to 15% of equity goes into option margin. On $400 → $60 budget.
 MARGIN_PCT_PER_TRADE = float(os.getenv("PAPER_MARGIN_PCT_PER_TRADE", "0.15"))
@@ -291,19 +304,36 @@ def evaluate_conditions(k5: list, k15: list, k1h: list) -> dict:
     return out
 
 
-def entry_proximity(cond: dict, adx_score: float) -> dict:
+WINDOW_STATUS_STALE_MS = 90_000  # >1 missed per-minute tick from paper_loop
+
+
+def entry_proximity(cond: dict, adx_score: float,
+                    window_status: dict | None = None,
+                    now_ms: int | None = None) -> dict:
     """How close the market is to a tradeable entry, as 0-100 + a zone label.
 
     Display/observability only — this drives the dashboard "proximity gauge", NOT
     position sizing (ADX-score sizing was rejected by backtest: it hurt compounded
     return and worsened drawdown). The needle is a weighted blend of the same
     factors the entry uses, each normalised to 0-1:
-      - adx   : adx_score/10  (HIGH = low/falling ADX = range-like = best decay)
-      - mtf   : aligned timeframes / 3
-      - vol   : volatility percentile
-      - bull  : bull-market filter pass (Call side; PUT's bull_market_ratio_max is None)
-    100 is reserved for `ready` (every gate actually passes), so the gauge never
-    claims a full signal the bot wouldn't take.
+      - adx    : adx_score/10  (HIGH = low/falling ADX = range-like = best decay)
+      - mtf    : aligned timeframes / 3
+      - vol    : volatility percentile
+      - regime : regime_ok pass (matches the real entry's regime gate)
+      - bull   : bull-market filter pass (Call side; PUT's bull_market_ratio_max is None)
+    100 is reserved for `ready` AND a *confirmed* live debounce window
+    (FLICKER_TOLERANCE, paper_loop.py) that is not disqualified — otherwise the
+    gauge could flash "entry" on a one-shot snapshot the bot's persistence
+    check would reject. `window_status` is the live state paper_loop persists
+    every per-minute check (see db.paper_repo window_status_json): `wid` (which
+    5m window it was computed for) and `checked_at_ms`. It's trusted only when
+    BOTH fresh (within WINDOW_STATUS_STALE_MS) AND for the SAME window the
+    caller's `now_ms` falls in — a fresh-by-clock status for the window the bot
+    just finished (rolled over seconds ago) must not be applied to the new
+    window's `cond` snapshot. Whenever it can't be trusted, `debounce_unknown`
+    is True and the gauge is deliberately conservative: it caps below 100 even
+    if `ready` — unconfirmed debounce state must never be displayed as a
+    guaranteed entry.
     """
     def _f(x: float | None) -> float:
         return 0.0 if x is None else max(0.0, min(1.0, float(x)))
@@ -311,14 +341,31 @@ def entry_proximity(cond: dict, adx_score: float) -> dict:
     f_adx = _f((adx_score or 0.0) / 10.0)
     f_mtf = _f((cond.get("mtf_aligned_count") or 0) / 3.0)
     f_vol = _f(cond.get("vol_pctile"))
+    f_regime = 1.0 if cond.get("regime_ok") else 0.0
     f_bull = 1.0 if cond.get("bull_filter_ok") else 0.0
-    weights = {"adx": 0.40, "mtf": 0.25, "vol": 0.20, "bull": 0.15}
+    weights = {"adx": 0.30, "mtf": 0.20, "vol": 0.15, "regime": 0.20, "bull": 0.15}
     composite = 100.0 * (weights["adx"] * f_adx + weights["mtf"] * f_mtf
-                         + weights["vol"] * f_vol + weights["bull"] * f_bull)
-    pct = 100.0 if cond.get("ready") else min(99.0, composite)
+                         + weights["vol"] * f_vol + weights["regime"] * f_regime
+                         + weights["bull"] * f_bull)
+
+    now_ms = now_ms if now_ms is not None else int(time.time() * 1000)
+    debounce_unknown = True
+    window_disqualified = False
+    if window_status and window_status.get("checked_at_ms") is not None:
+        fresh = (now_ms - int(window_status["checked_at_ms"])) <= WINDOW_STATUS_STALE_MS
+        same_window = window_status.get("wid") == window_id(now_ms // 60_000)
+        if fresh and same_window:
+            debounce_unknown = False
+            window_disqualified = bool(window_status.get("disqualified"))
+
+    # Unconfirmed debounce state (stale, missing, or belongs to a different
+    # window than `cond`) must never be displayed as "entry" — only a
+    # confirmed, non-disqualified window can pin the gauge to 100.
+    ready = bool(cond.get("ready")) and not debounce_unknown and not window_disqualified
+    pct = 100.0 if ready else min(99.0, composite)
     pct = round(pct, 1)
     if pct >= 100.0:
-        zone = "entry"        # all gates pass — bot will fire
+        zone = "entry"        # all gates pass AND debounce window confirmed — bot will fire
     elif pct >= 80.0:
         zone = "ready"        # one factor short of entry
     elif pct >= 50.0:
@@ -329,8 +376,11 @@ def entry_proximity(cond: dict, adx_score: float) -> dict:
         "proximity_pct": pct,
         "zone": zone,
         "factors": {"adx": round(f_adx, 3), "mtf": round(f_mtf, 3),
-                    "vol": round(f_vol, 3), "bull": round(f_bull, 3)},
+                    "vol": round(f_vol, 3), "regime": round(f_regime, 3),
+                    "bull": round(f_bull, 3)},
         "weights": weights,
+        "debounce_unknown": debounce_unknown,
+        "window_disqualified": window_disqualified,
     }
 
 

@@ -47,10 +47,12 @@ from services.paper_strategy import (  # noqa: E402
     CB_PAUSE_HOURS,
     DEFAULT_SIGMA,
     IM_RATE,
+    SIGNAL_CHECK_EVERY_MIN,
     get_side_expiry_h,
     LOT_MIN_ETH,
     MAX_PORTFOLIO_MARGIN_PCT,
     START_EQUITY_USD,
+    window_id,
     allowed_sides,
     apply_entry_spread,
     apply_exit_spread,
@@ -71,7 +73,6 @@ from services import telegram_notify  # noqa: E402
 
 BOT_NAME = "eth_signal"
 POLL_INTERVAL_S = int(os.getenv("PAPER_POLL_INTERVAL", "30"))
-SIGNAL_CHECK_EVERY_MIN = 5
 # Entry conditions are re-evaluated every minute; the open command is committed
 # near the 5m candle close (~:50 of the window's last minute) only if conditions
 # held on at least (SIGNAL_CHECK_EVERY_MIN - FLICKER_TOLERANCE) of the 5
@@ -625,11 +626,6 @@ def _live_preopen_block(now_ms: int) -> str | None:
     return None
 
 
-def window_id(epoch_min: int) -> int:
-    """5m-window id: floor(minute / 5). minute % 5 gives position 0..4 in window."""
-    return epoch_min // SIGNAL_CHECK_EVERY_MIN
-
-
 def at_position_cap(open_count: int) -> bool:
     """Tail-risk concentration cap: True if we already hold the max number of
     simultaneous positions (open + half_closed_tp1) and must refuse new opens.
@@ -761,6 +757,16 @@ async def loop():
                       f"mtf={ev_m.get('mtf_direction')}/{ev_m.get('mtf_aligned_count')} "
                       f"vol={ev_m.get('vol_high')} fails={window_fail_count} "
                       f"disq={window_disqualified}", flush=True)
+                # Persist this window's debounce state so the dashboard gauge
+                # (computed in a separate process — main.py's /paper/conditions)
+                # can reflect the same FLICKER_TOLERANCE persistence the bot
+                # actually fires on, instead of a one-shot snapshot.
+                paper_repo.update_state(window_status={
+                    "wid": wid, "min_in_window": min_in_window,
+                    "fail_count": window_fail_count,
+                    "disqualified": window_disqualified,
+                    "checked_at_ms": int(time.time() * 1000),
+                })
 
                 # Persist one observation row per disqualified window so the audit
                 # trail is complete during long range-less stretches (the fire-time

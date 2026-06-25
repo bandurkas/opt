@@ -135,6 +135,11 @@ CREATE TABLE IF NOT EXISTS paper_state (
 -- 2-bar acceptance window in check_new_signal() against repeat ticks
 -- (FUTURE_WORK: Sniper1 double-fire, found 2026-06-23).
 ALTER TABLE paper_state ADD COLUMN IF NOT EXISTS last_signal_idx_5m BIGINT;
+-- Live debounce window status (wid/fail_count/disqualified/min_in_window),
+-- written every per-minute check in paper_loop. Lets the dashboard gauge
+-- reflect the bot's real FLICKER_TOLERANCE persistence state instead of a
+-- one-shot snapshot (2026-06-25, gauge/entry-logic desync fix).
+ALTER TABLE paper_state ADD COLUMN IF NOT EXISTS window_status_json JSONB;
 
 -- BTC unconditional short-straddle (24h cycle, dollar-margin SL). Structurally
 -- separate from paper_positions: each cycle opens a CALL leg + a PUT leg sharing

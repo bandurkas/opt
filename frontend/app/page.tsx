@@ -268,13 +268,23 @@ export default function Dashboard() {
             </div>
             <div className="p-4">
               <ProximityGauge pct={conditions.proximity.proximity_pct} zone={conditions.proximity.zone} />
-              <div className="grid grid-cols-3 gap-2 mt-3">
-                {([["MTF", "mtf"], ["Vol", "vol"], ["Bull", "bull"]] as const).map(([lbl, k]) => (
+              <div className="grid grid-cols-4 gap-2 mt-3">
+                {([["MTF", "mtf"], ["Vol", "vol"], ["Режим", "regime"], ["Bull", "bull"]] as const).map(([lbl, k]) => (
                   <FactorBar key={k} label={lbl} v={conditions.proximity!.factors[k]} />
                 ))}
               </div>
+              {conditions.proximity.window_disqualified && (
+                <p className="text-[10px] text-amber-400 mt-2 text-center">
+                  Окно дисквалифицировано (debounce/FLICKER_TOLERANCE) — бот не откроет сделку в этом окне даже если условия сейчас выполнены.
+                </p>
+              )}
+              {conditions.proximity.debounce_unknown && (
+                <p className="text-[10px] text-slate-500 mt-2 text-center">
+                  Состояние debounce-окна недоступно (бот не пишет статус) — 100% отражает только текущий снимок условий.
+                </p>
+              )}
               <p className="text-[10px] text-slate-600 mt-3 text-center">
-                100% = все условия входа выполнены. ADX-скор — индикатор силы сигнала, не размер позиции.
+                100% = все условия входа выполнены и debounce-окно бота не дисквалифицировано — сделка будет открыта.
               </p>
             </div>
           </div>
