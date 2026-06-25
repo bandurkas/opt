@@ -153,6 +153,31 @@ export default function Dashboard() {
     return () => { cancelled = true; clearInterval(id); };
   }, []);
 
+  // Unified, live-spot-aware view of every open short-option position across
+  // all 3 bots — feeds the global "Active Contracts" rail/drawer. Built with
+  // useMemo so the 1s countdown ticker (inside ActiveContractsRail) doesn't
+  // force this mapping to rerun every second, only when positions/spots change.
+  // Must stay ABOVE the `if (!state) return` below — hooks can never be
+  // called conditionally (React error #310: "rendered more hooks than during
+  // the previous render" the moment `state` flips from null to loaded).
+  const allContracts: Contract[] = useMemo(() => [
+    ...positions.map((p): Contract => ({
+      key: `sniper1-${p.id}`, bot: "eth_signal", side: p.side, strike: p.strike,
+      expiryMs: p.expiry_ms, contracts: p.contracts, spot: conditions?.spot ?? null,
+      entryCreditUsd: p.entry_credit_usd, openedAtMs: p.opened_at_ms,
+    })),
+    ...btcPositions.map((p): Contract => ({
+      key: `boba1-${p.id}`, bot: "btc_straddle", side: p.leg, strike: p.strike,
+      expiryMs: p.expiry_ms, contracts: p.contracts, spot: btcSpot,
+      entryCreditUsd: p.entry_credit_usd, openedAtMs: p.opened_at_ms, cycleId: p.cycle_id,
+    })),
+    ...ethStraddlePositions.map((p): Contract => ({
+      key: `grogu1-${p.id}`, bot: "eth_straddle", side: p.leg, strike: p.strike,
+      expiryMs: p.expiry_ms, contracts: p.contracts, spot: ethStraddleSpot,
+      entryCreditUsd: p.entry_credit_usd, openedAtMs: p.opened_at_ms, cycleId: p.cycle_id,
+    })),
+  ], [positions, btcPositions, ethStraddlePositions, conditions?.spot, btcSpot, ethStraddleSpot]);
+
   if (!state) return <main className="min-h-screen bg-slate-950 text-white flex items-center justify-center">Loading...</main>;
 
   const ret7d = conditions?.ret_7d ?? 0;
@@ -199,28 +224,6 @@ export default function Dashboard() {
       value: conditions.ema_ratio != null ? conditions.ema_ratio.toFixed(3) : "—",
     }] : []),
   ] : [];
-
-  // Unified, live-spot-aware view of every open short-option position across
-  // all 3 bots — feeds the global "Active Contracts" rail/drawer. Built with
-  // useMemo so the 1s countdown ticker (inside ActiveContractsRail) doesn't
-  // force this mapping to rerun every second, only when positions/spots change.
-  const allContracts: Contract[] = useMemo(() => [
-    ...positions.map((p): Contract => ({
-      key: `sniper1-${p.id}`, bot: "eth_signal", side: p.side, strike: p.strike,
-      expiryMs: p.expiry_ms, contracts: p.contracts, spot: conditions?.spot ?? null,
-      entryCreditUsd: p.entry_credit_usd, openedAtMs: p.opened_at_ms,
-    })),
-    ...btcPositions.map((p): Contract => ({
-      key: `boba1-${p.id}`, bot: "btc_straddle", side: p.leg, strike: p.strike,
-      expiryMs: p.expiry_ms, contracts: p.contracts, spot: btcSpot,
-      entryCreditUsd: p.entry_credit_usd, openedAtMs: p.opened_at_ms, cycleId: p.cycle_id,
-    })),
-    ...ethStraddlePositions.map((p): Contract => ({
-      key: `grogu1-${p.id}`, bot: "eth_straddle", side: p.leg, strike: p.strike,
-      expiryMs: p.expiry_ms, contracts: p.contracts, spot: ethStraddleSpot,
-      entryCreditUsd: p.entry_credit_usd, openedAtMs: p.opened_at_ms, cycleId: p.cycle_id,
-    })),
-  ], [positions, btcPositions, ethStraddlePositions, conditions?.spot, btcSpot, ethStraddleSpot]);
 
   return (
     <main className="min-h-screen bg-slate-950 text-white">
