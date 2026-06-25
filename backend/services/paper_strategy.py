@@ -349,18 +349,26 @@ def entry_proximity(cond: dict, adx_score: float,
       - regime : regime_ok pass (matches the real entry's regime gate)
       - bull   : bull-market filter pass (Call side; PUT's bull_market_ratio_max is None)
     100 is reserved for `ready` AND a *confirmed* live debounce window
-    (FLICKER_TOLERANCE, paper_loop.py) that is not disqualified — otherwise the
-    gauge could flash "entry" on a one-shot snapshot the bot's persistence
-    check would reject. `window_status` is the live state paper_loop persists
-    every per-minute check (see db.paper_repo window_status_json): `wid` (which
-    5m window it was computed for) and `checked_at_ms`. It's trusted only when
-    BOTH fresh (within WINDOW_STATUS_STALE_MS) AND for the SAME window the
-    caller's `now_ms` falls in — a fresh-by-clock status for the window the bot
-    just finished (rolled over seconds ago) must not be applied to the new
-    window's `cond` snapshot. Whenever it can't be trusted, `debounce_unknown`
-    is True and the gauge is deliberately conservative: it caps below 100 even
-    if `ready` — unconfirmed debounce state must never be displayed as a
-    guaranteed entry.
+    (FLICKER_TOLERANCE, paper_loop.py) that is not disqualified AND has
+    reached the close-tick minute (`min_in_window == SIGNAL_CHECK_EVERY_MIN -
+    1`, the same minute paper_loop's `fire_now` actually attempts the open on)
+    — otherwise the gauge could pin "entry" as early as minute 0 of 5 just
+    because nothing has failed YET, when 3-4 more per-minute checks still
+    remain that could still flip the window to disqualified. 2026-06-25: a
+    window passing every gate at minute 1 is NOT a guarantee the bot opens a
+    trade — only minute 4 (the one immediately preceding the real fire
+    attempt) is. `window_status` is the live state paper_loop persists every
+    per-minute check (see db.paper_repo window_status_json): `wid` (which 5m
+    window it was computed for), `min_in_window`, and `checked_at_ms`. It's
+    trusted only when BOTH fresh (within WINDOW_STATUS_STALE_MS) AND for the
+    SAME window the caller's `now_ms` falls in — a fresh-by-clock status for
+    the window the bot just finished (rolled over seconds ago) must not be
+    applied to the new window's `cond` snapshot. Whenever it can't be
+    trusted, `debounce_unknown` is True and the gauge is deliberately
+    conservative: it caps below 100 even if `ready` — unconfirmed debounce
+    state must never be displayed as a guaranteed entry. Even at 100%, this
+    is still display-only: margin/position-cap/pause/kill-switch checks
+    happen later in paper_loop's fire path and aren't represented here.
     """
     def _f(x: float | None) -> float:
         return 0.0 if x is None else max(0.0, min(1.0, float(x)))
@@ -378,17 +386,22 @@ def entry_proximity(cond: dict, adx_score: float,
     now_ms = now_ms if now_ms is not None else int(time.time() * 1000)
     debounce_unknown = True
     window_disqualified = False
+    at_close_tick = False
     if window_status and window_status.get("checked_at_ms") is not None:
         fresh = (now_ms - int(window_status["checked_at_ms"])) <= WINDOW_STATUS_STALE_MS
         same_window = window_status.get("wid") == window_id(now_ms // 60_000)
         if fresh and same_window:
             debounce_unknown = False
             window_disqualified = bool(window_status.get("disqualified"))
+            at_close_tick = window_status.get("min_in_window") == SIGNAL_CHECK_EVERY_MIN - 1
 
     # Unconfirmed debounce state (stale, missing, or belongs to a different
     # window than `cond`) must never be displayed as "entry" — only a
-    # confirmed, non-disqualified window can pin the gauge to 100.
-    ready = bool(cond.get("ready")) and not debounce_unknown and not window_disqualified
+    # confirmed, non-disqualified window AT the close-tick minute can pin the
+    # gauge to 100. Earlier minutes (0..3 of 5) cap below 100 even if nothing
+    # has failed yet — "hasn't failed" isn't "guaranteed to fire".
+    ready = (bool(cond.get("ready")) and not debounce_unknown
+             and not window_disqualified and at_close_tick)
     pct = 100.0 if ready else min(99.0, composite)
     pct = round(pct, 1)
     if pct >= 100.0:

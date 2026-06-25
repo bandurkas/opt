@@ -125,7 +125,10 @@ def test_window_disqualified_blocks_entry_zone_even_when_ready():
 
 
 def test_window_not_disqualified_and_same_window_allows_entry_zone():
-    fresh_ok = {"wid": SAME_WID, "disqualified": False, "checked_at_ms": NOW_MS - 5_000}
+    # min_in_window=4 -> the close-tick minute (SIGNAL_CHECK_EVERY_MIN - 1),
+    # the same one paper_loop's fire_now actually attempts the open on.
+    fresh_ok = {"wid": SAME_WID, "disqualified": False, "checked_at_ms": NOW_MS - 5_000,
+                "min_in_window": 4}
     p = entry_proximity({"ready": True, "mtf_aligned_count": 3,
                          "vol_pctile": 1.0, "regime_ok": True,
                          "bull_filter_ok": True}, 10.0,
@@ -133,7 +136,43 @@ def test_window_not_disqualified_and_same_window_allows_entry_zone():
     assert p["proximity_pct"] == 100.0, p
     assert p["zone"] == "entry", p
     assert p["debounce_unknown"] is False, p
-    print("✓ confirmed (fresh + same window) status, not disqualified -> 100%, zone=entry")
+    print("✓ confirmed (fresh + same window) status at close-tick minute, "
+          "not disqualified -> 100%, zone=entry")
+
+
+def test_early_minute_not_disqualified_does_not_reach_100():
+    # 2026-06-25: a window that hasn't failed YET at minute 1 of 5 is not the
+    # same as a window guaranteed to fire — 3 more per-minute checks remain
+    # that could still flip it to disqualified. Only the close-tick minute
+    # (4) may pin the gauge to 100; earlier minutes cap below 100 even with
+    # disqualified=False and ready=True, exactly the live case reported:
+    # gauge showed "100%/entry" at min_in_window=1 with no trade yet to show.
+    fresh_but_early = {"wid": SAME_WID, "disqualified": False, "checked_at_ms": NOW_MS - 5_000,
+                       "min_in_window": 1}
+    p = entry_proximity({"ready": True, "mtf_aligned_count": 3,
+                         "vol_pctile": 1.0, "regime_ok": True,
+                         "bull_filter_ok": True}, 10.0,
+                         window_status=fresh_but_early, now_ms=NOW_MS)
+    assert p["proximity_pct"] < 100.0, p
+    assert p["zone"] != "entry", p
+    assert p["debounce_unknown"] is False, p
+    assert p["window_disqualified"] is False, p
+    print("✓ ready + not disqualified but NOT at close-tick minute (1/5) "
+          "-> capped below 100%, zone != entry")
+
+
+def test_every_non_close_tick_minute_capped_below_100():
+    # Sweep all 4 non-close-tick minutes (0..3) — none may reach 100, only 4.
+    for m in range(4):
+        status = {"wid": SAME_WID, "disqualified": False, "checked_at_ms": NOW_MS - 5_000,
+                  "min_in_window": m}
+        p = entry_proximity({"ready": True, "mtf_aligned_count": 3,
+                             "vol_pctile": 1.0, "regime_ok": True,
+                             "bull_filter_ok": True}, 10.0,
+                             window_status=status, now_ms=NOW_MS)
+        assert p["proximity_pct"] < 100.0, (m, p)
+        assert p["zone"] != "entry", (m, p)
+    print("✓ minutes 0-3 of 5 all capped below 100% even when ready and not disqualified")
 
 
 def test_stale_window_status_falls_back_to_unconfirmed():
