@@ -206,7 +206,10 @@ def window_fail_step(fail_count: int, minute_ready: bool) -> tuple[int, bool]:
     return fail_count, fail_count > FLICKER_TOLERANCE
 
 
-def check_new_signal(k5, k15, k1h) -> dict | None:
+BAR_MS_5M = 300_000
+
+
+def check_new_signal(k5, k15, k1h, last_signal_ts_ms: int | None = None) -> dict | None:
     """Run V2 trend-following hybrid generator (validated 2026-06-02 on 365d).
 
     Logic per tick:
@@ -219,7 +222,24 @@ def check_new_signal(k5, k15, k1h) -> dict | None:
          filters (MTF=up for Put, MTF=down for Call, etc.). First side to fire
          at the current bar wins.
 
-    Cooldown is taken from each side's PUT/CALL_GEN_KWARGS["cooldown_bars"] = 6.
+    `last_signal_ts_ms` is the absolute calendar timestamp (state.
+    last_signal_ts_ms) of the last signal this bot actually acted on — used
+    to enforce cooldown_bars against REAL elapsed time. 2026-06-25 root
+    cause: `k5` here is always the latest `window_5m=2100` bars (a sliding
+    window), so "the latest bar" is always array position 2099 — a position,
+    not a calendar identity. The generator's OWN cooldown_bars walk is blind
+    to this: it counts bars from THIS call's array start, so a continuously-
+    qualifying run only lands a fire-eligible candidate once every
+    cooldown_bars bars, and that schedule's positions drift by -1 per live
+    tick (since the window slides by exactly 1 bar each time) — it only
+    lines up with the "current bar" check below on ~2 of every
+    cooldown_bars ticks (~33% for cooldown_bars=6). The gauge could show
+    ready=True/100% on the other ~67% of ticks while this returned None,
+    looking like "entry confirmed, no trade" even though nothing was wrong
+    with the entry conditions themselves. Fix: ask the generator for every
+    bar where the OTHER gates hold (cooldown_bars=0 override) and enforce
+    cooldown ourselves using `ts_ms` (an absolute, calendar-stable
+    timestamp on every signal, unlike `idx_5m`'s window-relative position).
     """
     if not k5 or len(k5) < BARS_7D + 1:
         return None
@@ -227,16 +247,18 @@ def check_new_signal(k5, k15, k1h) -> dict | None:
     idx = len(k5) - 1
     ret_7d = compute_ret_7d(k5, idx)
     sides = allowed_sides(ret_7d)
-    last_idx = idx
 
     for side in sides:
         gen_kw = get_side_gen_kwargs(side)
-        sigs = gen_sell_premium_iv_high(k5, k15, k1h, **gen_kw)
-        latest = [s for s in sigs if s.get("idx_5m") in (last_idx - 1, last_idx)]
+        cooldown_ms = gen_kw["cooldown_bars"] * BAR_MS_5M
+        sigs = gen_sell_premium_iv_high(k5, k15, k1h, **{**gen_kw, "cooldown_bars": 0})
+        latest = [s for s in sigs if s.get("idx_5m") in (idx - 1, idx)]
         if not latest:
             continue
         sig = latest[-1]
         if sig.get("side") != side:
+            continue
+        if last_signal_ts_ms is not None and sig["ts_ms"] - last_signal_ts_ms < cooldown_ms:
             continue
         sig["active_side"] = side
         sig["ret_7d"] = round(ret_7d, 2)
@@ -835,20 +857,23 @@ async def loop():
                         accepted=None, reject_reason="no_signal", spot=spot_val,
                         signal_payload=None)
                 else:
-                    sig = check_new_signal(k5_audit, k15_audit, k1h_audit)
+                    sig = check_new_signal(k5_audit, k15_audit, k1h_audit,
+                                            last_signal_ts_ms=state.get("last_signal_ts_ms"))
                     already_consumed = False
-                    if sig and not is_new_signal(int(sig["idx_5m"]), state.get("last_signal_idx_5m")):
-                        # Same cooldown-spaced occurrence the generator already
-                        # surfaced on a previous tick (2-bar acceptance window in
-                        # check_new_signal) — acting on it again would open a
-                        # near-duplicate position 5 min after the first one.
-                        print(f"[paper] skip signal — already consumed at idx_5m={sig['idx_5m']} "
-                              f"(last={state.get('last_signal_idx_5m')})", flush=True)
+                    if sig and not is_new_signal(int(sig["ts_ms"]), state.get("last_signal_ts_ms")):
+                        # Defense-in-depth: check_new_signal already enforces
+                        # cooldown against last_signal_ts_ms, so this should be
+                        # unreachable in practice — kept as a second guard
+                        # against acting twice on the exact same bar.
+                        print(f"[paper] skip signal — already consumed at ts_ms={sig['ts_ms']} "
+                              f"(last={state.get('last_signal_ts_ms')})", flush=True)
                         already_consumed = True
                         sig = None
                     elif sig:
-                        paper_repo.update_state(last_signal_idx_5m=int(sig["idx_5m"]))
+                        paper_repo.update_state(last_signal_idx_5m=int(sig["idx_5m"]),
+                                                last_signal_ts_ms=int(sig["ts_ms"]))
                         state["last_signal_idx_5m"] = int(sig["idx_5m"])
+                        state["last_signal_ts_ms"] = int(sig["ts_ms"])
                     if sig and broker.is_live():
                         # P4: block live opens on kill-switch / daily-loss limit.
                         blocked = _live_preopen_block(now_ms)

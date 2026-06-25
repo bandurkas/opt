@@ -138,7 +138,7 @@ def compute_ret_7d(k5: list, idx: int) -> float:
     return (k5[idx]["close"] - prev_close) / prev_close * 100
 
 
-def is_new_signal(idx_5m: int, last_signal_idx_5m: int | None) -> bool:
+def is_new_signal(ts_ms: int, last_signal_ts_ms: int | None) -> bool:
     """Has this generator occurrence already been consumed by an earlier tick?
 
     check_new_signal() re-walks the FULL k5 history every tick (no memory of
@@ -148,10 +148,17 @@ def is_new_signal(idx_5m: int, last_signal_idx_5m: int | None) -> bool:
     right after it first appeared, opening a second near-duplicate position
     5 minutes later (confirmed live 2026-06-23: Sniper1 paired entries 5 min
     apart, pairs spaced exactly 30 min = cooldown_bars). This persists the
-    idx_5m of the last occurrence we actually acted on, in `paper_state`, so
-    a tick can tell "new occurrence" from "same one I saw last tick."
+    ABSOLUTE timestamp (ts_ms) of the last occurrence we actually acted on,
+    in `paper_state`, so a tick can tell "new occurrence" from "same one I
+    saw last tick." Uses ts_ms rather than idx_5m (2026-06-25): idx_5m is a
+    position within check_new_signal's sliding 2100-bar window — the SAME
+    calendar bar gets a DIFFERENT idx_5m every tick (the window slides by
+    one bar per tick), so comparing positions across ticks is meaningless
+    and was silently rejecting every later occurrence as "already
+    consumed" forever. ts_ms is the bar's calendar timestamp, stable
+    across ticks regardless of which window slice fetched it.
     """
-    return last_signal_idx_5m is None or idx_5m > int(last_signal_idx_5m)
+    return last_signal_ts_ms is None or ts_ms > int(last_signal_ts_ms)
 
 
 def allowed_sides(ret_7d: float) -> list[str]:

@@ -135,6 +135,13 @@ CREATE TABLE IF NOT EXISTS paper_state (
 -- 2-bar acceptance window in check_new_signal() against repeat ticks
 -- (FUTURE_WORK: Sniper1 double-fire, found 2026-06-23).
 ALTER TABLE paper_state ADD COLUMN IF NOT EXISTS last_signal_idx_5m BIGINT;
+-- Absolute calendar ts_ms of the last signal acted on. last_signal_idx_5m is
+-- a position within check_new_signal's sliding 2100-bar window — the SAME
+-- calendar bar gets a DIFFERENT position every tick (the window slides),
+-- so comparing positions across ticks is meaningless. ts_ms is stable
+-- across ticks and is what cooldown/dedup actually key on now (2026-06-25,
+-- "ready=100% but no trade" root cause — see check_new_signal docstring).
+ALTER TABLE paper_state ADD COLUMN IF NOT EXISTS last_signal_ts_ms BIGINT;
 -- Live debounce window status (wid/fail_count/disqualified/min_in_window),
 -- written every per-minute check in paper_loop. Lets the dashboard gauge
 -- reflect the bot's real FLICKER_TOLERANCE persistence state instead of a

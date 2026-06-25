@@ -40,6 +40,7 @@ def update_state(*, cb_cooldown_until_ms: int | None = None,
                  consec_losses: int | None = None,
                  recent_pnls: list[float] | None = None,
                  last_signal_idx_5m: int | None = None,
+                 last_signal_ts_ms: int | None = None,
                  window_status: dict | None = None) -> None:
     fields = []
     values: list[Any] = []
@@ -55,6 +56,9 @@ def update_state(*, cb_cooldown_until_ms: int | None = None,
     if last_signal_idx_5m is not None:
         fields.append("last_signal_idx_5m = %s")
         values.append(last_signal_idx_5m)
+    if last_signal_ts_ms is not None:
+        fields.append("last_signal_ts_ms = %s")
+        values.append(last_signal_ts_ms)
     if window_status is not None:
         fields.append("window_status_json = %s::jsonb")
         values.append(json.dumps(window_status))
