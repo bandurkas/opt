@@ -181,15 +181,67 @@ def determine_side(ret_7d: float) -> str | None:
     return None  # range zone — UI should display "both / MTF picks"
 
 
+def _evaluate_side(side: str, mtf: dict, regime: str,
+                    rolling_vols: list[float], closes_1h: list[float]) -> dict:
+    """Runs the vol/regime/mtf/bull checks for one side's gen_kw — mirrors
+    gen_sell_premium_iv_high exactly so the gauge/debounce never diverges
+    from what the real generator would fire on.
+
+    `rolling_vols` and `regime` are computed ONCE by the caller and shared
+    across sides — they don't depend on which side's gen_kw is being
+    checked (only the vol_threshold/regime_filter membership test does), so
+    recomputing them per side would just be the same O(n) realized_vol scan
+    and detect_regime call done twice every per-minute tick in range zone."""
+    from .indicators import ema
+    from .momentum_mtf import direction_filter_ok
+
+    gen_kw = PUT_GEN_KWARGS if side == "P" else CALL_GEN_KWARGS
+    out = {
+        "vol_high": False, "regime_ok": False, "mtf_direction_ok": False,
+        "vol_pctile": None, "regime": regime, "ema_ratio": None,
+        "bull_filter_ok": True,
+    }
+
+    if len(rolling_vols) >= 30:
+        current_vol = rolling_vols[-1]
+        sorted_vols = sorted(rolling_vols)
+        threshold_idx = int(len(sorted_vols) * gen_kw["vol_threshold"])
+        threshold = sorted_vols[threshold_idx]
+        below = sum(1 for v in sorted_vols if v < current_vol)
+        out["vol_pctile"] = round(below / len(sorted_vols), 3)
+        out["vol_high"] = current_vol >= threshold
+
+    out["regime_ok"] = regime in gen_kw["regime_filter"]
+
+    out["mtf_direction_ok"] = direction_filter_ok(
+        mtf, gen_kw.get("mtf_direction_filter"), gen_kw.get("mtf_anchor_tf"))
+
+    bull_max = gen_kw.get("bull_market_ratio_max")
+    if bull_max is not None and len(closes_1h) >= 200:
+        ema50 = ema(closes_1h, 50)
+        ema200 = ema(closes_1h, 200)
+        if ema50 is not None and ema200 not in (None, 0):
+            ratio = ema50 / ema200
+            out["ema_ratio"] = round(ratio, 4)
+            out["bull_filter_ok"] = ratio <= bull_max
+
+    out["ready"] = (out["vol_high"] and out["regime_ok"]
+                    and out["mtf_direction_ok"] and out["bull_filter_ok"])
+    return out
+
+
 def evaluate_conditions(k5: list, k15: list, k1h: list) -> dict:
     """Check each entry condition for V2 trend-following hybrid.
 
     Returns a dict with per-condition booleans + summary + which side(s) active.
-    For UI: when in range zone, both sides allowed and MTF picks; we report
-    the MTF-preferred side as `active_side` so the frontend can show one
-    coherent answer.
+    In range zone (both sides allowed), checks EACH side's own gen_kw
+    independently — exactly like check_new_signal/gen_sell_premium_iv_high
+    does live — instead of picking one side from a single shared MTF
+    consensus first. That earlier shortcut silently couldn't represent a
+    side whose gate (e.g. CALL's 1h-anchor MTF) diverges from the 3-way
+    consensus used to pick `active_side`.
     """
-    from .indicators import ema, realized_vol
+    from .indicators import realized_vol
     from .momentum_mtf import analyze_tf, consensus
     from .regime import detect_regime
 
@@ -231,76 +283,51 @@ def evaluate_conditions(k5: list, k15: list, k1h: list) -> dict:
     out["mtf_direction"] = mtf["direction"]
     out["mtf_aligned_count"] = mtf["tfs_aligned"]
 
-    # When both sides allowed (range), pick the MTF-preferred side for display.
-    if len(sides) == 1:
-        active_side = sides[0]
-    else:
-        if mtf["direction"] == "up" and mtf["tfs_aligned"] >= 2:
-            active_side = "P"
-        elif mtf["direction"] == "down" and mtf["tfs_aligned"] >= 2:
-            active_side = "C"
-        else:
-            active_side = None  # range + neutral MTF → won't fire
-    out["active_side"] = active_side
-
-    if active_side is None:
-        # range zone with no MTF alignment — bot won't trade this bar
-        return out
-
-    # Select gen kwargs for the (display) active side
-    gen_kw = PUT_GEN_KWARGS if active_side == "P" else CALL_GEN_KWARGS
-
-    # 1) Vol percentile (1h realized vol vs rolling history)
     closes_1h = [c["close"] for c in s1h]
+
+    # Vol-percentile rolling window and regime classification don't depend on
+    # which side's gen_kw is being checked (only the threshold/filter
+    # membership test does) — compute once and share, instead of repeating
+    # the same O(n) realized_vol scan + detect_regime call per side below.
     rolling_vols: list[float] = []
     for j in range(20, len(closes_1h)):
         rv = realized_vol(closes_1h[:j + 1], lookback=24)
         if rv is not None:
             rolling_vols.append(rv)
-    if len(rolling_vols) >= 30:
-        current_vol = rolling_vols[-1]
-        sorted_vols = sorted(rolling_vols)
-        threshold_idx = int(len(sorted_vols) * gen_kw["vol_threshold"])
-        threshold = sorted_vols[threshold_idx]
-        below = sum(1 for v in sorted_vols if v < current_vol)
-        pctile = below / len(sorted_vols)
-        out["vol_pctile"] = round(pctile, 3)
-        out["vol_high"] = current_vol >= threshold
+    regime = detect_regime(s1h).get("regime", "unknown")
 
-    # 2) Regime
-    reg = detect_regime(s1h)
-    out["regime"] = reg.get("regime", "unknown")
-    out["regime_ok"] = out["regime"] in gen_kw["regime_filter"]
-
-    # 3) MTF direction filter (vs side-specific requirement)
-    mtf_filter = gen_kw.get("mtf_direction_filter")
-    if mtf_filter == "up":
-        out["mtf_direction_ok"] = (mtf["direction"] == "up" and mtf["tfs_aligned"] >= 2)
-    elif mtf_filter == "down":
-        out["mtf_direction_ok"] = (mtf["direction"] == "down" and mtf["tfs_aligned"] >= 2)
+    # Evaluate every allowed side independently (matches the real generator).
+    # Trend zone (one side forced by ret_7d) keeps reporting that side as
+    # active_side regardless of readiness — unchanged back-compat behavior.
+    # Range zone (both sides allowed) picks whichever side is actually ready,
+    # or None if neither is — this is the part that used to short-circuit on
+    # a single shared MTF consensus before any per-side gen_kw ran.
+    side_results = {side: _evaluate_side(side, mtf, regime, rolling_vols, closes_1h)
+                     for side in sides}
+    if len(sides) == 1:
+        active_side = sides[0]
     else:
-        out["mtf_direction_ok"] = True
+        active_side = next((s for s in sides if side_results[s]["ready"]), None)
+    out["active_side"] = active_side
 
-    # 4) Bull-market filter — applies to whichever side's gen_kw actually sets
-    # bull_market_ratio_max (today that's CALL only; PUT's is None). Previously
-    # gated on `active_side == "P"`, which meant it was NEVER enforced in
-    # practice: PUT's bull_market_ratio_max is None (no-op) and CALL's real
-    # 1.05 cap never got checked because CALL never entered this branch. Real
-    # generator (gen_sell_premium_iv_high, strategy_registry.py) computes this
-    # unconditionally by side — mirror that here so the gauge matches what
-    # actually fires.
-    bull_max = gen_kw.get("bull_market_ratio_max")
-    if bull_max is not None and len(closes_1h) >= 200:
-        ema50 = ema(closes_1h, 50)
-        ema200 = ema(closes_1h, 200)
-        if ema50 is not None and ema200 not in (None, 0):
-            ratio = ema50 / ema200
-            out["ema_ratio"] = round(ratio, 4)
-            out["bull_filter_ok"] = ratio <= bull_max
+    # When nobody's ready in range zone, display whichever side has more
+    # gates passing (closest to firing) rather than always defaulting to the
+    # first allowed side — the gauge exists to show how close the market is,
+    # and silently always showing Put's breakdown would hide a Call that's
+    # one gate away.
+    def _gates_passed(r: dict) -> int:
+        return sum([r["vol_high"], r["regime_ok"], r["mtf_direction_ok"], r["bull_filter_ok"]])
 
-    # Summary: ready if vol + regime + mtf + bull all pass
-    out["ready"] = (out["vol_high"] and out["regime_ok"]
-                    and out["mtf_direction_ok"] and out["bull_filter_ok"])
+    display_side = active_side or max(sides, key=lambda s: _gates_passed(side_results[s]))
+    res = side_results[display_side]
+    out["vol_high"] = res["vol_high"]
+    out["regime_ok"] = res["regime_ok"]
+    out["mtf_direction_ok"] = res["mtf_direction_ok"]
+    out["vol_pctile"] = res["vol_pctile"]
+    out["regime"] = res["regime"]
+    out["ema_ratio"] = res["ema_ratio"]
+    out["bull_filter_ok"] = res["bull_filter_ok"]
+    out["ready"] = active_side is not None and res["ready"]
     return out
 
 

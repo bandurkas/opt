@@ -13,7 +13,7 @@ from __future__ import annotations
 from typing import Callable, Iterator
 
 from .indicators import adx, atr, bollinger, donchian, ema, realized_vol, rsi, zscore
-from .momentum_mtf import analyze_tf, consensus
+from .momentum_mtf import analyze_tf, consensus, direction_filter_ok
 from .regime import detect_regime
 
 
@@ -175,6 +175,7 @@ def gen_sell_premium_iv_high(k5, k15, k1h, *, vol_lookback_h: int = 168, vol_thr
                               adx_max: float | None = None,
                               mtf_direction_filter: str | None = None,
                               mtf_min_aligned: int = 2,
+                              mtf_anchor_tf: str | None = None,
                               bull_market_ratio_max: float | None = None,
                               cooldown_bars: int = 24,
                               adx_score_min: float | None = None) -> list[dict]:
@@ -191,6 +192,11 @@ def gen_sell_premium_iv_high(k5, k15, k1h, *, vol_lookback_h: int = 168, vol_thr
         consensus is bullish (≥2 of 3 TFs aligned up) — pair with side='P' to sell
         puts in uptrend. When 'down', only emit when MTF is bearish — pair with
         side='C' to sell calls in downtrend. None = no directional filter.
+    `mtf_anchor_tf`: None | '1h'. When '1h', `mtf_direction_filter` is checked
+        against the 1h timeframe's OWN direction instead of the 3-way 5m/15m/1h
+        consensus majority — backtested CALL-only (sniper_mtf_loosen_backtest.py):
+        train avg -0.78%->+4.00%, holdout +0.79%->+2.69%, n 1128->1239. PUT
+        degrades under this mode (train avg -8.98%) — do not use for PUT.
     """
     out: list[dict] = []
     last_idx = -10_000
@@ -234,7 +240,7 @@ def gen_sell_premium_iv_high(k5, k15, k1h, *, vol_lookback_h: int = 168, vol_thr
                 continue
 
         if mtf_direction_filter is not None:
-            if not mtf or mtf["direction"] != mtf_direction_filter or mtf["tfs_aligned"] < mtf_min_aligned:
+            if not mtf or not direction_filter_ok(mtf, mtf_direction_filter, mtf_anchor_tf, mtf_min_aligned):
                 continue
 
         # Bull-market kill switch: when EMA50_1h / EMA200_1h > threshold, skip

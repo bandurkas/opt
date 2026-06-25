@@ -68,6 +68,12 @@ CALL_GEN_KWARGS = {
     "side": "C",
     "adx_max": None,
     "mtf_direction_filter": "down",
+    # 2026-06-25 sniper_mtf_loosen_backtest.py: 1h-only MTF anchor (ignore 5m/15m
+    # noise) beats the 3-way >=2/3 consensus for CALL on both train (avg
+    # -0.78%->+4.00%) and holdout (+0.79%->+2.69%), n 1128->1239. PUT-side test
+    # of the same anchor degraded badly on train (-8.98%) — CALL-ONLY, do not
+    # copy to PUT_GEN_KWARGS without its own validated backtest.
+    "mtf_anchor_tf": "1h",
     "bull_market_ratio_max": 1.05,
     "cooldown_bars": 6,
 }

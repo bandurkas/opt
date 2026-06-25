@@ -95,3 +95,25 @@ def consensus(tf_5m: dict, tf_15m: dict, tf_1h: dict) -> dict:
         "tf_15m": tf_15m,
         "tf_1h": tf_1h,
     }
+
+
+def direction_filter_ok(mtf: dict, mtf_filter: str | None,
+                         anchor_tf: str | None = None, min_aligned: int = 2) -> bool:
+    """Single source of truth for the MTF directional gate, shared by the
+    live generator (strategy_registry.gen_sell_premium_iv_high) and the
+    dashboard/debounce gauge (paper_strategy.evaluate_conditions) so they can
+    never diverge.
+
+    `mtf_filter`: 'up' | 'down' | None. None = no directional requirement.
+    `anchor_tf`: None | '1h'. When '1h', only that timeframe's own direction
+        decides — the 3-way consensus/min_aligned majority is bypassed
+        entirely. Backtested CALL-only (sniper_mtf_loosen_backtest.py,
+        2026-06-25): beats the >=2/3 default on both train and holdout for
+        CALL; degrades PUT on train. Do not set for PUT without its own
+        validated backtest.
+    """
+    if mtf_filter is None:
+        return True
+    if anchor_tf == "1h":
+        return mtf["tf_1h"]["direction"] == mtf_filter
+    return mtf["direction"] == mtf_filter and mtf["tfs_aligned"] >= min_aligned
