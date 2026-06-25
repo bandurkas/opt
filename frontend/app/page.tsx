@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { fetchPaperState, fetchPaperConditions, fetchPaperPositions, fetchRecentTrades, fetchEquityHistory, fetchBtcStraddleState, fetchBtcStraddlePositions, fetchBtcStraddleEquityHistory, fetchEthStraddleState, fetchEthStraddlePositions, fetchEthStraddleEquityHistory, fetchEthStraddleChart, fetchBtcPrice, type PaperState, type PaperConditions, type PaperPosition, type EquityPoint, type BtcStraddleState, type BtcStraddlePosition, type EthStraddleState, type EthStraddlePosition, type Kline, type EthStraddleChartLeg } from "./lib/api";
+import { fetchPaperState, fetchPaperConditions, fetchPaperPositions, fetchRecentTrades, fetchEquityHistory, fetchBtcStraddleState, fetchBtcStraddlePositions, fetchBtcStraddleEquityHistory, fetchEthStraddleState, fetchEthStraddlePositions, fetchEthStraddleEquityHistory, fetchEthStraddleChart, fetchBtcPrice, fetchTyagachState, fetchTyagachPositions, fetchTyagachEquityHistory, fetchTyagachChart, type PaperState, type PaperConditions, type PaperPosition, type EquityPoint, type BtcStraddleState, type BtcStraddlePosition, type EthStraddleState, type EthStraddlePosition, type Kline, type EthStraddleChartLeg, type TyagachState, type TyagachPosition, type TyagachChartZone } from "./lib/api";
 import MissionControl from "./components/MissionControl";
 import StraddleChart from "./components/StraddleChart";
+import TyagachChart from "./components/TyagachChart";
 import { ActiveContractsRail, ItmBadge, Countdown, useLiveNow, type Contract } from "./components/ActiveContracts";
 
 const REFRESH_MS = 15_000;
@@ -59,6 +60,14 @@ export default function Dashboard() {
   const [ethStraddleKlines, setEthStraddleKlines] = useState<Kline[]>([]);
   const [ethStraddleChartLegs, setEthStraddleChartLegs] = useState<EthStraddleChartLeg[]>([]);
   const [ethStraddleSpot, setEthStraddleSpot] = useState<number | null>(null);
+
+  const [tyagachState, setTyagachState] = useState<TyagachState | null>(null);
+  const [tyagachOpenPositions, setTyagachOpenPositions] = useState<TyagachPosition[]>([]);
+  const [tyagachRecentTrades, setTyagachRecentTrades] = useState<TyagachPosition[]>([]);
+  const [tyagachEquityHistory, setTyagachEquityHistory] = useState<EquityPoint[]>([]);
+  const [tyagachError, setTyagachError] = useState<string | null>(null);
+  const [tyagachKlines, setTyagachKlines] = useState<Kline[]>([]);
+  const [tyagachZones, setTyagachZones] = useState<TyagachChartZone[]>([]);
 
   // Separate effect/error state from the ETH signal book above — the BTC bot is a
   // distinct deploy (own container/tables) and may lag behind or be absent;
@@ -117,6 +126,40 @@ export default function Dashboard() {
       } catch (e) {
         if (cancelled) return;
         setEthStraddleError(e instanceof Error ? e.message : String(e));
+      }
+    };
+    load();
+    const id = setInterval(load, REFRESH_MS);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
+
+  // Tyagach is a fully separate SERVICE, not just a separate container in
+  // this same opt-app deploy — own repo (TG), own SQLite, own API on :8100,
+  // no opt-app auth on that call path (see lib/api.ts's TYAGACH_API_BASE
+  // comment). Isolated the same way as the BTC/ETH straddle effects above:
+  // its unreachability must never blank out the rest of the dashboard.
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const [s, op, rt, eq, chart] = await Promise.all([
+          fetchTyagachState(),
+          fetchTyagachPositions("open"),
+          fetchTyagachPositions("closed", 200),
+          fetchTyagachEquityHistory(2000),
+          fetchTyagachChart(),
+        ]);
+        if (cancelled) return;
+        setTyagachState(s);
+        setTyagachOpenPositions(op);
+        setTyagachRecentTrades(rt);
+        setTyagachEquityHistory(eq);
+        setTyagachKlines(chart.klines);
+        setTyagachZones(chart.zones);
+        setTyagachError(null);
+      } catch (e) {
+        if (cancelled) return;
+        setTyagachError(e instanceof Error ? e.message : String(e));
       }
     };
     load();
@@ -682,6 +725,134 @@ export default function Dashboard() {
               <div className="bg-slate-900 border border-slate-800 rounded-xl px-4 py-6 text-center">
                 <p className="text-sm text-slate-400">No activity yet</p>
                 <p className="text-xs text-slate-500 mt-1">Next cycle opens at the 24h boundary...</p>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ───────────────────── Tyagach (separate service, own API) ───────────────────── */}
+        <div className="pt-2">
+          <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3">
+            Tyagach <span className="text-slate-600 font-normal">· ETH OB/BB/MB zones · sell rich IV (paper)</span>
+          </h2>
+        </div>
+
+        {tyagachError && (
+          <div className="bg-rose-950/30 border border-rose-800/50 rounded-xl px-4 py-3 text-sm text-rose-300">
+            Tyagach unreachable: {tyagachError}
+          </div>
+        )}
+
+        {tyagachState && (
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <StatCard
+                label="Equity"
+                value={fmtUsd(tyagachState.balance_usdt ?? 0)}
+                sub={`${((tyagachState.balance_usdt ?? 0) - tyagachState.start_balance_usdt) >= 0 ? "+" : ""}${fmtUsd((tyagachState.balance_usdt ?? 0) - tyagachState.start_balance_usdt)}`}
+                accent={(tyagachState.balance_usdt ?? 0) >= tyagachState.start_balance_usdt ? "text-emerald-300" : "text-rose-300"}
+              />
+              <StatCard
+                label="Win Rate"
+                value={tyagachState.win_rate != null ? `${(tyagachState.win_rate * 100).toFixed(0)}%` : "—"}
+                sub={`${tyagachState.wins}W / ${tyagachState.losses}L`}
+              />
+              <StatCard
+                label="Trades closed"
+                value={`${tyagachState.n_closed}`}
+                sub={`${tyagachState.open_position_count} open`}
+              />
+              <StatCard
+                label="Max DD"
+                value={`${tyagachState.max_dd_pct.toFixed(1)}%`}
+                sub={tyagachState.paused ? "PAUSED" : "armed"}
+              />
+            </div>
+
+            {tyagachEquityHistory.length > 1 && (
+              <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+                <div className="px-4 py-2 bg-slate-800/50 text-xs font-semibold text-slate-400">
+                  Equity (paper)
+                </div>
+                <div className="p-2">
+                  <EquityChart points={tyagachEquityHistory} startEquity={tyagachState.start_balance_usdt} />
+                </div>
+              </div>
+            )}
+
+            {tyagachOpenPositions.length > 0 && (
+              <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+                <div className="px-4 py-2 bg-slate-800/50 text-xs font-semibold text-slate-400">
+                  Open positions ({tyagachOpenPositions.length})
+                </div>
+                <div className="divide-y divide-slate-800">
+                  {tyagachOpenPositions.map((p) => (
+                    <div key={p.id} className="px-4 py-3 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                          p.option_side === "P" ? "bg-rose-500/10 text-rose-300" : "bg-emerald-500/10 text-emerald-300"
+                        }`}>
+                          SELL {p.option_side === "P" ? "PUT" : "CALL"}
+                        </span>
+                        <span className="text-xs text-slate-500">{p.zone_kind}</span>
+                        <span className="text-sm font-mono">${p.strike}</span>
+                        <span className="text-xs text-slate-500">{p.num_units.toFixed(2)} ETH</span>
+                      </div>
+                      <div className="text-right">
+                        <Countdown expiryMs={p.expiry_ts_ms} now={now} />
+                        <p className="text-[10px] text-slate-600 mt-0.5">{p.symbol}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {tyagachKlines.length > 1 && (
+              <TyagachChart klines={tyagachKlines} zones={tyagachZones} />
+            )}
+
+            {tyagachRecentTrades.length > 0 && (
+              <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+                <div className="px-4 py-2 bg-slate-800/50 text-xs font-semibold text-slate-400 flex justify-between">
+                  <span>Журнал сделок</span>
+                  <span>{tyagachRecentTrades.length} total</span>
+                </div>
+                <div className="divide-y divide-slate-800 max-h-80 overflow-y-auto">
+                  {tyagachRecentTrades.map((t) => {
+                    const isWin = (t.pnl_net || 0) > 0;
+                    const pnlPct = t.sell_premium_received > 0 ? ((t.pnl_net || 0) / t.sell_premium_received) * 100 : 0;
+                    return (
+                      <div key={t.id} className="px-4 py-2.5 flex items-center justify-between text-sm">
+                        <div className="flex items-center gap-2">
+                          <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                            t.option_side === "P" ? "bg-rose-500/10 text-rose-300" : "bg-emerald-500/10 text-emerald-300"
+                          }`}>
+                            {t.zone_kind} {t.option_side}
+                          </span>
+                          <span className="font-mono text-xs">${t.strike}</span>
+                          <span className="text-xs text-slate-500">{t.exit_ts_ms ? fmtDay(t.exit_ts_ms) : ""}</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs text-slate-500">{t.exit_reason || ""}</span>
+                          <span className={`font-mono font-bold text-xs ${isWin ? "text-emerald-400" : "text-rose-400"}`}>
+                            {fmtPct(pnlPct)}
+                          </span>
+                          <span className={`font-mono text-xs ${isWin ? "text-emerald-400" : "text-rose-400"}`}>
+                            {t.pnl_net != null ? fmtUsd(t.pnl_net) : ""}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {tyagachOpenPositions.length === 0 && tyagachRecentTrades.length === 0 && (
+              <div className="bg-slate-900 border border-slate-800 rounded-xl px-4 py-6 text-center">
+                <p className="text-sm text-slate-400">No activity yet</p>
+                <p className="text-xs text-slate-500 mt-1">Waiting for a zone signal with rich enough IV...</p>
               </div>
             )}
           </>

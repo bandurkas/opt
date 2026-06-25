@@ -577,24 +577,53 @@ export async function updateCredentials(accountName: AccountName, apiKey: string
 
 export type TyagachState = {
   balance_usdt: number | null;
+  start_balance_usdt: number;
+  started_at_ms: number | null;
   paused: boolean;
   last_processed_ts_ms: number | null;
   open_position_count: number;
+  n_closed: number;
+  wins: number;
+  losses: number;
+  win_rate: number | null;
+  realized_usd: number;
+  max_dd_pct: number;
 };
 
 export type TyagachPosition = {
   id: number;
-  zone_kind: string;
-  direction: string;
-  option_side: string;
+  zone_kind: "OB" | "BB" | "MB";
+  direction: "bullish" | "bearish";
+  option_side: "C" | "P";
   symbol: string;
   strike: number;
   entry_ts_ms: number;
   entry_spot: number;
-  status: string;
+  stop_price: number;
+  tp_price: number;
+  expiry_ts_ms: number;
+  num_units: number;
+  sell_premium_received: number;
+  status: "open" | "closed";
   exit_ts_ms: number | null;
+  exit_spot: number | null;
   exit_reason: string | null;
   pnl_net: number | null;
+};
+
+// Tyagach's stop_price/tp_price are already SPOT price levels (the
+// R-multiple system operates directly on price) — unlike StraddleChartLeg,
+// no premium-to-spot back-solving is needed to draw them on a chart.
+export type TyagachChartZone = {
+  id: number;
+  zone_kind: "OB" | "BB" | "MB";
+  direction: "bullish" | "bearish";
+  option_side: "C" | "P";
+  symbol: string;
+  strike: number;
+  entry_spot: number;
+  stop_price: number;
+  tp_price: number;
 };
 
 async function tget<T>(path: string): Promise<T> {
@@ -613,8 +642,27 @@ export async function fetchTyagachState(): Promise<TyagachState> {
   return tget(`/state`);
 }
 
-export async function fetchTyagachPositions(limit = 20): Promise<TyagachPosition[]> {
-  return tget(`/positions?limit=${limit}`);
+export async function fetchTyagachPositions(
+  status: "open" | "closed" | null = null,
+  limit = 50,
+): Promise<TyagachPosition[]> {
+  const qs = status ? `status=${status}&limit=${limit}` : `limit=${limit}`;
+  return tget(`/positions?${qs}`);
+}
+
+// Tyagach's equity_history returns {ts_ms, balance_usdt} rows (its own
+// shape, no realized/unrealized/n_open/n_closed breakdown per point like
+// the straddle bots) — mapped here into EquityPoint so the SAME EquityChart
+// component on the page can render it without bot-specific branching.
+export async function fetchTyagachEquityHistory(limit = 2000): Promise<EquityPoint[]> {
+  const rows = await tget<{ ts_ms: number; balance_usdt: number }[]>(`/equity_history?limit=${limit}`);
+  return rows.map((r) => ({ ts_ms: r.ts_ms, equity: r.balance_usdt, realized: 0, unrealized: 0, n_open: 0, n_closed: 0 }));
+}
+
+export async function fetchTyagachChart(
+  klineLimit = 288,
+): Promise<{ spot: number | null; klines: Kline[]; zones: TyagachChartZone[] }> {
+  return tget(`/chart?kline_limit=${klineLimit}`);
 }
 
 export async function pauseTyagach(): Promise<void> {
