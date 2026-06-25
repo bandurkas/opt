@@ -74,7 +74,20 @@ POLL_INTERVAL_S = int(os.getenv("PAPER_POLL_INTERVAL", "30"))
 SIGNAL_CHECK_EVERY_MIN = 5
 # Entry conditions are re-evaluated every minute; the open command is committed
 # near the 5m candle close (~:50 of the window's last minute) only if conditions
-# held on EVERY per-minute check inside the window (persistence / debounce).
+# held on at least (SIGNAL_CHECK_EVERY_MIN - FLICKER_TOLERANCE) of the 5
+# per-minute checks inside the window (persistence / debounce).
+#
+# FLICKER_TOLERANCE=1 (2026-06-25, sniper_persistence_backtest.py): the strict
+# "all 5 must pass" rule (tolerance=0) was rejecting windows where exactly 1
+# of 5 one-minute checks flickered false — almost always the MTF-alignment
+# gate (326/373 single-flicker windows; vol/regime/bull rarely flicker).
+# Tolerating 1 flicker lifts trade count +5.4% (1435→1513) with equal/better
+# avg PnL and higher total/holdout return; the rescued trades are themselves
+# profitable (WR 60.3%, holdout avg +5.3%), not noise. This is safe to loosen
+# because it only widens which windows reach the close-tick check below — the
+# actual fire still re-validates through check_new_signal's real generator
+# gate, so a flickering minute can never let a bad trade through on its own.
+FLICKER_TOLERANCE = int(os.getenv("PAPER_FLICKER_TOLERANCE", "1"))
 ENTRY_FIRE_SECOND = int(os.getenv("PAPER_ENTRY_FIRE_SECOND", "50"))
 SPOT_SYMBOL = "ETHUSDT"
 BASE_COIN = "ETH"
@@ -181,6 +194,16 @@ def call_dollar_sl_pct(strike: float, entry_credit: float,
 
 
 # ───────────────────── signal logic ─────────────────────────────────
+
+def window_fail_step(fail_count: int, minute_ready: bool) -> tuple[int, bool]:
+    """Pure: one per-minute persistence-check step within a 5m window.
+    Returns (new_fail_count, disqualified) — disqualified once more than
+    FLICKER_TOLERANCE of the window's per-minute checks have failed.
+    Factored out for unit testing without the async poll loop."""
+    if not minute_ready:
+        fail_count += 1
+    return fail_count, fail_count > FLICKER_TOLERANCE
+
 
 def check_new_signal(k5, k15, k1h) -> dict | None:
     """Run V2 trend-following hybrid generator (validated 2026-06-02 on 365d).
@@ -639,7 +662,7 @@ async def loop():
 
     # Per-window persistence state for the debounced entry:
     cur_window_id = -1
-    window_disqualified = False   # any per-minute check in this window failed → no entry
+    window_fail_count = 0         # per-minute checks in this window that came back not-ready
     window_fired = False          # already opened (or attempted) in this window
     window_audited = False        # observation row already persisted for this window
     last_minute_eval = -1         # epoch-minute of the last per-minute condition eval
@@ -716,13 +739,14 @@ async def loop():
 
             if wid != cur_window_id:
                 cur_window_id = wid
-                window_disqualified = False
+                window_fail_count = 0
                 window_fired = False
                 window_audited = False
                 last_minute_eval = -1
 
-            # 2a) Per-minute condition check (once per distinct minute). A single
-            #     failed check disqualifies the whole window (persistence rule).
+            # 2a) Per-minute condition check (once per distinct minute). The
+            #     window is disqualified once more than FLICKER_TOLERANCE of
+            #     its 5 checks have failed (persistence rule).
             if epoch_min != last_minute_eval:
                 last_minute_eval = epoch_min
                 k5_m, k15_m, k1h_m = load_klines_for_generator()
@@ -730,12 +754,13 @@ async def loop():
                     minute_ready, ev_m = conditions_ready(k5_m, k15_m, k1h_m)
                 else:
                     minute_ready, ev_m = False, {}
-                if not minute_ready:
-                    window_disqualified = True
+                window_fail_count, window_disqualified = window_fail_step(
+                    window_fail_count, minute_ready)
                 print(f"[paper] cond w{wid} m{min_in_window}: ready={minute_ready} "
                       f"side={ev_m.get('active_side')} regime={ev_m.get('regime')} "
                       f"mtf={ev_m.get('mtf_direction')}/{ev_m.get('mtf_aligned_count')} "
-                      f"vol={ev_m.get('vol_high')} disq={window_disqualified}", flush=True)
+                      f"vol={ev_m.get('vol_high')} fails={window_fail_count} "
+                      f"disq={window_disqualified}", flush=True)
 
                 # Persist one observation row per disqualified window so the audit
                 # trail is complete during long range-less stretches (the fire-time

@@ -268,16 +268,22 @@ def evaluate_conditions(k5: list, k15: list, k1h: list) -> dict:
     else:
         out["mtf_direction_ok"] = True
 
-    # 4) Bull-market filter (Put side only)
-    if active_side == "P":
-        bull_max = gen_kw.get("bull_market_ratio_max")
+    # 4) Bull-market filter — applies to whichever side's gen_kw actually sets
+    # bull_market_ratio_max (today that's CALL only; PUT's is None). Previously
+    # gated on `active_side == "P"`, which meant it was NEVER enforced in
+    # practice: PUT's bull_market_ratio_max is None (no-op) and CALL's real
+    # 1.05 cap never got checked because CALL never entered this branch. Real
+    # generator (gen_sell_premium_iv_high, strategy_registry.py) computes this
+    # unconditionally by side — mirror that here so the gauge matches what
+    # actually fires.
+    bull_max = gen_kw.get("bull_market_ratio_max")
+    if bull_max is not None and len(closes_1h) >= 200:
         ema50 = ema(closes_1h, 50)
         ema200 = ema(closes_1h, 200)
         if ema50 is not None and ema200 not in (None, 0):
             ratio = ema50 / ema200
             out["ema_ratio"] = round(ratio, 4)
-            if bull_max is not None:
-                out["bull_filter_ok"] = ratio <= bull_max
+            out["bull_filter_ok"] = ratio <= bull_max
 
     # Summary: ready if vol + regime + mtf + bull all pass
     out["ready"] = (out["vol_high"] and out["regime_ok"]
@@ -295,7 +301,7 @@ def entry_proximity(cond: dict, adx_score: float) -> dict:
       - adx   : adx_score/10  (HIGH = low/falling ADX = range-like = best decay)
       - mtf   : aligned timeframes / 3
       - vol   : volatility percentile
-      - bull  : bull-market filter pass (Put side)
+      - bull  : bull-market filter pass (Call side; PUT's bull_market_ratio_max is None)
     100 is reserved for `ready` (every gate actually passes), so the gauge never
     claims a full signal the bot wouldn't take.
     """
