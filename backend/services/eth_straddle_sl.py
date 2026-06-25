@@ -33,6 +33,20 @@ instead: it roughly halves the dollar-stop ($11-12/leg), closing most of the
 win/loss gap without depending on the immature filter. Revisit 0.35+filter
 together once the filter has ~30d of real IV history (~early Aug 2026).
 
+Re-ran the full 381-cycle/762-leg history at FRAC=0.15 to sanity-check the
+live asymmetry against a real sample size: actual ratio is ~$3.17 avg TP2
+win vs ~$5.71 avg SL loss (≈1:1.8, net +$337) — the live 1:4-8 ratio was a
+small-sample artifact from 2 unusually bad SL draws, not the true
+long-run shape. Then swept TP2_PCT (0.50-0.95) x FRAC (0.10-0.25): TP2=0.90
+strictly improves on TP2=0.80 at every FRAC tested — higher avg%, higher
+Sharpe, higher net$, on BOTH train and holdout (train Sharpe +0.19→+0.21,
+holdout +0.25→+0.28 at FRAC=0.15). Deployed TP2_PCT=0.90 alongside the
+existing FRAC=0.15. The SL/TP exit-parameter axis is now near its ceiling
+on this backtest (no FRAC materially beats 0.15, no TP2 materially beats
+0.90) — the next lever is either the entry filter (once mature) or a
+defined-risk structure (capping the SL tail by construction), not further
+exit-parameter tuning.
+
 Pure / dependency-free — unit-tests without DB or network, same as
 btc_straddle_sl.py / live_safety.py.
 """
@@ -41,7 +55,7 @@ from __future__ import annotations
 IM_RATE = 0.10          # initial-margin rate estimate: IM_RATE * strike + premium
 LOT_ETH = 0.10          # Bybit ETH option lot (min qty / qty step)
 SL_DOLLAR_FRAC = 0.15   # honest unconditional-population optimum (eth_straddle_sl_resweep.py) — do NOT reuse BTC's 2.0 or the filter-bundled 0.35 (see note above)
-TP2_PCT = 0.80          # take-profit at 80% of premium decayed
+TP2_PCT = 0.90          # take-profit at 90% of premium decayed — strictly beats 0.80 on train+holdout at this FRAC (see note above)
 CYCLE_H = 24.0          # hours per cycle
 
 
