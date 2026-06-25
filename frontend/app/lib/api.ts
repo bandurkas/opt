@@ -2,6 +2,17 @@ export const API_BASE =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "") ||
   "http://localhost:8000/api/v1";
 
+// Tyagach is a fully separate service (own repo, own SQLite, own process —
+// see ARCHITECTURE.md in the TG repo), not part of opt-app's Postgres/
+// control_repo. Its API has no auth of its own, so this is a direct
+// cross-origin call from the browser, NOT proxied through opt-app's
+// password-gated backend like every other Mission Control call below —
+// an accepted, documented tradeoff (open port, same exposure pattern as
+// opt-app's own :8000/:3000).
+export const TYAGACH_API_BASE =
+  process.env.NEXT_PUBLIC_TYAGACH_API_URL?.replace(/\/+$/, "") ||
+  "http://187.127.114.34:8100/api/v1/tyagach";
+
 // Every request carries the mc_session cookie (Mission Control auth). A 401
 // means the session is missing/expired — bounce to /login from one place
 // instead of every call site having to handle it.
@@ -560,4 +571,60 @@ export async function fetchCredentials(): Promise<CredentialsInfo[]> {
 
 export async function updateCredentials(accountName: AccountName, apiKey: string, apiSecret: string): Promise<void> {
   await jpost(`/settings/credentials/${accountName}`, { api_key: apiKey, api_secret: apiSecret });
+}
+
+// ───────────────────────── Tyagach (separate service, own API) ─────────────────────────
+
+export type TyagachState = {
+  balance_usdt: number | null;
+  paused: boolean;
+  last_processed_ts_ms: number | null;
+  open_position_count: number;
+};
+
+export type TyagachPosition = {
+  id: number;
+  zone_kind: string;
+  direction: string;
+  option_side: string;
+  symbol: string;
+  strike: number;
+  entry_ts_ms: number;
+  entry_spot: number;
+  status: string;
+  exit_ts_ms: number | null;
+  exit_reason: string | null;
+  pnl_net: number | null;
+};
+
+async function tget<T>(path: string): Promise<T> {
+  const res = await fetch(`${TYAGACH_API_BASE}${path}`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`Tyagach API ${res.status}: ${await res.text()}`);
+  return res.json();
+}
+
+async function tpost<T>(path: string): Promise<T> {
+  const res = await fetch(`${TYAGACH_API_BASE}${path}`, { method: "POST" });
+  if (!res.ok) throw new Error(`Tyagach API ${res.status}: ${await res.text()}`);
+  return res.json();
+}
+
+export async function fetchTyagachState(): Promise<TyagachState> {
+  return tget(`/state`);
+}
+
+export async function fetchTyagachPositions(limit = 20): Promise<TyagachPosition[]> {
+  return tget(`/positions?limit=${limit}`);
+}
+
+export async function pauseTyagach(): Promise<void> {
+  await tpost(`/pause`);
+}
+
+export async function resumeTyagach(): Promise<void> {
+  await tpost(`/resume`);
+}
+
+export async function closeAllTyagach(): Promise<void> {
+  await tpost(`/close_all`);
 }
