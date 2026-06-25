@@ -430,6 +430,31 @@ def paper_positions_endpoint(
     for r in rows:
         out.append({k: (float(v) if hasattr(v, "real") and not isinstance(v, bool) else v)
                     if v is not None else None for k, v in r.items()})
+    if status == "open" and out:
+        from services.paper_loop import current_mark_or_bs
+
+        symbol = "ETHUSDT"
+        klines = recent_klines(symbol, "5m", limit=1)
+        spot = klines[-1]["close"] if klines else None
+        chain_dict = None
+        if spot is not None:
+            try:
+                chain = bybit_client.get_options_tickers("ETH")
+                chain_dict = {
+                    f"{o.get('side')}-{int(o.get('strike'))}-{o.get('expiry_ms')}": o
+                    for o in chain
+                    if o.get("side") and o.get("strike") and o.get("expiry_ms")
+                }
+            except Exception:  # noqa: BLE001
+                chain_dict = None
+        for r in out:
+            mark = current_mark_or_bs(r, spot, chain_dict) if spot is not None else None
+            r["current_mark_usd"] = mark
+            r["unrealized_pnl_usd"] = (
+                (r["entry_credit_usd"] - mark) * r["contracts"]
+                if mark is not None and r.get("entry_credit_usd") is not None and r.get("contracts") is not None
+                else None
+            )
     return {"positions": out, "count": len(out)}
 
 
@@ -574,6 +599,37 @@ def btc_straddle_positions_endpoint(
     for r in rows:
         out.append({k: (float(v) if hasattr(v, "real") and not isinstance(v, bool) else v)
                     if v is not None else None for k, v in r.items()})
+    if status == "open" and out:
+        from services.btc_straddle_loop import (
+            SPOT_SYMBOL as BTC_SPOT_SYMBOL,
+            current_mark as btc_current_mark,
+            price_option_bs as btc_price_option_bs,
+            trailing_sigma as btc_trailing_sigma,
+        )
+
+        klines = recent_klines(BTC_SPOT_SYMBOL, "5m", limit=1)
+        spot = klines[-1]["close"] if klines else None
+        chain_dict = None
+        try:
+            chain = bybit_client.get_options_tickers("BTC")
+            chain_dict = {
+                f"{o.get('side')}-{int(o.get('strike'))}-{o.get('expiry_ms')}": o
+                for o in chain
+                if o.get("side") and o.get("strike") and o.get("expiry_ms")
+            }
+        except Exception:  # noqa: BLE001
+            chain_dict = None
+        sigma = btc_trailing_sigma() if spot is not None else 0.0
+        for r in out:
+            mark = btc_current_mark(r["leg"], r["strike"], int(r["expiry_ms"]), chain_dict)
+            if mark is None and spot is not None:
+                mark = btc_price_option_bs(r["leg"], spot, r["strike"], int(r["expiry_ms"]), sigma)
+            r["current_mark_usd"] = mark
+            r["unrealized_pnl_usd"] = (
+                (r["entry_credit_usd"] - mark) * r["contracts"]
+                if mark is not None and r.get("entry_credit_usd") is not None and r.get("contracts") is not None
+                else None
+            )
     return {"positions": out, "count": len(out)}
 
 
@@ -639,6 +695,37 @@ def eth_straddle_positions_endpoint(
     for r in rows:
         out.append({k: (float(v) if hasattr(v, "real") and not isinstance(v, bool) else v)
                     if v is not None else None for k, v in r.items()})
+    if status == "open" and out:
+        from services.eth_straddle_loop import (
+            SPOT_SYMBOL as ETH_SPOT_SYMBOL,
+            current_mark as eth_current_mark,
+            price_option_bs as eth_price_option_bs,
+            trailing_sigma as eth_trailing_sigma,
+        )
+
+        klines = recent_klines(ETH_SPOT_SYMBOL, "5m", limit=1)
+        spot = klines[-1]["close"] if klines else None
+        chain_dict = None
+        try:
+            chain = bybit_client.get_options_tickers("ETH")
+            chain_dict = {
+                f"{o.get('side')}-{int(o.get('strike'))}-{o.get('expiry_ms')}": o
+                for o in chain
+                if o.get("side") and o.get("strike") and o.get("expiry_ms")
+            }
+        except Exception:  # noqa: BLE001
+            chain_dict = None
+        sigma = eth_trailing_sigma() if spot is not None else 0.0
+        for r in out:
+            mark = eth_current_mark(r["leg"], r["strike"], int(r["expiry_ms"]), chain_dict)
+            if mark is None and spot is not None:
+                mark = eth_price_option_bs(r["leg"], spot, r["strike"], int(r["expiry_ms"]), sigma)
+            r["current_mark_usd"] = mark
+            r["unrealized_pnl_usd"] = (
+                (r["entry_credit_usd"] - mark) * r["contracts"]
+                if mark is not None and r.get("entry_credit_usd") is not None and r.get("contracts") is not None
+                else None
+            )
     return {"positions": out, "count": len(out)}
 
 

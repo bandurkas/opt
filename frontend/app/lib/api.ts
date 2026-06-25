@@ -263,6 +263,8 @@ export type PaperPosition = {
   pnl_pct: number | null;
   pnl_usd: number | null;
   exit_reason: string | null;
+  current_mark_usd?: number | null;
+  unrealized_pnl_usd?: number | null;
 };
 
 export type EquityPoint = {
@@ -404,6 +406,8 @@ export type BtcStraddlePosition = {
   pnl_pct: number | null;
   pnl_usd: number | null;
   exit_reason: string | null;
+  current_mark_usd?: number | null;
+  unrealized_pnl_usd?: number | null;
 };
 
 export async function fetchBtcStraddleState(): Promise<BtcStraddleState> {

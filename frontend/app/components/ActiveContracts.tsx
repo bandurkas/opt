@@ -39,6 +39,8 @@ export type Contract = {
   contracts: number;
   spot: number | null;
   entryCreditUsd?: number | null;
+  currentMarkUsd?: number | null;
+  unrealizedPnlUsd?: number | null;
   openedAtMs?: number | null;
   cycleId?: number | null;
 };
@@ -151,6 +153,13 @@ function ContractChip({ c, now, onOpen }: { c: Contract; now: number; onOpen: ()
         <Countdown expiryMs={c.expiryMs} now={now} />
         {msLeft > 0 && msLeft < 3600_000 && <span className="text-[9px] text-rose-400 uppercase tracking-wide">expiry soon</span>}
       </div>
+      {c.unrealizedPnlUsd != null && (
+        <div className="mt-1 text-right">
+          <span className={`font-mono text-xs font-bold ${c.unrealizedPnlUsd >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+            {c.unrealizedPnlUsd >= 0 ? "+" : ""}${c.unrealizedPnlUsd.toFixed(2)}
+          </span>
+        </div>
+      )}
     </button>
   );
 }
@@ -263,6 +272,14 @@ function ContractDrawer({ contract, now, onClose }: { contract: Contract; now: n
           <div className="rounded-xl border border-slate-800 bg-slate-900/70 divide-y divide-slate-800">
             <Row label="Контрактов" value={`${contract.contracts.toFixed(4)} ${meta.unit}`} />
             {contract.entryCreditUsd != null && <Row label="Кредит при входе" value={`$${contract.entryCreditUsd.toFixed(2)}`} />}
+            {contract.currentMarkUsd != null && <Row label="Текущая премия" value={`$${contract.currentMarkUsd.toFixed(2)}`} />}
+            {contract.unrealizedPnlUsd != null && (
+              <Row
+                label="PnL по контракту"
+                value={`${contract.unrealizedPnlUsd >= 0 ? "+" : ""}$${contract.unrealizedPnlUsd.toFixed(2)}`}
+                valueClassName={contract.unrealizedPnlUsd >= 0 ? "text-emerald-400" : "text-rose-400"}
+              />
+            )}
             {contract.openedAtMs != null && <Row label="Открыта" value={new Date(contract.openedAtMs).toLocaleString("ru-RU")} />}
           </div>
         </div>
@@ -271,11 +288,11 @@ function ContractDrawer({ contract, now, onClose }: { contract: Contract; now: n
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function Row({ label, value, valueClassName }: { label: string; value: string; valueClassName?: string }) {
   return (
     <div className="px-4 py-2.5 flex items-center justify-between text-sm">
       <span className="text-slate-500 text-xs">{label}</span>
-      <span className="font-mono text-slate-200 text-xs">{value}</span>
+      <span className={`font-mono text-xs ${valueClassName ?? "text-slate-200"}`}>{value}</span>
     </div>
   );
 }

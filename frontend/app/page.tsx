@@ -165,16 +165,19 @@ export default function Dashboard() {
       key: `sniper1-${p.id}`, bot: "eth_signal", side: p.side, strike: p.strike,
       expiryMs: p.expiry_ms, contracts: p.contracts, spot: conditions?.spot ?? null,
       entryCreditUsd: p.entry_credit_usd, openedAtMs: p.opened_at_ms,
+      currentMarkUsd: p.current_mark_usd, unrealizedPnlUsd: p.unrealized_pnl_usd,
     })),
     ...btcPositions.map((p): Contract => ({
       key: `boba1-${p.id}`, bot: "btc_straddle", side: p.leg, strike: p.strike,
       expiryMs: p.expiry_ms, contracts: p.contracts, spot: btcSpot,
       entryCreditUsd: p.entry_credit_usd, openedAtMs: p.opened_at_ms, cycleId: p.cycle_id,
+      currentMarkUsd: p.current_mark_usd, unrealizedPnlUsd: p.unrealized_pnl_usd,
     })),
     ...ethStraddlePositions.map((p): Contract => ({
       key: `grogu1-${p.id}`, bot: "eth_straddle", side: p.leg, strike: p.strike,
       expiryMs: p.expiry_ms, contracts: p.contracts, spot: ethStraddleSpot,
       entryCreditUsd: p.entry_credit_usd, openedAtMs: p.opened_at_ms, cycleId: p.cycle_id,
+      currentMarkUsd: p.current_mark_usd, unrealizedPnlUsd: p.unrealized_pnl_usd,
     })),
   ], [positions, btcPositions, ethStraddlePositions, conditions?.spot, btcSpot, ethStraddleSpot]);
 
