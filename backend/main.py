@@ -20,7 +20,6 @@ from db.repository import (
 )
 from services import auth
 from services import credentials as creds
-from services import strategy_config
 from services import telegram_notify
 from services.paper_strategy import START_EQUITY_USD
 from services.signal_freshness import compute_freshness
@@ -398,7 +397,6 @@ def paper_state():
         "started_at_ms": int(state["started_at_ms"]),
         "cb_cooldown_until_ms": int(state["cb_cooldown_until_ms"]),
         "cb_active": int(state["cb_cooldown_until_ms"]) > time.time() * 1000,
-        "cb_pause_hours": strategy_config.CB_PAUSE_HOURS,
         "consec_losses": int(state["consec_losses"]),
         "current_equity_usd": cur_eq,
         # Realized vs unrealized split (latest snapshot)

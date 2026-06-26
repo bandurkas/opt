@@ -5,7 +5,7 @@ import { fetchPaperState, fetchPaperConditions, fetchPaperPositions, fetchRecent
 import MissionControl from "./components/MissionControl";
 import StraddleChart from "./components/StraddleChart";
 import TyagachChart from "./components/TyagachChart";
-import { ActiveContractsRail, ItmBadge, Countdown, useLiveNow, type Contract } from "./components/ActiveContracts";
+import { ActiveContractsRail, ItmBadge, Countdown, formatCountdown, useLiveNow, type Contract } from "./components/ActiveContracts";
 
 const REFRESH_MS = 15_000;
 
@@ -406,10 +406,19 @@ export default function Dashboard() {
           <StatCard label="24h PnL" value={fmtUsd(last24hPnl)} sub={`${last24h.length} trades`} accent={last24hPnl >= 0 ? "text-emerald-300" : "text-rose-300"} />
         </div>
 
-        {/* Circuit Breaker */}
+        {/* Circuit Breaker — Sniper takes a forced rest after a loss, so it
+            doesn't immediately re-fire into the same bad regime ("storm"
+            pattern, 2026-06-26 retune). Countdown counts DOWN to resume, so
+            the shared Countdown's red/pulsing-near-zero urgency styling
+            (tuned for "expiry approaching = bad") would read backwards here
+            — near-zero is good news (waking up soon). Use the plain
+            formatter instead of <Countdown> and keep it neutral amber. */}
         {state.cb_active && (
-          <div className="bg-amber-950/30 border border-amber-800/50 rounded-xl px-4 py-3 text-sm text-amber-300">
-            ⏸ Circuit breaker active · {state.consec_losses} losses · pause {state.cb_pause_hours ?? "?"}h
+          <div className="bg-amber-950/30 border border-amber-800/50 rounded-xl px-4 py-3 text-sm text-amber-300 flex items-center justify-between gap-3">
+            <span>😴 Снайпер устал — отдыхает после проигрыша</span>
+            <span className="font-mono tabular-nums font-bold">
+              {formatCountdown(state.cb_cooldown_until_ms - now)}
+            </span>
           </div>
         )}
 

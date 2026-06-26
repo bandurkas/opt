@@ -232,7 +232,6 @@ export type PaperState = {
   started_at_ms: number;
   cb_cooldown_until_ms: number;
   cb_active: boolean;
-  cb_pause_hours?: number;
   consec_losses: number;
   current_equity_usd: number;
   realized_usd: number;
