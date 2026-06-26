@@ -27,14 +27,32 @@ from services.strategy_config import CB_CONSEC_LIMIT, CB_PAUSE_HOURS
 NOW = 1_700_000_000_000  # fixed ms timestamp for deterministic cooldown math
 PAUSE_MS = CB_PAUSE_HOURS * 60 * 60 * 1000
 
+# A handful of tests below check the counter mid-streak (not yet armed), which
+# is only meaningful when the limit is >1 — at the live CB_CONSEC_LIMIT=1
+# (2026-06-26 retune) every single loss arms+resets immediately, so there is
+# no "consec=1, not yet armed" state to observe. Those tests pin a local,
+# limit-independent value instead of the live tuned constant.
+_TEST_LIMIT = 5
+
+
+def _with_cb_limit(n: int, fn) -> None:
+    orig = paper_strategy.CB_CONSEC_LIMIT
+    paper_strategy.CB_CONSEC_LIMIT = n
+    try:
+        fn()
+    finally:
+        paper_strategy.CB_CONSEC_LIMIT = orig
+
 
 # ───────────────────────── pure transition (_next_cb_state) ─────────────────────────
 
 def test_single_loss_increments():
-    s = paper_strategy._next_cb_state(0, 0, [], -3.0, NOW)
-    assert s["consec_losses"] == 1, s
-    assert s["cb_cooldown_until_ms"] == 0, s
-    print("✓ single loss -> consec 1, breaker not armed")
+    def body():
+        s = paper_strategy._next_cb_state(0, 0, [], -3.0, NOW)
+        assert s["consec_losses"] == 1, s
+        assert s["cb_cooldown_until_ms"] == 0, s
+    _with_cb_limit(_TEST_LIMIT, body)
+    print("✓ single loss -> consec 1, breaker not armed (limit > 1)")
 
 
 def test_win_resets_counter():
@@ -129,12 +147,16 @@ def _with_fake_repo(fn):
 
 
 def test_two_losses_one_iteration_no_lost_update():
+    # Needs limit > 2 — at the live CB_CONSEC_LIMIT=1 the breaker would arm
+    # and reset on the very first loss, masking the race this test targets.
     def body(fake):
-        paper_strategy.record_trade_result(-5.0)
-        r2 = paper_strategy.record_trade_result(-5.0)
-        # The §5.2 bug would lose the 2nd increment (stale read) -> 1.
-        assert r2["consec_losses"] == 2, r2
-        assert fake.row["consec_losses"] == 2, fake.row
+        def inner():
+            paper_strategy.record_trade_result(-5.0)
+            r2 = paper_strategy.record_trade_result(-5.0)
+            # The §5.2 bug would lose the 2nd increment (stale read) -> 1.
+            assert r2["consec_losses"] == 2, r2
+            assert fake.row["consec_losses"] == 2, fake.row
+        _with_cb_limit(_TEST_LIMIT, inner)
     _with_fake_repo(body)
     print("✓ two losses in one iteration -> consec 2 (no lost update)")
 

@@ -18,7 +18,7 @@ Previous configurations:
     in May 2026 (ret=-5.1% → wanted Put but MTF=down rejected it). 0 trades/24h.
   - cd=4/h=96 Put-only (54-cell sweep winner): broke in May with -68%/trade.
 
-Circuit breaker: 5 consecutive losses → 48h pause.
+Circuit breaker: 1 loss → 8h pause (re-tuned 2026-06-26, see below).
 """
 from __future__ import annotations
 
@@ -96,8 +96,23 @@ CALL_EXIT = {
 # small maxDD cost) without a code change.
 CALL_SL_DOLLAR_FRAC = float(os.getenv("CALL_SL_DOLLAR_FRAC", "0.10"))
 
-CB_CONSEC_LIMIT = 5       # consecutive losses before cooldown
-CB_PAUSE_HOURS = 48       # cooldown duration
+# 2026-06-26 sniper_cb_grid.py: swept consec_limit x {1,2,3,4,5,6,8,10} and
+# pause_hours x {1,2,4,6,8,12,24,48,72,96} on 3 windows (13mo/2y/4y eth_*.json)
+# x 4 train/holdout split points each (12 train/holdout pairs total). Every
+# combo beats no-CB on every split (baseline avg is negative/flat on train in
+# all 3 windows), but consec_limit=1 dominates by total return on both the
+# 13mo and 4y magnitude tables — pausing after a SINGLE loss outperforms
+# waiting for a streak, because the live "storm" pattern (re-firing every
+# cooldown tick into an already-bad regime) doesn't need >1 loss to be
+# detected. pause_hours=8 is the total-return peak for limit=1 on both the
+# 13mo (n=576, avg+37.0%) and 4y (n=1905, avg+31.8%) tables — longer pauses
+# (48-96h) push avg/trade higher but cut total return by keeping too few
+# trades (e.g. 4y limit=1/96h: n=1109, avg+34.8%, lower total than 8h).
+# Cuts 39-45% of trades vs the old 5/48h (which barely fired live — observed
+# clusters were only 2-3 consecutive losses, never reaching 5). Functions
+# more like an immediate-re-entry filter than a loss-streak breaker.
+CB_CONSEC_LIMIT = 1       # consecutive losses before cooldown
+CB_PAUSE_HOURS = 8        # cooldown duration
 
 # ── Previous Put-only config (for comparison / alt mode) ──
 LIVE_GEN_KWARGS = PUT_GEN_KWARGS  # alias for backward compat

@@ -409,7 +409,7 @@ export default function Dashboard() {
         {/* Circuit Breaker */}
         {state.cb_active && (
           <div className="bg-amber-950/30 border border-amber-800/50 rounded-xl px-4 py-3 text-sm text-amber-300">
-            ⏸ Circuit breaker active · {state.consec_losses} losses · pause 48h
+            ⏸ Circuit breaker active · {state.consec_losses} losses · pause {state.cb_pause_hours ?? "?"}h
           </div>
         )}
 

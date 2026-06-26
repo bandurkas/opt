@@ -5,7 +5,7 @@ V2 hybrid (validated 2026-06-02 on 365d):
   ret_7d < -0.5%  → sell Call (downtrend — Call premium decays)
   |ret_7d| < 0.5% → range — try both, MTF picks the side
 
-Circuit breaker: 5 consecutive losses → 48h pause.
+Circuit breaker: 1 loss → 8h pause (re-tuned 2026-06-26, see strategy_config.py).
 """
 from __future__ import annotations
 
