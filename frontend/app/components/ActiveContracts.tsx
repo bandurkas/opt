@@ -8,25 +8,32 @@ import type { BotName } from "../lib/api";
 // BOT_META — the single source of truth — so a contract chip and its bot's
 // control panel never drift out of sync. Only the ring/dot tones (chip-only
 // styling MissionControl has no use for) are kept here.
-export type BotKey = BotName;
+// Tyagach is excluded from BotName/BOT_META (it has its own pause/resume/
+// close-all API, not the shared control endpoint MissionControl drives —
+// see MissionControl's separate confirmTarget union), so it's added as a
+// one-off entry below rather than via BOT_META's Object.keys() mapping.
+export type BotKey = BotName | "tyagach";
 
 const RING_DOT: Record<BotKey, { ring: string; dot: string }> = {
   btc_straddle: { ring: "ring-orange-500/40", dot: "bg-orange-400" },
   eth_straddle: { ring: "ring-cyan-400/40", dot: "bg-cyan-400" },
   eth_signal: { ring: "ring-fuchsia-400/40", dot: "bg-fuchsia-400" },
+  tyagach: { ring: "ring-lime-400/40", dot: "bg-lime-400" },
 };
 
 const UNIT: Record<BotKey, string> = {
-  btc_straddle: "BTC", eth_straddle: "ETH", eth_signal: "ETH",
+  btc_straddle: "BTC", eth_straddle: "ETH", eth_signal: "ETH", tyagach: "ETH",
 };
 
-export const BOT_DISPLAY: Record<BotKey, { callsign: string; unit: string; accent: string; ring: string; dot: string }> =
-  Object.fromEntries(
-    (Object.keys(BOT_META) as BotKey[]).map((k) => [
+export const BOT_DISPLAY: Record<BotKey, { callsign: string; unit: string; accent: string; ring: string; dot: string }> = {
+  ...(Object.fromEntries(
+    (Object.keys(BOT_META) as BotName[]).map((k) => [
       k,
       { callsign: BOT_META[k].callsign, unit: UNIT[k], accent: BOT_META[k].accent, ...RING_DOT[k] },
     ]),
-  ) as Record<BotKey, { callsign: string; unit: string; accent: string; ring: string; dot: string }>;
+  ) as Record<BotName, { callsign: string; unit: string; accent: string; ring: string; dot: string }>),
+  tyagach: { callsign: "TYAGACH", unit: UNIT.tyagach, accent: "text-lime-400", ...RING_DOT.tyagach },
+};
 
 // A short option position, normalized across the 3 bots (paper signal trades
 // use "side", straddle legs use "leg" — both collapse to this shape).
