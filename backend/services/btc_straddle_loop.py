@@ -56,10 +56,13 @@ RV_WINDOW_H = 168
 
 # ───────────────────── option pricing (live + fallback) ─────────────
 
-def pick_bybit_atm_option(chain: list[dict], spot: float, option_side: str) -> dict | None:
-    """From the live Bybit BTC chain, pick the ATM call or put nearest CYCLE_H out."""
+def pick_bybit_atm_option(chain: list[dict], spot: float, option_side: str,
+                          target_expiry_h: float = TARGET_EXPIRY_H) -> dict | None:
+    """From the live Bybit BTC chain, pick the ATM call or put nearest
+    `target_expiry_h` out (defaults to a fresh 24h; quick-scalp re-entries
+    pass the shrinking remaining-time-in-the-day instead)."""
     now_ms = int(time.time() * 1000)
-    target_ms = now_ms + int(TARGET_EXPIRY_H * 3_600_000)
+    target_ms = now_ms + int(target_expiry_h * 3_600_000)
     candidates = [
         o for o in chain
         if o.get("side") == option_side
@@ -161,8 +164,14 @@ def compute_equity(state: dict, spot: float, chain_dict: dict[str, dict] | None)
 # ───────────────────── open / close one leg ─────────────────────────
 
 def open_leg(cycle_id: int, leg: str, spot: float, equity_usd: float,
-            chain: list[dict]) -> int | None:
-    pick = pick_bybit_atm_option(chain, spot, leg)
+            chain: list[dict], remaining_h: float | None = None,
+            expiry_override_ms: int | None = None) -> int | None:
+    """`remaining_h`/`expiry_override_ms`: quick-scalp re-entries pass the
+    shrinking time left until the ORIGINAL 24h-cycle boundary (not a fresh
+    24h) — matches straddle_quick_scalp_backtest.py's validated tenor. The
+    first entry of a day omits both and gets the old fresh-24h behavior."""
+    target_h = remaining_h if remaining_h is not None else TARGET_EXPIRY_H
+    pick = pick_bybit_atm_option(chain, spot, leg, target_expiry_h=target_h)
     sigma = None  # only computed below if the bs_fallback path actually needs it
 
     if pick and pick.get("bid", 0) > 0 and pick.get("ask", 0) > 0:
@@ -174,7 +183,8 @@ def open_leg(cycle_id: int, leg: str, spot: float, equity_usd: float,
     else:
         sigma = trailing_sigma()
         strike = round(spot / STRIKE_ROUND) * STRIKE_ROUND
-        expiry_ms = int(time.time() * 1000) + int(TARGET_EXPIRY_H * 3_600_000)
+        expiry_ms = expiry_override_ms if expiry_override_ms is not None else (
+            int(time.time() * 1000) + int(TARGET_EXPIRY_H * 3_600_000))
         premium_mid = price_option_bs(leg, spot, strike, expiry_ms, sigma)
         if premium_mid <= 0:
             print(f"[btc_straddle] open {leg} skipped — could not price option", flush=True)
@@ -272,6 +282,69 @@ def check_and_close_position(p: dict, spot: float, chain_dict: dict[str, dict] |
     return False
 
 
+def decide_pair_action(legs: list[dict], marks: dict[str, float], now_ms: int) -> tuple[str, dict | None]:
+    """Pure decision logic for a Call+Put pair sharing one cycle_id — no DB,
+    no network, easy to unit-test (mirrors paper_strategy.py's pure
+    `_next_cb_state` pattern). `marks` is {leg: current_buyback_ask}, already
+    resolved by the caller. Returns (action, tripped_leg):
+      - ("sl", tripped_leg): tripped_leg's own SL fired; close it "sl" and the
+        sibling "sl_paired" — SL takes priority over quick-TP within a tick,
+        matching straddle_quick_scalp_backtest.py's per-scenario ordering.
+      - ("quick_tp", None): combined credit captured >= QUICK_TP_COMBINED_USD.
+      - ("time_stop", None): shared `expiry_ms` reached.
+      - ("hold", None): none of the above — leave both open."""
+    for p in legs:
+        if sl.is_tripped(entry_credit=float(p["entry_credit_usd"]), current_buyback_ask=marks[p["leg"]],
+                         qty=float(p["contracts"]), sl_trip_per_lot_usd=float(p["sl_dollar_trip_usd"])):
+            return "sl", p
+
+    combined_pnl = sum(
+        (float(p["entry_credit_usd"]) - marks[p["leg"]]) * float(p["contracts"]) for p in legs
+    )
+    if combined_pnl >= sl.QUICK_TP_COMBINED_USD:
+        return "quick_tp", None
+
+    if now_ms >= int(legs[0]["expiry_ms"]):
+        return "time_stop", None
+
+    return "hold", None
+
+
+def check_and_close_pair(legs: list[dict], spot: float, chain_dict: dict[str, dict] | None) -> bool:
+    """Quick-scalp exit for a Call+Put pair sharing one cycle_id (2026-06-26
+    rewrite — see straddle_quick_scalp_backtest.py for the validated mechanic).
+    Resolves current marks, defers to `decide_pair_action` for the decision,
+    then executes via `_do_close`. Returns True if the pair closed this tick."""
+    now_ms = int(time.time() * 1000)
+    marks = {}
+    for p in legs:
+        mark = current_mark(p["leg"], float(p["strike"]), int(p["expiry_ms"]), chain_dict)
+        if mark is None:
+            # No live quote for EITHER leg — don't force a BS-fallback close
+            # decision on a stale/no-data tick (same caution as the single-leg
+            # path); just wait, unless the hard expiry has already passed.
+            if now_ms >= int(p["expiry_ms"]):
+                mark = price_option_bs(p["leg"], spot, float(p["strike"]), int(p["expiry_ms"]), trailing_sigma())
+            else:
+                return False
+        marks[p["leg"]] = mark
+
+    action, tripped_leg = decide_pair_action(legs, marks, now_ms)
+    if action == "hold":
+        return False
+    if action == "sl":
+        ok = True
+        for p in legs:
+            reason = "sl" if p is tripped_leg else "sl_paired"
+            ok = _do_close(p, marks[p["leg"]], reason, now_ms) and ok
+        return ok
+    # quick_tp / time_stop: close both with the same reason
+    ok = True
+    for p in legs:
+        ok = _do_close(p, marks[p["leg"]], action, now_ms) and ok
+    return ok
+
+
 def force_close_all(open_pos: list[dict], spot: float, chain_dict: dict[str, dict] | None) -> int:
     """Mission Control emergency flatten — closes every open leg at its current
     mark (or BS fallback) regardless of SL/TP2/time-stop state. Returns count
@@ -333,9 +406,10 @@ def _do_close(p: dict, mark: float, reason: str, now_ms: int) -> bool:
     state_now = repo.get_state() or {}
     start_eq = float(state_now.get("start_equity_usd") or START_EQUITY_USD)
     equity_after = start_eq + float(stats_after["realized_usd"])
+    hold_h = max(0, (now_ms - int(p["opened_at_ms"]))) // 3_600_000
     telegram_notify.notify_close(
         pid=int(p["id"]), side=p["leg"], strike=float(p["strike"]), reason=reason,
-        pnl_pct=pnl_pct, pnl_usd=pnl_usd, equity_after=equity_after, hold_h=int(sl.CYCLE_H),
+        pnl_pct=pnl_pct, pnl_usd=pnl_usd, equity_after=equity_after, hold_h=hold_h,
     )
     return True
 
@@ -467,39 +541,63 @@ async def loop(run_once: bool = False) -> None:
                     _report_close_all_stuck(n_closed, n_target)
                 open_pos_now = repo.open_positions()
 
-            # 1) Monitor open legs (SL / TP2 / 24h time-stop)
+            # 1) Monitor open legs — pairs (2 legs sharing a cycle_id) get the
+            # quick-scalp joint check; anything else (a straggler from a
+            # partial-open failure) falls back to the old independent per-leg
+            # TP2/SL/time-stop check so it's never left unmanaged.
+            by_cycle: dict[int, list[dict]] = {}
             for p in open_pos_now:
+                by_cycle.setdefault(int(p["cycle_id"]), []).append(p)
+            for cycle_id, legs in by_cycle.items():
                 try:
-                    check_and_close_position(p, spot, chain_dict)
+                    if len(legs) == 2:
+                        check_and_close_pair(legs, spot, chain_dict)
+                    else:
+                        for p in legs:
+                            check_and_close_position(p, spot, chain_dict)
                 except Exception:  # noqa: BLE001
-                    print(f"[btc_straddle] ERROR closing #{p.get('id')}:\n{traceback.format_exc()}",
+                    print(f"[btc_straddle] ERROR closing cycle={cycle_id}:\n{traceback.format_exc()}",
                           flush=True)
-                    _report_loop_error(f"close #{p.get('id')}")
+                    _report_loop_error(f"close cycle={cycle_id}")
 
-            # 2) New cycle — open one call + one put if this cycle hasn't fired yet
-            # (skipped while Mission Control has paused this bot).
+            # 2) Re-entry — quick-scalp opens a fresh pair as soon as the bot is
+            # FLAT (no open legs), not once per 24h boundary. Each pair gets the
+            # REMAINING time until the current 24h-cycle boundary (shrinking
+            # tenor as the day progresses — validated in
+            # straddle_quick_scalp_backtest.py; deliberately NOT a fresh 24h on
+            # every re-entry). Skipped while Mission Control has paused this bot.
             now_ms = int(time.time() * 1000)
             cyc = current_cycle_id(now_ms)
-            if cyc > int(state.get("last_cycle_id") or 0):
+            day_end_ms = (cyc + 1) * CYCLE_MS
+            remaining_h = (day_end_ms - now_ms) / 3_600_000
+
+            if not repo.open_positions() and remaining_h > 0:
                 # Also check close_all_requested directly (not just paused): if an
                 # operator resumes while stragglers from an emergency flatten are
                 # still being retried (request_close_all sets paused=true, but
                 # control_resume only clears paused, not close_all_requested),
-                # a new cycle must still not open on top of an in-flight flatten.
+                # a new pair must still not open on top of an in-flight flatten.
                 if control_repo.is_paused(BOT_NAME) or control_repo.is_close_all_requested(BOT_NAME):
-                    print(f"[btc_straddle] paused/close-all via Mission Control — skip cycle {cyc} open",
-                          flush=True)
+                    pass
                 else:
                     blocked = _live_preopen_block(now_ms) if broker.is_live() else None
                     if blocked:
-                        print(f"[btc_straddle] LIVE skip cycle {cyc} — {blocked}", flush=True)
+                        print(f"[btc_straddle] LIVE skip re-entry — {blocked}", flush=True)
                         telegram_notify.notify(f"⛔ BTC straddle live open blocked: {blocked}")
                     else:
+                        # Unique per-pair id: day-bucket * 100000 + seconds-into-day
+                        # — still groups by day at a glance, still a BIGINT, no
+                        # collision risk (re-entries are minutes apart at the very
+                        # least, since closing+repricing takes real wall-clock time).
+                        new_cycle_id = cyc * 100_000 + (now_ms - cyc * CYCLE_MS) // 1000
                         eq = compute_equity(state, spot, chain_dict)
-                        open_leg(cyc, "C", spot, eq["equity"], chain)
-                        open_leg(cyc, "P", spot, eq["equity"], chain)
-                repo.update_state(last_cycle_id=cyc)
-                state["last_cycle_id"] = cyc
+                        open_leg(new_cycle_id, "C", spot, eq["equity"], chain,
+                                remaining_h=remaining_h, expiry_override_ms=day_end_ms)
+                        open_leg(new_cycle_id, "P", spot, eq["equity"], chain,
+                                remaining_h=remaining_h, expiry_override_ms=day_end_ms)
+                if cyc > int(state.get("last_cycle_id") or 0):
+                    repo.update_state(last_cycle_id=cyc)
+                    state["last_cycle_id"] = cyc
 
             # 3) Equity snapshot
             eq = compute_equity(state, spot, chain_dict)

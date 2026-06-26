@@ -17,8 +17,17 @@ from __future__ import annotations
 IM_RATE = 0.10          # initial-margin rate estimate: IM_RATE * strike + premium
 LOT_BTC = 0.01          # Bybit BTC option lot (min qty / qty step)
 SL_DOLLAR_FRAC = 2.0    # trip when unrealized loss >= this many multiples of posted margin
-TP2_PCT = 0.80          # take-profit at 80% of premium decayed
+TP2_PCT = 0.80          # take-profit at 80% of premium decayed — used only for the rare
+                        # orphaned-leg fallback now; paired positions use QUICK_TP_COMBINED_USD
 CYCLE_H = 24.0          # hours per cycle (matches Bybit's shortest BTC option tenor)
+
+# Quick-scalp combined exit (2026-06-26 rewrite, see straddle_quick_scalp_backtest.py):
+# close BOTH legs of a pair together once their COMBINED unrealized profit hits
+# this many dollars, then immediately reopen a fresh pair — instead of riding
+# one pair per 24h to TP2/SL/time-stop. Validated at SL_DOLLAR_FRAC=2.0 (above,
+# unchanged) on both the 1yr and 6.2yr BTC windows, train+holdout, beating the
+# old one-pair-per-day baseline with comparable-or-better tail risk.
+QUICK_TP_COMBINED_USD = 2.0
 
 
 def margin_per_lot(strike: float, entry_premium: float, *,

@@ -124,7 +124,9 @@ def close_position(position_id: int, *, closed_at_ms: int,
     """Close a position. Returns rows_affected (0 if already closed)."""
     status_map = {
         "tp2": "closed_tp2",
+        "quick_tp": "closed_tp2",     # combined pair-level take-profit — same bucket as tp2
         "sl": "closed_sl",
+        "sl_paired": "closed_sl",     # other leg force-closed alongside a tripped sibling
         "time_stop": "closed_time",
         "reconciled": "closed_reconciled",
     }
