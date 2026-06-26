@@ -182,6 +182,43 @@ def current_mark(side: str, strike: float, expiry_ms: int,
     return None
 
 
+# Per-position last-accepted ask, for the SL/TP2 jump filter below. In-memory
+# only (resets on restart) — same tolerance as other transient loop state.
+_last_accepted_mark: dict[int, float] = {}
+
+# 2026-06-25 guard_backtest.py (replayed 6d of real option_snapshots, 8 closed
+# legs): tick-to-tick rejection >50% vs last accepted ask cut total loss
+# -$87.19 -> -$21.63, same protection as a static 15% spread cap but only
+# skipping 0-6% of ticks (vs 5-35% for the spread cap, since wide spreads are
+# routine on these contracts). Confirmed a real ~7x-fair-value outlier print
+# exists in the data. Caveat: did NOT change the #6/#8 SL outcomes in replay —
+# those trip ticks had clean spreads, so the actual overshoot was likely a
+# sub-30s transient the 30s snapshot cadence can't see. Deferred then
+# (see project_grogu_execution_guard_deferred.md), deployed now as the best
+# available risk/reward lever against the outlier-print class of risk.
+JUMP_REJECT_PCT = 0.50
+
+
+def guarded_mark_for_close(position_id: int, side: str, strike: float, expiry_ms: int,
+                           chain_dict: dict[str, dict] | None) -> float | None:
+    """current_mark(), but reject a tick that jumps >50% vs the last accepted
+    ask for this position — reuse the last accepted value instead. Only used
+    for the SL/TP2 close decision, not for equity display or force-close."""
+    raw = current_mark(side, strike, expiry_ms, chain_dict)
+    if raw is None:
+        return None
+    last = _last_accepted_mark.get(position_id)
+    if last is not None and last > 0:
+        change = abs(raw - last) / last
+        if change > JUMP_REJECT_PCT:
+            print(f"[eth_straddle] jump_detector: rejected tick for #{position_id} "
+                  f"({last:.4f} -> {raw:.4f}, {change*100:.0f}% move) — reusing last accepted",
+                  flush=True)
+            return last
+    _last_accepted_mark[position_id] = raw
+    return raw
+
+
 def trailing_sigma() -> float:
     """Entry vol = trailing-168h realized vol on ETHUSDT 1h closes × IV_RV_MULT,
     clamped — same methodology as the backtest harnesses (btc_straddle_*.py)."""
@@ -346,7 +383,7 @@ def check_and_close_position(p: dict, spot: float, chain_dict: dict[str, dict] |
             mark = price_option_bs(p["leg"], spot, float(p["strike"]), int(p["expiry_ms"]), trailing_sigma())
         return _do_close(p, mark, "time_stop", now_ms)
 
-    mark = current_mark(p["leg"], float(p["strike"]), int(p["expiry_ms"]), chain_dict)
+    mark = guarded_mark_for_close(int(p["id"]), p["leg"], float(p["strike"]), int(p["expiry_ms"]), chain_dict)
     if mark is None:
         return False  # no live data — wait for the time-stop, same caution as paper_loop
 
