@@ -367,6 +367,7 @@ def open_leg(cycle_id: int, leg: str, spot: float, equity_usd: float,
         n_lots=int(round(contracts / sl.LOT_ETH)), contracts=contracts,
         premium_recv=entry_credit_net * contracts, margin_locked=margin_locked,
         entry_fee=entry_fee, source=entry_source, asset="ETH",
+        equity_now=equity_usd,
     )
     return pid
 
@@ -461,7 +462,8 @@ def _do_close(p: dict, mark: float, reason: str, now_ms: int) -> bool:
     equity_after = start_eq + float(stats_after["realized_usd"])
     telegram_notify.notify_close(
         pid=int(p["id"]), side=p["leg"], strike=float(p["strike"]), reason=reason,
-        pnl_pct=pnl_pct, pnl_usd=pnl_usd, equity_after=equity_after, hold_h=int(sl.CYCLE_H),
+        pnl_pct=pnl_pct, pnl_usd=pnl_usd, equity_after=equity_after,
+        total_pnl_usd=equity_after - start_eq, hold_h=int(sl.CYCLE_H),
     )
     return True
 

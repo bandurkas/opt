@@ -3,6 +3,12 @@
 Stateless, no aiogram dependency, no separate process. If TELEGRAM_BOT_TOKEN
 or TELEGRAM_CHAT_ID env vars are missing, every notify call is a no-op so the
 paper-loop never breaks because of telemetry config.
+
+All four bots (Sniper1/Boba1/Grogu1, plus Tyagach in its own separate repo)
+post to the SAME chat, so every message is auto-tagged with the bot's name
+(2026-06-27) — read once from execution_config.ACCOUNT_NAME, which is already
+set per docker-compose service (MC_ACCOUNT_NAME) and used throughout the rest
+of the platform (Mission Control, accounts_repo) — no new config needed.
 """
 from __future__ import annotations
 
@@ -11,10 +17,17 @@ from typing import Final
 
 import requests
 
+from services import execution_config as cfg
+
 _TOKEN: Final = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 # TELEGRAM_CHAT_ID supports multiple recipients: comma/space-separated chat IDs.
 _CHAT_IDS: Final = [c for c in os.getenv("TELEGRAM_CHAT_ID", "").replace(",", " ").split() if c]
 _TIMEOUT_S: Final = 5
+
+# "default" is execution_config's fallback for ad-hoc scripts/tests that never
+# set MC_ACCOUNT_NAME — skip tagging in that case so we don't spam "[default]"
+# on things that aren't one of the four real bots.
+BOT_LABEL: Final = cfg.ACCOUNT_NAME if cfg.ACCOUNT_NAME != "default" else None
 
 
 def is_enabled() -> bool:
@@ -25,6 +38,8 @@ def notify(text: str, *, parse_mode: str = "HTML", silent: bool = False) -> None
     """Send a message to every configured chat. Never raises — paper-loop should never break on this."""
     if not is_enabled():
         return
+    if BOT_LABEL:
+        text = f"<b>[{BOT_LABEL}]</b> {text}"
     for chat_id in _CHAT_IDS:
         try:
             requests.post(
@@ -44,7 +59,7 @@ def notify(text: str, *, parse_mode: str = "HTML", silent: bool = False) -> None
 def notify_open(*, pid: int, symbol: str, side: str, strike: float, spot: float,
                 n_lots: int, contracts: float, premium_recv: float,
                 margin_locked: float, entry_fee: float, source: str,
-                asset: str = "ETH") -> None:
+                equity_now: float, asset: str = "ETH") -> None:
     side_word = "CALL" if side == "C" else "PUT"
     emoji = "🟢"
     text = (
@@ -53,6 +68,7 @@ def notify_open(*, pid: int, symbol: str, side: str, strike: float, spot: float,
         f"  Size: <b>{n_lots} lots</b> ({contracts:.4f} {asset})\n"
         f"  Premium received: <b>${premium_recv:.2f}</b>\n"
         f"  Margin locked: ${margin_locked:.2f} · fee ${entry_fee:.2f}\n"
+        f"  Balance now: <b>${equity_now:.2f}</b>\n"
         f"  Symbol: <code>{symbol}</code> · source: {source}"
     )
     notify(text)
@@ -60,7 +76,7 @@ def notify_open(*, pid: int, symbol: str, side: str, strike: float, spot: float,
 
 def notify_close(*, pid: int, side: str, strike: float, reason: str,
                  pnl_pct: float, pnl_usd: float, equity_after: float,
-                 hold_h: int = 0) -> None:
+                 total_pnl_usd: float, hold_h: int = 0) -> None:
     side_word = "CALL" if side == "C" else "PUT"
     profit = pnl_usd > 0
     emoji = "✅" if profit else "❌"
@@ -71,13 +87,17 @@ def notify_close(*, pid: int, side: str, strike: float, reason: str,
             "tp1": "TP1 (50% closed)",
             "tp2": "TP2 (full close)",
             "sl": "STOP-LOSS",
+            "cluster_stop_worst_leg": "cluster-stop (worst leg)",
         }.get(reason, reason.upper())
-    sign = "+" if profit else ""
+    sign = "+" if profit else "-"
+    pct_sign = "+" if pnl_pct >= 0 else "-"
+    total_sign = "+" if total_pnl_usd >= 0 else "-"
     text = (
         f"{emoji} <b>CLOSED #{pid}</b> · SELL {side_word} @ ${strike:.0f}\n"
         f"  Reason: {reason_label}\n"
-        f"  P&amp;L: <b>{sign}${pnl_usd:.2f}</b> ({sign}{pnl_pct:.1f}% of premium)\n"
-        f"  Equity now: <b>${equity_after:.2f}</b>"
+        f"  This trade: <b>{sign}${abs(pnl_usd):.2f}</b> ({pct_sign}{abs(pnl_pct):.1f}% of premium)\n"
+        f"  Balance now: <b>${equity_after:.2f}</b>\n"
+        f"  Total P&amp;L since start: <b>{total_sign}${abs(total_pnl_usd):.2f}</b>"
     )
     notify(text)
 

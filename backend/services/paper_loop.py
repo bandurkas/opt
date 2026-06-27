@@ -456,6 +456,7 @@ def open_paper_position(signal: dict, spot: float, equity_usd: float, free_margi
         n_lots=n_lots, contracts=contracts,
         premium_recv=premium_received_total,
         margin_locked=margin_locked, entry_fee=entry_fee, source=entry_source,
+        equity_now=equity_usd,
     )
     return pid
 
@@ -629,7 +630,7 @@ def _do_close(p: dict, premium_mid: float, reason: str, now_ms: int) -> bool:
     telegram_notify.notify_close(
         pid=int(p["id"]), side=p["side"], strike=float(p["strike"]),
         reason=reason, pnl_pct=pnl_pct, pnl_usd=pnl_usd,
-        equity_after=equity_after,
+        equity_after=equity_after, total_pnl_usd=equity_after - start_eq,
         hold_h=int(p.get("hold_h") or 0),
     )
     if int(res.get("cb_cooldown_until_ms") or 0) > now_ms:
