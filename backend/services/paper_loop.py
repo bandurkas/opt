@@ -38,6 +38,7 @@ from services import reconcile  # noqa: E402  (live exchange↔DB sync; inert in
 from services.bybit_client import bybit_client  # noqa: E402
 from services.strategy_config import (  # noqa: E402
     CALL_SL_DOLLAR_FRAC,
+    CLUSTER_STOP_WORST_LEG_FRAC,
     RET_7D_THRESHOLD,
     get_side_gen_kwargs,
 )
@@ -505,6 +506,49 @@ def check_and_close_position(p: dict, spot: float,
     return _do_close(p, premium_mid, reason, now_ms)
 
 
+def check_cluster_worst_leg(open_pos: list[dict], spot: float,
+                            chain_dict: dict[str, dict] | None = None) -> int:
+    """Cluster-stop (worst-leg-only): among open positions on the SAME side,
+    if there are 2+ concurrently open and the worst one's unrealized loss
+    exceeds CLUSTER_STOP_WORST_LEG_FRAC of its own entry credit, force-close
+    just that leg now instead of waiting for its individual SL.
+
+    Targets the 2026-06-26 incident pattern: same-side re-entries opened
+    every ~30min, each with its own SL far enough away (Call ~0.10x margin
+    dollar-SL, Put 2.00x credit) that several can pile up losing before any
+    one of them — and therefore the CB_CONSEC_LIMIT=1 circuit breaker, which
+    only fires on a CLOSE — gets a chance to act. Validated on the real
+    $-account backtest engine (372d history, 70/30 train+holdout) as the only
+    candidate among ~325 tested with a positive holdout return, and replayed
+    against the actual 2026-06-26 option_snapshots mark_price data (cuts that
+    cluster's loss from -$74.09 to -$50.01). Uses LIVE Bybit mark only (same
+    rule as TP/SL — no BS fallback, to avoid false trips on stale σ).
+
+    Returns the number of legs force-closed this tick (0 most of the time).
+    """
+    now_ms = int(time.time() * 1000)
+    n_closed = 0
+    for side in ("P", "C"):
+        same = [p for p in open_pos if p["side"] == side]
+        if len(same) < 2:
+            continue
+        legs = []
+        for p in same:
+            mark = current_mark(p, spot, chain_dict)
+            if mark is None:
+                continue
+            entry_credit = float(p["entry_credit_usd"])
+            legs.append((p, mark, mark - entry_credit))
+        if len(legs) < 2:
+            continue
+        worst_p, worst_mark, worst_loss = max(legs, key=lambda x: x[2])
+        worst_credit = float(worst_p["entry_credit_usd"])
+        if worst_credit > 0 and worst_loss > CLUSTER_STOP_WORST_LEG_FRAC * worst_credit:
+            if _do_close(worst_p, worst_mark, "cluster_stop_worst_leg", now_ms):
+                n_closed += 1
+    return n_closed
+
+
 def force_close_all(open_pos: list[dict], spot: float, chain_dict: dict[str, dict] | None) -> int:
     """Mission Control emergency flatten — closes every open position at its
     current mark (BS fallback allowed here, unlike the normal TP/SL check,
@@ -747,6 +791,16 @@ async def loop():
                     print(f"[paper] ERROR closing #{p.get('id')}:\n{traceback.format_exc()}",
                           flush=True)
                     _report_loop_error(f"close #{p.get('id')}")
+
+            # 1b) Cluster-stop (worst-leg) — re-fetch first: step 1 above may
+            # have just closed some of these via their own TP/SL/time-stop,
+            # and check_cluster_worst_leg must only ever see still-open legs.
+            try:
+                open_pos_now = paper_repo.open_positions()
+                check_cluster_worst_leg(open_pos_now, spot, chain_dict)
+            except Exception:  # noqa: BLE001
+                print(f"[paper] ERROR cluster_worst_leg:\n{traceback.format_exc()}", flush=True)
+                _report_loop_error("cluster_worst_leg")
 
             # 2) Entry conditions — evaluate every minute, debounce across the 5m
             #    window, commit the open near the candle close (~:50 of last minute).

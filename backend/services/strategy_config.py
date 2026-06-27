@@ -114,6 +114,24 @@ CALL_SL_DOLLAR_FRAC = float(os.getenv("CALL_SL_DOLLAR_FRAC", "0.10"))
 CB_CONSEC_LIMIT = 1       # consecutive losses before cooldown
 CB_PAUSE_HOURS = 8        # cooldown duration
 
+# 2026-06-27 cluster-stop (worst-leg-only): the CB above only fires when a
+# trade CLOSES, so a same-side concentration cluster (2026-06-26: 3x Call
+# re-entries into one strike, then 3x into the next, opened ~30min apart over
+# several hours before the first loss even closed) can rack up multiple SLs
+# before the CB ever gets a chance to arm. Tested two designs on the real
+# $-account engine (margin/MAX_OPEN4/compound/fees/CB, real DVOL, 70/30
+# train+holdout, 372d history): closing the WHOLE same-side cluster on
+# combined unrealized loss helps but is threshold-fragile; closing only the
+# WORST leg (this one) is the most robust — only candidate across ~325
+# variants with a positive HOLDOUT return (+1.3% vs baseline -9.6%) and
+# better maxDD in every one of 4 walk-forward quarters. Validated against the
+# real 2026-06-26 incident using actual option_snapshots mark_price (not BS
+# approximation): would have cut that cluster's loss from -$74.09 to -$50.01
+# (-32%). frac=0.40 sits on a real plateau (0.38-0.42 all similar); below
+# ~0.37 the threshold fires too often and the realized-loss clustering itself
+# starts tripping the CB more, which is worse — don't lower without re-sweeping.
+CLUSTER_STOP_WORST_LEG_FRAC = 0.40  # fraction of a leg's own credit lost before forced early close
+
 # ── Previous Put-only config (for comparison / alt mode) ──
 LIVE_GEN_KWARGS = PUT_GEN_KWARGS  # alias for backward compat
 LIVE_EXIT = PUT_EXIT
