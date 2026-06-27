@@ -609,6 +609,8 @@ export type TyagachPosition = {
   exit_spot: number | null;
   exit_reason: string | null;
   pnl_net: number | null;
+  current_mark_usd: number | null;
+  unrealized_pnl_usd: number | null;
 };
 
 // Tyagach's stop_price/tp_price are already SPOT price levels (the

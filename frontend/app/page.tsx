@@ -222,13 +222,11 @@ export default function Dashboard() {
       entryCreditUsd: p.entry_credit_usd, openedAtMs: p.opened_at_ms, cycleId: p.cycle_id,
       currentMarkUsd: p.current_mark_usd, unrealizedPnlUsd: p.unrealized_pnl_usd,
     })),
-    // Tyagach has no live mark/unrealized-PnL feed (own service, no streaming
-    // quote loop like the other 3 bots) — the rail just shows side/strike/
-    // expiry/ITM status for it, same as it does whenever a mark is unknown.
     ...tyagachOpenPositions.map((p): Contract => ({
       key: `tyagach-${p.id}`, bot: "tyagach", side: p.option_side, strike: p.strike,
       expiryMs: p.expiry_ts_ms, contracts: p.num_units, spot: tyagachKlines.at(-1)?.close ?? null,
       entryCreditUsd: p.sell_premium_received, openedAtMs: p.entry_ts_ms,
+      currentMarkUsd: p.current_mark_usd, unrealizedPnlUsd: p.unrealized_pnl_usd,
     })),
   ], [positions, btcPositions, ethStraddlePositions, tyagachOpenPositions, tyagachKlines, conditions?.spot, btcSpot, ethStraddleSpot]);
 
