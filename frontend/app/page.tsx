@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { fetchPaperState, fetchPaperConditions, fetchPaperPositions, fetchRecentTrades, fetchEquityHistory, fetchBtcStraddleState, fetchBtcStraddlePositions, fetchBtcStraddleEquityHistory, fetchEthStraddleState, fetchEthStraddlePositions, fetchEthStraddleEquityHistory, fetchEthStraddleChart, fetchBtcPrice, fetchTyagachState, fetchTyagachPositions, fetchTyagachEquityHistory, fetchTyagachChart, type PaperState, type PaperConditions, type PaperPosition, type EquityPoint, type BtcStraddleState, type BtcStraddlePosition, type EthStraddleState, type EthStraddlePosition, type Kline, type EthStraddleChartLeg, type TyagachState, type TyagachPosition, type TyagachChartZone } from "./lib/api";
+import { fetchPaperState, fetchPaperConditions, fetchPaperPositions, fetchRecentTrades, fetchEquityHistory, fetchBtcStraddleState, fetchBtcStraddlePositions, fetchBtcStraddleEquityHistory, fetchBtcPrice, fetchTyagachState, fetchTyagachPositions, fetchTyagachEquityHistory, fetchTyagachChart, type PaperState, type PaperConditions, type PaperPosition, type EquityPoint, type BtcStraddleState, type BtcStraddlePosition, type Kline, type TyagachState, type TyagachPosition, type TyagachChartZone } from "./lib/api";
 import MissionControl from "./components/MissionControl";
 import StraddleChart from "./components/StraddleChart";
 import TyagachChart from "./components/TyagachChart";
@@ -52,15 +52,6 @@ export default function Dashboard() {
   const [btcError, setBtcError] = useState<string | null>(null);
   const [btcSpot, setBtcSpot] = useState<number | null>(null);
 
-  const [ethStraddleState, setEthStraddleState] = useState<EthStraddleState | null>(null);
-  const [ethStraddlePositions, setEthStraddlePositions] = useState<EthStraddlePosition[]>([]);
-  const [ethStraddleRecentTrades, setEthStraddleRecentTrades] = useState<EthStraddlePosition[]>([]);
-  const [ethStraddleEquityHistory, setEthStraddleEquityHistory] = useState<EquityPoint[]>([]);
-  const [ethStraddleError, setEthStraddleError] = useState<string | null>(null);
-  const [ethStraddleKlines, setEthStraddleKlines] = useState<Kline[]>([]);
-  const [ethStraddleChartLegs, setEthStraddleChartLegs] = useState<EthStraddleChartLeg[]>([]);
-  const [ethStraddleSpot, setEthStraddleSpot] = useState<number | null>(null);
-
   const [tyagachState, setTyagachState] = useState<TyagachState | null>(null);
   const [tyagachOpenPositions, setTyagachOpenPositions] = useState<TyagachPosition[]>([]);
   const [tyagachRecentTrades, setTyagachRecentTrades] = useState<TyagachPosition[]>([]);
@@ -93,39 +84,6 @@ export default function Dashboard() {
       } catch (e) {
         if (cancelled) return;
         setBtcError(e instanceof Error ? e.message : String(e));
-      }
-    };
-    load();
-    const id = setInterval(load, REFRESH_MS);
-    return () => { cancelled = true; clearInterval(id); };
-  }, []);
-
-  // Same isolation as the BTC straddle effect above — the ETH straddle bot is
-  // a distinct deploy (own container/tables) from both the ETH signal book and
-  // the BTC straddle book; its fetch failures must never blank out either.
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const [s, p, t, eq, chart] = await Promise.all([
-          fetchEthStraddleState(),
-          fetchEthStraddlePositions("open"),
-          fetchEthStraddlePositions("recent", 200),
-          fetchEthStraddleEquityHistory(336),
-          fetchEthStraddleChart(),
-        ]);
-        if (cancelled) return;
-        setEthStraddleState(s);
-        setEthStraddlePositions(p.positions);
-        setEthStraddleRecentTrades(t.positions.filter((pos) => pos.closed_at_ms !== null));
-        setEthStraddleEquityHistory(eq.points);
-        setEthStraddleKlines(chart.klines);
-        setEthStraddleChartLegs(chart.legs);
-        setEthStraddleSpot(chart.spot ?? null);
-        setEthStraddleError(null);
-      } catch (e) {
-        if (cancelled) return;
-        setEthStraddleError(e instanceof Error ? e.message : String(e));
       }
     };
     load();
@@ -216,19 +174,13 @@ export default function Dashboard() {
       entryCreditUsd: p.entry_credit_usd, openedAtMs: p.opened_at_ms, cycleId: p.cycle_id,
       currentMarkUsd: p.current_mark_usd, unrealizedPnlUsd: p.unrealized_pnl_usd,
     })),
-    ...ethStraddlePositions.map((p): Contract => ({
-      key: `grogu1-${p.id}`, bot: "eth_straddle", side: p.leg, strike: p.strike,
-      expiryMs: p.expiry_ms, contracts: p.contracts, spot: ethStraddleSpot,
-      entryCreditUsd: p.entry_credit_usd, openedAtMs: p.opened_at_ms, cycleId: p.cycle_id,
-      currentMarkUsd: p.current_mark_usd, unrealizedPnlUsd: p.unrealized_pnl_usd,
-    })),
     ...tyagachOpenPositions.map((p): Contract => ({
       key: `tyagach-${p.id}`, bot: "tyagach", side: p.option_side, strike: p.strike,
       expiryMs: p.expiry_ts_ms, contracts: p.num_units, spot: tyagachKlines.at(-1)?.close ?? null,
       entryCreditUsd: p.sell_premium_received, openedAtMs: p.entry_ts_ms,
       currentMarkUsd: p.current_mark_usd, unrealizedPnlUsd: p.unrealized_pnl_usd,
     })),
-  ], [positions, btcPositions, ethStraddlePositions, tyagachOpenPositions, tyagachKlines, conditions?.spot, btcSpot, ethStraddleSpot]);
+  ], [positions, btcPositions, tyagachOpenPositions, tyagachKlines, conditions?.spot, btcSpot]);
 
   if (!state) return <main className="min-h-screen bg-slate-950 text-white flex items-center justify-center">Loading...</main>;
 
@@ -617,126 +569,6 @@ export default function Dashboard() {
             )}
 
             {btcPositions.length === 0 && btcRecentTrades.length === 0 && (
-              <div className="bg-slate-900 border border-slate-800 rounded-xl px-4 py-6 text-center">
-                <p className="text-sm text-slate-400">No activity yet</p>
-                <p className="text-xs text-slate-500 mt-1">Next cycle opens at the 24h boundary...</p>
-              </div>
-            )}
-          </>
-        )}
-
-        {/* ───────────────────── ETH Straddle (separate book) ───────────────────── */}
-        <div className="pt-2">
-          <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3">
-            ETH Straddle <span className="text-slate-600 font-normal">· 24h unconditional short ATM</span>
-          </h2>
-        </div>
-
-        {ethStraddleError && (
-          <div className="bg-rose-950/30 border border-rose-800/50 rounded-xl px-4 py-3 text-sm text-rose-300">
-            ETH straddle bot unreachable: {ethStraddleError}
-          </div>
-        )}
-
-        {ethStraddleState && (
-          <>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <StatCard
-                label="Equity"
-                value={fmtUsd(ethStraddleState.current_equity_usd)}
-                sub={`${(ethStraddleState.current_equity_usd - ethStraddleState.start_equity_usd) >= 0 ? "+" : ""}${fmtUsd(ethStraddleState.current_equity_usd - ethStraddleState.start_equity_usd)}`}
-                accent={ethStraddleState.current_equity_usd >= ethStraddleState.start_equity_usd ? "text-emerald-300" : "text-rose-300"}
-              />
-              <StatCard label="Win Rate" value={ethStraddleState.win_rate ? `${(ethStraddleState.win_rate * 100).toFixed(0)}%` : "—"} sub={`${ethStraddleState.wins}W / ${ethStraddleState.losses}L`} />
-              <StatCard label="Legs closed" value={`${ethStraddleState.n_closed}`} sub={`${ethStraddleState.n_open} open`} />
-              <StatCard label="Max DD" value={`${ethStraddleState.max_dd_pct.toFixed(1)}%`} sub={`cycle #${ethStraddleState.last_cycle_id}`} />
-            </div>
-
-            {ethStraddleEquityHistory.length > 1 && (
-              <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-                <div className="px-4 py-2 bg-slate-800/50 text-xs font-semibold text-slate-400">
-                  Equity (14 days)
-                </div>
-                <div className="p-2">
-                  <EquityChart points={ethStraddleEquityHistory} startEquity={ethStraddleState.start_equity_usd} />
-                </div>
-              </div>
-            )}
-
-            {ethStraddlePositions.length > 0 && (
-              <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-                <div className="px-4 py-2 bg-slate-800/50 text-xs font-semibold text-slate-400">
-                  Open Legs ({ethStraddlePositions.length})
-                </div>
-                <div className="divide-y divide-slate-800">
-                  {ethStraddlePositions.map((p) => (
-                    <div key={p.id} className="px-4 py-3 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                          p.leg === "P" ? "bg-rose-500/10 text-rose-300" : "bg-emerald-500/10 text-emerald-300"
-                        }`}>
-                          SELL {p.leg}
-                        </span>
-                        <span className="text-sm font-mono">${p.strike}</span>
-                        <span className="text-xs text-slate-500">{p.contracts.toFixed(4)} ETH</span>
-                        <ItmBadge side={p.leg} strike={p.strike} spot={ethStraddleSpot} compact />
-                      </div>
-                      <div className="text-right">
-                        <Countdown expiryMs={p.expiry_ms} now={now} />
-                        <p className="text-[10px] text-slate-600 mt-0.5">cycle #{p.cycle_id}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {ethStraddleKlines.length > 1 && (
-              <StraddleChart
-                callsign="GROGU-1"
-                symbol="ETH"
-                klines={ethStraddleKlines}
-                legs={ethStraddleChartLegs}
-              />
-            )}
-
-            {ethStraddleRecentTrades.length > 0 && (
-              <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-                <div className="px-4 py-2 bg-slate-800/50 text-xs font-semibold text-slate-400 flex justify-between">
-                  <span>Журнал циклов</span>
-                  <span>{ethStraddleRecentTrades.length} total</span>
-                </div>
-                <div className="divide-y divide-slate-800 max-h-80 overflow-y-auto">
-                  {ethStraddleRecentTrades.map((t) => {
-                    const isWin = (t.pnl_usd || 0) > 0;
-                    return (
-                      <div key={t.id} className="px-4 py-2.5 flex items-center justify-between text-sm">
-                        <div className="flex items-center gap-2">
-                          <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                            t.leg === "P" ? "bg-rose-500/10 text-rose-300" : "bg-emerald-500/10 text-emerald-300"
-                          }`}>
-                            {t.leg}
-                          </span>
-                          <span className="font-mono text-xs">${t.strike}</span>
-                          <span className="text-xs text-slate-500">{t.closed_at_ms ? fmtDay(t.closed_at_ms) : ""}</span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <span className="text-xs text-slate-500">{t.exit_reason || ""}</span>
-                          <span className={`font-mono font-bold text-xs ${isWin ? "text-emerald-400" : "text-rose-400"}`}>
-                            {fmtPct(t.pnl_pct || 0)}
-                          </span>
-                          <span className={`font-mono text-xs ${isWin ? "text-emerald-400" : "text-rose-400"}`}>
-                            {t.pnl_usd != null ? fmtUsd(t.pnl_usd) : ""}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {ethStraddlePositions.length === 0 && ethStraddleRecentTrades.length === 0 && (
               <div className="bg-slate-900 border border-slate-800 rounded-xl px-4 py-6 text-center">
                 <p className="text-sm text-slate-400">No activity yet</p>
                 <p className="text-xs text-slate-500 mt-1">Next cycle opens at the 24h boundary...</p>
