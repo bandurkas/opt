@@ -19,7 +19,7 @@ const RING_DOT: Record<BotKey, { ring: string; dot: string }> = {
   eth_straddle: { ring: "ring-cyan-400/40", dot: "bg-cyan-400" },
   eth_signal: { ring: "ring-fuchsia-400/40", dot: "bg-fuchsia-400" },
   tyagach: { ring: "ring-lime-400/40", dot: "bg-lime-400" },
-  jony: { ring: "ring-violet-400/40", dot: "bg-violet-400" },
+  jony: { ring: "ring-sky-400/40", dot: "bg-sky-400" },
 };
 
 const UNIT: Record<BotKey, string> = {
@@ -37,7 +37,7 @@ export const BOT_DISPLAY: Record<BotKey, { callsign: string; unit: string; accen
   tyagach: { callsign: "TYAGACH", unit: UNIT.tyagach, accent: "text-lime-400", ...RING_DOT.tyagach },
   // Jony is the same "separate service" case as Tyagach: own API (:8200),
   // own pause control — not driven by MissionControl's shared endpoint.
-  jony: { callsign: "JONY", unit: UNIT.jony, accent: "text-violet-400", ...RING_DOT.jony },
+  jony: { callsign: "JONY", unit: UNIT.jony, accent: "text-sky-400", ...RING_DOT.jony },
 };
 
 // A short option position, normalized across the 3 bots (paper signal trades

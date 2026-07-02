@@ -16,7 +16,7 @@ const ACCENT = {
   up: "#34d399",
   down: "#fb7185",
   entry: "#94a3b8",
-  strike: "#a78bfa",
+  strike: "#38bdf8",
   grid: "rgba(148, 163, 184, 0.06)",
 };
 
@@ -112,7 +112,7 @@ export default function JonyChart({
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-800/60">
         <div className="flex items-center gap-2">
           <span className="relative flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full rounded-full bg-violet-400 led-armed" />
+            <span className="absolute inline-flex h-full w-full rounded-full bg-sky-400 led-armed" />
           </span>
           <h3 className="font-(family-name:--font-orbitron) text-xs font-bold tracking-[0.2em] uppercase text-slate-300">
             JONY <span className="text-slate-600">{"// "}{coin} SPOT</span>

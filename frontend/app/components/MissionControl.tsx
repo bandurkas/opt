@@ -323,11 +323,11 @@ function JonyPanel({
   const unreachable = state === null;
 
   return (
-    <div className="relative rounded-xl border border-slate-800 bg-slate-900/70 console-grid shadow-[inset_3px_0_0_0_theme(colors.violet.400)] overflow-hidden">
+    <div className="relative rounded-xl border border-slate-800 bg-slate-900/70 console-grid shadow-[inset_3px_0_0_0_theme(colors.sky.400)] overflow-hidden">
       <div className="p-5 flex flex-col gap-4 sm:flex-row sm:items-center">
         <div className="flex items-center gap-4 sm:w-64 shrink-0">
           <div className="leading-none">
-            <div className="font-(family-name:--font-orbitron) text-2xl font-bold tracking-wider text-violet-400">
+            <div className="font-(family-name:--font-orbitron) text-2xl font-bold tracking-wider text-sky-400">
               JONY
             </div>
             <div className="text-[11px] text-slate-500 mt-1 font-mono uppercase tracking-wide">
