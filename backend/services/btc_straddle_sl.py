@@ -24,10 +24,23 @@ CYCLE_H = 24.0          # hours per cycle (matches Bybit's shortest BTC option t
 # Quick-scalp combined exit (2026-06-26 rewrite, see straddle_quick_scalp_backtest.py):
 # close BOTH legs of a pair together once their COMBINED unrealized profit hits
 # this many dollars, then immediately reopen a fresh pair — instead of riding
-# one pair per 24h to TP2/SL/time-stop. Validated at SL_DOLLAR_FRAC=2.0 (above,
-# unchanged) on both the 1yr and 6.2yr BTC windows, train+holdout, beating the
-# old one-pair-per-day baseline with comparable-or-better tail risk.
-QUICK_TP_COMBINED_USD = 2.0
+# one pair per 24h to TP2/SL/time-stop.
+#
+# Raised $2 -> $22 on 2026-07-03 (see btc_straddle_quickscalp_account_sim.py /
+# btc_straddle_param_search.py): the ORIGINAL $2 selection (straddle_quick_
+# scalp_backtest.py) never modeled fees or account-level margin sizing. Once
+# both were added, $2 reopens ~8-12x/day and fee drag alone (~0.03% notional
+# per leg per open+close) turned the live paper account net-negative over
+# 60d/120d/365d windows despite gross edge being real. Sweeping target_usd on
+# the real $-account engine (start=$2000, MARGIN_PCT=0.15, real fees, no CB —
+# matches btc_straddle_loop.py exactly) found a clean peak at $22 (~1.1
+# reentries/day): $2.65-5.37/day across 60d/120d/365d windows vs -$0.88 to
+# -$1.34/day at the old $2, confirmed out-of-sample (120d/365d windows were
+# not part of the 60d tuning window). sl_dollar_frac was swept too and found
+# NOT to help — tightening it made both profit and maxDD worse, so it's
+# unchanged. See finding_boba1_quickscalp_target_fee_fix memory for the full
+# writeup.
+QUICK_TP_COMBINED_USD = 22.0
 
 
 def margin_per_lot(strike: float, entry_premium: float, *,

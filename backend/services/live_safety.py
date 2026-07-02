@@ -63,7 +63,13 @@ def daily_loss_limit_hit(realized_today_usd: float, limit_usd: float | None = No
     return (-realized_today_usd) >= lim
 
 
-def utc_day_start_ms(now_ms: int) -> int:
-    """Epoch-ms of 00:00 UTC for the day containing now_ms."""
+def utc_day_start_ms(now_ms: int, anchor_hour: int = 0) -> int:
+    """Epoch-ms of the most recent `anchor_hour`:00 UTC at/before now_ms.
+    Default anchor_hour=0 (00:00 UTC) — unchanged for every existing caller.
+    Callers whose trading-cycle boundary is itself anchor-shifted (e.g.
+    btc_straddle_loop.py's ANCHOR_HOUR_UTC) should pass the same hour here so
+    the daily-loss-limit reset window lines up with the trading cycle instead
+    of silently resetting at midnight while the cycle rolls over elsewhere."""
     day_ms = 86_400_000
-    return (now_ms // day_ms) * day_ms
+    offset_ms = anchor_hour * 3_600_000
+    return (now_ms - offset_ms) // day_ms * day_ms + offset_ms

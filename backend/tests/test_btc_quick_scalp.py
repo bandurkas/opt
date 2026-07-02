@@ -29,11 +29,11 @@ def test_neither_condition_holds() -> None:
 
 
 def test_quick_tp_fires_on_combined_credit() -> None:
-    # entry_credit=100/lot, 1 lot (0.01 BTC) each leg: (100-mark)*0.01 per leg.
-    # marks=0 on both legs -> combined pnl = (100-0)*0.01*2 = $2.00, exactly
+    # entry_credit=1100/lot, 1 lot (0.01 BTC) each leg: (1100-mark)*0.01 per leg.
+    # marks=0 on both legs -> combined pnl = 1100*0.01*2 = $22.00, exactly
     # QUICK_TP_COMBINED_USD's default — confirms the >= boundary fires.
-    legs = [_leg("C", 100.0, 0.01, 500.0), _leg("P", 100.0, 0.01, 500.0)]
-    assert sl.QUICK_TP_COMBINED_USD == 2.0  # test assumes this default; update if it changes
+    legs = [_leg("C", 1100.0, 0.01, 5000.0), _leg("P", 1100.0, 0.01, 5000.0)]
+    assert sl.QUICK_TP_COMBINED_USD == 22.0  # test assumes this default; update if it changes
     marks = {"C": 0.0, "P": 0.0}
     action, tripped = loop.decide_pair_action(legs, marks, now_ms=1000)
     assert action == "quick_tp", action
@@ -68,9 +68,12 @@ def test_time_stop_does_not_fire_before_expiry() -> None:
 def test_reentry_tenor_shrinks_through_the_day() -> None:
     # current_cycle_id/CYCLE_MS arithmetic: remaining_h should shrink linearly
     # as now_ms advances toward the next day boundary, never go negative for
-    # a now_ms strictly inside the current day.
+    # a now_ms strictly inside the current day. Day boundary is anchored at
+    # ANCHOR_HOUR_UTC (not epoch 0) — cycle_day_start_ms() is the source of
+    # truth, matching what the live loop computes each tick.
     cyc = loop.current_cycle_id(0)
-    day_end_ms = (cyc + 1) * loop.CYCLE_MS
+    day_start_ms = loop.cycle_day_start_ms(cyc)
+    day_end_ms = day_start_ms + loop.CYCLE_MS
     half_day_ms = day_end_ms - loop.CYCLE_MS // 2
     remaining_h = (day_end_ms - half_day_ms) / 3_600_000
     assert abs(remaining_h - 12.0) < 1e-6, remaining_h
@@ -80,14 +83,23 @@ def test_reentry_tenor_shrinks_through_the_day() -> None:
 
 
 def test_new_cycle_id_unique_and_sortable_within_a_day() -> None:
+    # Seconds-into-day MUST be measured from cycle_day_start_ms(cyc), not
+    # cyc*CYCLE_MS directly — with ANCHOR_OFFSET_MS > 0, cyc*CYCLE_MS sits
+    # BEFORE the real day start, so "now_ms - cyc*CYCLE_MS" would run past
+    # 100_000s and collide with the next cycle's id range.
     cyc = 20630
-    t0 = cyc * loop.CYCLE_MS + 5_000      # 5s into the day
-    t1 = cyc * loop.CYCLE_MS + 3_600_000  # 1h into the day
-    id0 = cyc * 100_000 + (t0 - cyc * loop.CYCLE_MS) // 1000
-    id1 = cyc * 100_000 + (t1 - cyc * loop.CYCLE_MS) // 1000
+    day_start_ms = loop.cycle_day_start_ms(cyc)
+    t0 = day_start_ms + 5_000      # 5s into the day
+    t1 = day_start_ms + 3_600_000  # 1h into the day
+    id0 = cyc * 100_000 + (t0 - day_start_ms) // 1000
+    id1 = cyc * 100_000 + (t1 - day_start_ms) // 1000
     assert id0 != id1
     assert id1 > id0  # later re-entry gets a larger id, sorts naturally
     assert id0 // 100_000 == cyc  # day-bucket recoverable from the id
+    # the whole day (0..CYCLE_MS-1 seconds-into-day) must stay under 100_000s
+    last_second_ms = day_start_ms + loop.CYCLE_MS - 1000
+    id_last = cyc * 100_000 + (last_second_ms - day_start_ms) // 1000
+    assert id_last // 100_000 == cyc, id_last  # must NOT overflow into cyc+1's range
 
 
 if __name__ == "__main__":

@@ -47,6 +47,17 @@ BASE_COIN = "BTC"
 STRIKE_ROUND = 500.0  # $ — Bybit's near-term BTC strike step
 CYCLE_MS = int(sl.CYCLE_H * 3_600_000)
 TARGET_EXPIRY_H = sl.CYCLE_H
+
+# Daily cycle boundary anchor, in UTC hours-from-midnight (2026-07-03: moved
+# 0 -> 6 — see btc_straddle_anchor_hour_sweep.py / btc_straddle_param_search.py).
+# Anchor hour changes WHEN the day-cycle time-stop falls, not how often the
+# bot trades; quick-scalp reentry still fires all day regardless. Swept 0-23h
+# on 2yr/6.2yr/60d/120d/365d BTC windows — h=6 was consistently top-3 (best or
+# near-best) on every independent window, h=18-20 consistently worst. Effect
+# is secondary to QUICK_TP_COMBINED_USD (see btc_straddle_sl.py) but stacks
+# additively on top of it (~+$1.2/day on the 120d validation window).
+ANCHOR_HOUR_UTC = int(os.getenv("BTC_STRADDLE_ANCHOR_HOUR_UTC", "6"))
+ANCHOR_OFFSET_MS = ANCHOR_HOUR_UTC * 3_600_000
 SIGMA_CLAMP = (0.20, 1.50)
 IV_RV_MULT = 1.10
 SPREAD_HALF_PCT = 1.0       # half of handoff's 2.0% round-trip spread assumption
@@ -462,7 +473,7 @@ def _live_preopen_block(now_ms: int) -> str | None:
         return "killswitch"
     if reconcile.is_blocked():
         return "unreconciled"
-    day_start = live_safety.utc_day_start_ms(now_ms)
+    day_start = live_safety.utc_day_start_ms(now_ms, anchor_hour=ANCHOR_HOUR_UTC)
     realized_today = repo.realized_pnl_since(day_start)
     if live_safety.daily_loss_limit_hit(realized_today):
         return "daily_loss_limit"
@@ -470,7 +481,11 @@ def _live_preopen_block(now_ms: int) -> str | None:
 
 
 def current_cycle_id(now_ms: int) -> int:
-    return now_ms // CYCLE_MS
+    return (now_ms - ANCHOR_OFFSET_MS) // CYCLE_MS
+
+
+def cycle_day_start_ms(cyc: int) -> int:
+    return cyc * CYCLE_MS + ANCHOR_OFFSET_MS
 
 
 async def loop(run_once: bool = False) -> None:
@@ -574,7 +589,8 @@ async def loop(run_once: bool = False) -> None:
             # every re-entry). Skipped while Mission Control has paused this bot.
             now_ms = int(time.time() * 1000)
             cyc = current_cycle_id(now_ms)
-            day_end_ms = (cyc + 1) * CYCLE_MS
+            day_start_ms = cycle_day_start_ms(cyc)
+            day_end_ms = day_start_ms + CYCLE_MS
             remaining_h = (day_end_ms - now_ms) / 3_600_000
 
             if not repo.open_positions() and remaining_h > 0:
@@ -595,7 +611,13 @@ async def loop(run_once: bool = False) -> None:
                         # — still groups by day at a glance, still a BIGINT, no
                         # collision risk (re-entries are minutes apart at the very
                         # least, since closing+repricing takes real wall-clock time).
-                        new_cycle_id = cyc * 100_000 + (now_ms - cyc * CYCLE_MS) // 1000
+                        # Seconds-into-day is measured from day_start_ms (the
+                        # anchor-shifted boundary), NOT cyc*CYCLE_MS directly —
+                        # with ANCHOR_OFFSET_MS > 0, cyc*CYCLE_MS is BEFORE the
+                        # real day start, so "now_ms - cyc*CYCLE_MS" would run up
+                        # to CYCLE_MS+ANCHOR_OFFSET_MS (>100_000s), overflowing
+                        # into the next cycle's id range.
+                        new_cycle_id = cyc * 100_000 + (now_ms - day_start_ms) // 1000
                         eq = compute_equity(state, spot, chain_dict)
                         open_leg(new_cycle_id, "C", spot, eq["equity"], chain,
                                 remaining_h=remaining_h, expiry_override_ms=day_end_ms)
