@@ -39,6 +39,7 @@ from services import telegram_notify  # noqa: E402
 POLL_INTERVAL_S = int(os.getenv("BTC_STRADDLE_POLL_INTERVAL", "30"))
 START_EQUITY_USD = float(os.getenv("BTC_STRADDLE_START_EQUITY_USD", "2000"))
 MARGIN_PCT_PER_CYCLE = float(os.getenv("BTC_STRADDLE_MARGIN_PCT", "0.15"))
+ABS_FLOOR_EQUITY = float(os.getenv("BTC_STRADDLE_ABS_FLOOR_EQUITY", "50"))
 
 BOT_NAME = "btc_straddle"
 SPOT_SYMBOL = "BTCUSDT"
@@ -217,12 +218,15 @@ def open_leg(cycle_id: int, leg: str, spot: float, equity_usd: float,
         budget_per_leg = equity_usd * MARGIN_PCT_PER_CYCLE / 2.0
         n_lots = int(budget_per_leg // margin_lot) if margin_lot > 0 else 0
         if n_lots < 1:
-            print(f"[btc_straddle] open {leg} skipped — insufficient margin "
-                  f"(need ${margin_lot:.2f}/lot, budget ${budget_per_leg:.2f})", flush=True)
-            telegram_notify.notify_skipped_margin(spot=spot, strike=strike,
-                                                   need_usd=margin_lot, have_usd=budget_per_leg,
-                                                   asset="BTC")
-            return None
+            if margin_lot > 0 and margin_lot <= equity_usd * 0.40 and equity_usd >= ABS_FLOOR_EQUITY:
+                n_lots = 1  # min-lot-floor: 1 lot fits in account even though MARGIN_PCT budget rounds to 0
+            else:
+                print(f"[btc_straddle] open {leg} skipped — insufficient margin "
+                      f"(need ${margin_lot:.2f}/lot, budget ${budget_per_leg:.2f})", flush=True)
+                telegram_notify.notify_skipped_margin(spot=spot, strike=strike,
+                                                       need_usd=margin_lot, have_usd=budget_per_leg,
+                                                       asset="BTC")
+                return None
         contracts = n_lots * sl.LOT_BTC
         notional = strike * contracts
         entry_credit_gross = apply_entry_spread(premium_mid)
