@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { fetchPaperState, fetchPaperConditions, fetchPaperPositions, fetchRecentTrades, fetchEquityHistory, fetchBtcStraddleState, fetchBtcStraddlePositions, fetchBtcStraddleEquityHistory, fetchBtcPrice, fetchTyagachState, fetchTyagachPositions, fetchTyagachEquityHistory, fetchTyagachChart, type PaperState, type PaperConditions, type PaperPosition, type EquityPoint, type BtcStraddleState, type BtcStraddlePosition, type Kline, type TyagachState, type TyagachPosition, type TyagachChartZone } from "./lib/api";
+import { fetchPaperState, fetchPaperConditions, fetchPaperPositions, fetchRecentTrades, fetchEquityHistory, fetchBtcStraddleState, fetchBtcStraddlePositions, fetchBtcStraddleEquityHistory, fetchBtcPrice, fetchTyagachState, fetchTyagachPositions, fetchTyagachEquityHistory, fetchTyagachChart, fetchJonyState, fetchJonyParams, fetchJonyPositions, fetchJonyEquityHistory, type PaperState, type PaperConditions, type PaperPosition, type EquityPoint, type BtcStraddleState, type BtcStraddlePosition, type Kline, type TyagachState, type TyagachPosition, type TyagachChartZone, type JonyState, type JonyParams, type JonyPosition } from "./lib/api";
 import MissionControl from "./components/MissionControl";
 import StraddleChart from "./components/StraddleChart";
 import TyagachChart from "./components/TyagachChart";
@@ -59,6 +59,13 @@ export default function Dashboard() {
   const [tyagachError, setTyagachError] = useState<string | null>(null);
   const [tyagachKlines, setTyagachKlines] = useState<Kline[]>([]);
   const [tyagachZones, setTyagachZones] = useState<TyagachChartZone[]>([]);
+
+  const [jonyState, setJonyState] = useState<JonyState | null>(null);
+  const [jonyParams, setJonyParams] = useState<JonyParams | null>(null);
+  const [jonyOpenPositions, setJonyOpenPositions] = useState<JonyPosition[]>([]);
+  const [jonyRecentTrades, setJonyRecentTrades] = useState<JonyPosition[]>([]);
+  const [jonyEquityHistory, setJonyEquityHistory] = useState<EquityPoint[]>([]);
+  const [jonyError, setJonyError] = useState<string | null>(null);
 
   // Separate effect/error state from the ETH signal book above — the BTC bot is a
   // distinct deploy (own container/tables) and may lag behind or be absent;
@@ -125,6 +132,36 @@ export default function Dashboard() {
     return () => { cancelled = true; clearInterval(id); };
   }, []);
 
+  // Jony — same fully-separate-service pattern as Tyagach (own repo, own
+  // SQLite, API on :8200); isolated effect so its unreachability never
+  // blanks out the rest of the dashboard.
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const [s, prm, pos, eq] = await Promise.all([
+          fetchJonyState(),
+          fetchJonyParams(),
+          fetchJonyPositions(200),
+          fetchJonyEquityHistory(2000),
+        ]);
+        if (cancelled) return;
+        setJonyState(s);
+        setJonyParams(prm);
+        setJonyOpenPositions(pos.open);
+        setJonyRecentTrades(pos.recent.filter((p) => p.status !== "open"));
+        setJonyEquityHistory(eq);
+        setJonyError(null);
+      } catch (e) {
+        if (cancelled) return;
+        setJonyError(e instanceof Error ? e.message : String(e));
+      }
+    };
+    load();
+    const id = setInterval(load, REFRESH_MS);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
@@ -180,7 +217,15 @@ export default function Dashboard() {
       entryCreditUsd: p.sell_premium_received, openedAtMs: p.entry_ts_ms,
       currentMarkUsd: p.current_mark_usd, unrealizedPnlUsd: p.unrealized_pnl_usd,
     })),
-  ], [positions, btcPositions, tyagachOpenPositions, tyagachKlines, conditions?.spot, btcSpot]);
+    // Jony trades two underlyings from one book — spot must be per-position
+    // (ETH from the signal-bot conditions feed, BTC from the straddle feed).
+    ...jonyOpenPositions.map((p): Contract => ({
+      key: `jony-${p.id}`, bot: "jony", side: p.side, strike: p.strike,
+      expiryMs: p.expiry_ms, contracts: p.qty,
+      spot: p.coin === "BTC" ? btcSpot : conditions?.spot ?? null,
+      entryCreditUsd: p.entry_credit * p.qty, openedAtMs: p.opened_at_ms,
+    })),
+  ], [positions, btcPositions, tyagachOpenPositions, jonyOpenPositions, tyagachKlines, conditions?.spot, btcSpot]);
 
   if (!state) return <main className="min-h-screen bg-slate-950 text-white flex items-center justify-center">Loading...</main>;
 
@@ -700,6 +745,161 @@ export default function Dashboard() {
               <div className="bg-slate-900 border border-slate-800 rounded-xl px-4 py-6 text-center">
                 <p className="text-sm text-slate-400">No activity yet</p>
                 <p className="text-xs text-slate-500 mt-1">Waiting for a zone signal with rich enough IV...</p>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ───────────────────── Jony (separate service, own API :8200) ───────────────────── */}
+        <div className="pt-2">
+          <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3">
+            Jony <span className="text-slate-600 font-normal">· ETH+BTC VRP basket · sell premium (paper)</span>
+          </h2>
+        </div>
+
+        {jonyError && (
+          <div className="bg-rose-950/30 border border-rose-800/50 rounded-xl px-4 py-3 text-sm text-rose-300">
+            Jony unreachable: {jonyError}
+          </div>
+        )}
+
+        {jonyState && jonyState.initialized && (
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <StatCard
+                label="Equity"
+                value={fmtUsd(jonyState.equity_usd)}
+                sub={`${jonyState.equity_usd - jonyState.start_equity_usd >= 0 ? "+" : ""}${fmtUsd(jonyState.equity_usd - jonyState.start_equity_usd)} · start ${fmtUsd(jonyState.start_equity_usd, 0)}`}
+                accent={jonyState.equity_usd >= jonyState.start_equity_usd ? "text-emerald-300" : "text-rose-300"}
+              />
+              <StatCard
+                label="Win Rate"
+                value={jonyState.win_rate != null ? `${(jonyState.win_rate * 100).toFixed(0)}%` : "—"}
+                sub={`${jonyState.wins}W / ${jonyState.losses}L`}
+              />
+              <StatCard
+                label="Trades closed"
+                value={`${jonyState.n_closed}`}
+                sub={`${jonyState.open_position_count} open`}
+              />
+              <StatCard
+                label="Max DD"
+                value={`${jonyState.max_dd_pct.toFixed(1)}%`}
+                sub={
+                  jonyState.paused
+                    ? "PAUSED"
+                    : now < jonyState.cb_cooldown_until_ms
+                      ? `CB until ${new Date(jonyState.cb_cooldown_until_ms).toLocaleTimeString()}`
+                      : "armed"
+                }
+                accent={jonyState.paused || now < jonyState.cb_cooldown_until_ms ? "text-amber-300" : undefined}
+              />
+            </div>
+
+            {jonyParams && (
+              <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+                <div className="px-4 py-2 bg-slate-800/50 text-xs font-semibold text-slate-400 flex justify-between">
+                  <span>Параметры (backtest-locked)</span>
+                  <span className="text-slate-600">{jonyParams.backtest.finding}</span>
+                </div>
+                <div className="px-4 py-3 grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-2 text-[11px] font-mono text-slate-400">
+                  <span>ETH: {jonyParams.coins.ETH?.join("+")} · BTC: {jonyParams.coins.BTC?.join("")}-only</span>
+                  <span>PUT: vol≥{jonyParams.put_gen.vol_threshold} · {jonyParams.put_gen.regime_filter.join("/")} · MTF {jonyParams.put_gen.mtf_direction_filter}</span>
+                  <span>CALL: vol≥{jonyParams.call_gen.vol_threshold} · {jonyParams.call_gen.regime_filter.join("/")} · 1h {jonyParams.call_gen.mtf_direction_filter} · bull≤{jonyParams.call_gen.bull_market_ratio_max}</span>
+                  <span>PUT exit: TP2 {(jonyParams.put_exit.tp2_pct * 100).toFixed(0)}% · SL {(jonyParams.put_exit.sl_pct * 100).toFixed(0)}% · {jonyParams.put_exit.hold_h}h</span>
+                  <span>CALL exit: TP2 {(jonyParams.call_exit.tp2_pct * 100).toFixed(0)}% · SL {(jonyParams.call_exit.sl_pct * 100).toFixed(0)}% · {jonyParams.call_exit.hold_h}h</span>
+                  <span>MAX_OPEN {jonyParams.account.max_open_positions} · cap {jonyParams.account.per_coin_cap}/coin · margin {(jonyParams.account.margin_pct_per_trade * 100).toFixed(0)}% · CB {jonyParams.account.cb_consec_limit}→{jonyParams.account.cb_pause_hours}h · cooldown {jonyParams.account.cooldown_min}m</span>
+                </div>
+                <div className="px-4 pb-3 text-[10px] text-slate-600">
+                  Бэктест 400д: +{jonyParams.backtest.full_return_pct}% · maxDD {jonyParams.backtest.max_dd_pct}% · holdout +{jonyParams.backtest.holdout_return_pct}% · ~{jonyParams.backtest.trades_per_day}/день
+                </div>
+              </div>
+            )}
+
+            {jonyEquityHistory.length > 1 && (
+              <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+                <div className="px-4 py-2 bg-slate-800/50 text-xs font-semibold text-slate-400">
+                  Equity (paper, realized + mark-to-market)
+                </div>
+                <div className="p-2">
+                  <EquityChart points={jonyEquityHistory} startEquity={jonyState.start_equity_usd} />
+                </div>
+              </div>
+            )}
+
+            {jonyOpenPositions.length > 0 && (
+              <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+                <div className="px-4 py-2 bg-slate-800/50 text-xs font-semibold text-slate-400">
+                  Open positions ({jonyOpenPositions.length})
+                </div>
+                <div className="divide-y divide-slate-800">
+                  {jonyOpenPositions.map((p) => (
+                    <div key={p.id} className="px-4 py-3 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                          p.coin === "BTC" ? "bg-orange-500/10 text-orange-300" : "bg-sky-500/10 text-sky-300"
+                        }`}>
+                          {p.coin}
+                        </span>
+                        <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                          p.side === "P" ? "bg-rose-500/10 text-rose-300" : "bg-emerald-500/10 text-emerald-300"
+                        }`}>
+                          SELL {p.side === "P" ? "PUT" : "CALL"}
+                        </span>
+                        <span className="text-sm font-mono">${p.strike}</span>
+                        <span className="text-xs text-slate-500">{p.qty.toFixed(2)} ct</span>
+                        <span className="text-xs text-slate-500">credit ${(p.entry_credit * p.qty).toFixed(2)}</span>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs text-slate-400">{fmtRemaining(p.hold_h, p.opened_at_ms)}</p>
+                        <p className="text-[10px] text-slate-600 mt-0.5">{p.option_symbol} · TP2 {(p.tp2_pct * 100).toFixed(0)}% / SL {(p.sl_pct * 100).toFixed(0)}%</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {jonyRecentTrades.length > 0 && (
+              <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+                <div className="px-4 py-2 bg-slate-800/50 text-xs font-semibold text-slate-400 flex justify-between">
+                  <span>Журнал сделок</span>
+                  <span>{jonyRecentTrades.length} total</span>
+                </div>
+                <div className="divide-y divide-slate-800 max-h-80 overflow-y-auto">
+                  {jonyRecentTrades.map((t) => {
+                    const isWin = (t.pnl_usd || 0) > 0;
+                    return (
+                      <div key={t.id} className="px-4 py-2.5 flex items-center justify-between text-sm">
+                        <div className="flex items-center gap-2">
+                          <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                            t.side === "P" ? "bg-rose-500/10 text-rose-300" : "bg-emerald-500/10 text-emerald-300"
+                          }`}>
+                            {t.coin} {t.side}
+                          </span>
+                          <span className="font-mono text-xs">${t.strike}</span>
+                          <span className="text-xs text-slate-500">{t.closed_at_ms ? fmtDay(t.closed_at_ms) : ""}</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs text-slate-500">{t.exit_reason || ""}</span>
+                          <span className={`font-mono font-bold text-xs ${isWin ? "text-emerald-400" : "text-rose-400"}`}>
+                            {t.pnl_pct != null ? fmtPct(t.pnl_pct) : ""}
+                          </span>
+                          <span className={`font-mono text-xs ${isWin ? "text-emerald-400" : "text-rose-400"}`}>
+                            {t.pnl_usd != null ? fmtUsd(t.pnl_usd) : ""}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {jonyOpenPositions.length === 0 && jonyRecentTrades.length === 0 && (
+              <div className="bg-slate-900 border border-slate-800 rounded-xl px-4 py-6 text-center">
+                <p className="text-sm text-slate-400">No activity yet</p>
+                <p className="text-xs text-slate-500 mt-1">Waiting for vol≥gate + regime + MTF to hold 4 of 5 minutes...</p>
               </div>
             )}
           </>

@@ -12,17 +12,19 @@ import type { BotName } from "../lib/api";
 // close-all API, not the shared control endpoint MissionControl drives —
 // see MissionControl's separate confirmTarget union), so it's added as a
 // one-off entry below rather than via BOT_META's Object.keys() mapping.
-export type BotKey = BotName | "tyagach";
+export type BotKey = BotName | "tyagach" | "jony";
 
 const RING_DOT: Record<BotKey, { ring: string; dot: string }> = {
   btc_straddle: { ring: "ring-orange-500/40", dot: "bg-orange-400" },
   eth_straddle: { ring: "ring-cyan-400/40", dot: "bg-cyan-400" },
   eth_signal: { ring: "ring-fuchsia-400/40", dot: "bg-fuchsia-400" },
   tyagach: { ring: "ring-lime-400/40", dot: "bg-lime-400" },
+  jony: { ring: "ring-violet-400/40", dot: "bg-violet-400" },
 };
 
 const UNIT: Record<BotKey, string> = {
   btc_straddle: "BTC", eth_straddle: "ETH", eth_signal: "ETH", tyagach: "ETH",
+  jony: "ETH+BTC",
 };
 
 export const BOT_DISPLAY: Record<BotKey, { callsign: string; unit: string; accent: string; ring: string; dot: string }> = {
@@ -33,6 +35,9 @@ export const BOT_DISPLAY: Record<BotKey, { callsign: string; unit: string; accen
     ]),
   ) as Record<BotName, { callsign: string; unit: string; accent: string; ring: string; dot: string }>),
   tyagach: { callsign: "TYAGACH", unit: UNIT.tyagach, accent: "text-lime-400", ...RING_DOT.tyagach },
+  // Jony is the same "separate service" case as Tyagach: own API (:8200),
+  // own pause control — not driven by MissionControl's shared endpoint.
+  jony: { callsign: "JONY", unit: UNIT.jony, accent: "text-violet-400", ...RING_DOT.jony },
 };
 
 // A short option position, normalized across the 3 bots (paper signal trades

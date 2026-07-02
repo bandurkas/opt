@@ -678,3 +678,100 @@ export async function resumeTyagach(): Promise<void> {
 export async function closeAllTyagach(): Promise<void> {
   await tpost(`/close_all`);
 }
+
+// ───────────────────────── Jony (separate service, own API) ─────────────────────────
+// Multi-asset VRP basket paper bot (ETH P+C, BTC Call-only), /root/Jony on
+// VPS3, SQLite behind :8200 — same "fully separate service" pattern as
+// Tyagach above.
+
+export const JONY_API_BASE =
+  process.env.NEXT_PUBLIC_JONY_API_URL?.replace(/\/+$/, "") ||
+  "http://187.127.114.34:8200";
+
+export type JonyState = {
+  initialized: boolean;
+  started_at_ms: number;
+  start_equity_usd: number;
+  equity_usd: number;
+  cb_cooldown_until_ms: number;
+  paused: boolean;
+  n_closed: number;
+  wins: number;
+  losses: number;
+  win_rate: number | null;
+  total_pnl_usd: number;
+  open_position_count: number;
+  max_dd_pct: number;
+};
+
+export type JonyPosition = {
+  id: number;
+  coin: "ETH" | "BTC";
+  side: "C" | "P";
+  option_symbol: string;
+  strike: number;
+  expiry_ms: number;
+  qty: number;
+  opened_at_ms: number;
+  underlying_at_open: number;
+  entry_credit: number;
+  entry_source: string;
+  margin_usd: number;
+  tp2_pct: number;
+  sl_pct: number;
+  hold_h: number;
+  status: string;
+  closed_at_ms: number | null;
+  exit_debit: number | null;
+  exit_reason: string | null;
+  pnl_pct: number | null;
+  pnl_usd: number | null;
+};
+
+export type JonyParams = {
+  coins: Record<string, string[]>;
+  put_gen: { vol_threshold: number; regime_filter: string[]; mtf_direction_filter: string };
+  call_gen: { vol_threshold: number; regime_filter: string[]; mtf_direction_filter: string; bull_market_ratio_max: number };
+  put_exit: { tp2_pct: number; sl_pct: number; hold_h: number };
+  call_exit: { tp2_pct: number; sl_pct: number; hold_h: number };
+  account: {
+    start_equity_usd: number; margin_pct_per_trade: number;
+    max_open_positions: number; per_coin_cap: number; port_margin_cap: number;
+    cb_consec_limit: number; cb_pause_hours: number; cooldown_min: number;
+    target_expiry_h: number;
+  };
+  backtest: { finding: string; full_return_pct: number; max_dd_pct: number; holdout_return_pct: number; trades_per_day: number };
+};
+
+async function jonyGet<T>(path: string): Promise<T> {
+  const res = await fetch(`${JONY_API_BASE}${path}`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`Jony API ${res.status}: ${await res.text()}`);
+  return res.json();
+}
+
+export async function fetchJonyState(): Promise<JonyState> {
+  return jonyGet(`/state`);
+}
+
+export async function fetchJonyParams(): Promise<JonyParams> {
+  return jonyGet(`/params`);
+}
+
+export async function fetchJonyPositions(limit = 200): Promise<{ open: JonyPosition[]; recent: JonyPosition[] }> {
+  return jonyGet(`/positions?limit=${limit}`);
+}
+
+// Jony's /equity rows are {ts_ms, equity_usd (realized), unrealized_usd,
+// open_positions} — mapped into EquityPoint (equity = realized + unrealized
+// mark-to-market) so the shared EquityChart renders without branching.
+export async function fetchJonyEquityHistory(limit = 2000): Promise<EquityPoint[]> {
+  const rows = await jonyGet<{ ts_ms: number; equity_usd: number; unrealized_usd: number; open_positions: number }[]>(`/equity?limit=${limit}`);
+  return rows.map((r) => ({
+    ts_ms: r.ts_ms,
+    equity: r.equity_usd + r.unrealized_usd,
+    realized: r.equity_usd,
+    unrealized: r.unrealized_usd,
+    n_open: r.open_positions,
+    n_closed: 0,
+  }));
+}
