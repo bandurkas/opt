@@ -14,11 +14,16 @@ import {
   pauseTyagach,
   resumeTyagach,
   closeAllTyagach,
+  fetchJonyState,
+  pauseJony,
+  resumeJony,
+  closeAllJony,
   type AccountName,
   type BotName,
   type ControlStatusResponse,
   type CredentialsInfo,
   type TyagachState,
+  type JonyState,
 } from "../lib/api";
 
 const REFRESH_MS = 15_000;
@@ -299,6 +304,84 @@ function BotPanel({
   );
 }
 
+// Jony — the same fully-separate-service case as Tyagach below (own repo,
+// own SQLite, API on :8200): same visual language, own data source. Its
+// close-all is loop-executed (flag in bot_control), so positions disappear
+// within ~5s of the click, not instantly.
+function JonyPanel({
+  state,
+  busy,
+  onToggle,
+  onCloseAll,
+}: {
+  state: JonyState | null;
+  busy: boolean;
+  onToggle: (paused: boolean) => void;
+  onCloseAll: () => void;
+}) {
+  const paused = state?.paused ?? false;
+  const unreachable = state === null;
+
+  return (
+    <div className="relative rounded-xl border border-slate-800 bg-slate-900/70 console-grid shadow-[inset_3px_0_0_0_theme(colors.violet.400)] overflow-hidden">
+      <div className="p-5 flex flex-col gap-4 sm:flex-row sm:items-center">
+        <div className="flex items-center gap-4 sm:w-64 shrink-0">
+          <div className="leading-none">
+            <div className="font-(family-name:--font-orbitron) text-2xl font-bold tracking-wider text-violet-400">
+              JONY
+            </div>
+            <div className="text-[11px] text-slate-500 mt-1 font-mono uppercase tracking-wide">
+              ETH+BTC · VRP basket sell-premium
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-6 font-mono text-sm flex-1">
+          {unreachable ? (
+            <div className="text-xs text-rose-400 font-semibold">⚠ API недоступен (:8200)</div>
+          ) : (
+            <>
+              <div>
+                <div className="text-[10px] text-slate-500 uppercase tracking-[0.15em]">Статус</div>
+                <StatusLED paused={paused} />
+              </div>
+              <div>
+                <div className="text-[10px] text-slate-500 uppercase tracking-[0.15em]">Позиций</div>
+                <div className="text-lg text-slate-100 tabular-nums">{state.open_position_count}</div>
+              </div>
+              <div>
+                <div className="text-[10px] text-slate-500 uppercase tracking-[0.15em]">Баланс (paper)</div>
+                <div className="text-lg text-slate-100 tabular-nums">
+                  ${state.equity_usd.toFixed(2)}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="flex gap-2 sm:w-56 shrink-0">
+          <button
+            onClick={() => onToggle(paused)}
+            disabled={busy || unreachable}
+            className="flex-1 px-3 py-2 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700
+                       disabled:opacity-40 transition-colors"
+          >
+            {paused ? "▶ Запустить" : "⏸ Пауза"}
+          </button>
+          <button
+            onClick={onCloseAll}
+            disabled={busy || unreachable}
+            className="flex-1 px-3 py-2 text-xs font-semibold rounded-lg bg-rose-900/70 hover:bg-rose-800
+                       disabled:opacity-40 transition-colors"
+          >
+            Закрыть всё
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Tyagach is a fully separate service (own repo TG, own SQLite, own API on
 // :8100 — see lib/api.ts's TYAGACH_API_BASE comment) — NOT part of
 // control_repo.BOT_NAMES, so it can't reuse BotPanel's status/credentials
@@ -381,7 +464,8 @@ export default function MissionControl() {
   const [status, setStatus] = useState<ControlStatusResponse | null>(null);
   const [credentials, setCredentials] = useState<CredentialsInfo[]>([]);
   const [tyagachState, setTyagachState] = useState<TyagachState | null>(null);
-  const [confirmTarget, setConfirmTarget] = useState<BotName | "global" | "tyagach" | null>(null);
+  const [jonyState, setJonyState] = useState<JonyState | null>(null);
+  const [confirmTarget, setConfirmTarget] = useState<BotName | "global" | "tyagach" | "jony" | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -405,13 +489,19 @@ export default function MissionControl() {
     fetchTyagachState().then(setTyagachState).catch(() => setTyagachState(null));
   };
 
+  const loadJonyState = () => {
+    fetchJonyState().then(setJonyState).catch(() => setJonyState(null));
+  };
+
   useEffect(() => {
     loadStatus();
     loadCredentials();
     loadTyagachState();
+    loadJonyState();
     const id = setInterval(() => {
       loadStatus();
       loadTyagachState();
+      loadJonyState();
     }, REFRESH_MS);
     return () => clearInterval(id);
   }, []);
@@ -438,14 +528,27 @@ export default function MissionControl() {
     }
   };
 
+  const toggleJony = async (paused: boolean) => {
+    setBusy(true);
+    try {
+      if (paused) await resumeJony();
+      else await pauseJony();
+      loadJonyState();
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const runCloseAll = async () => {
     setBusy(true);
     try {
       if (confirmTarget === "global") await closeAllBotsGlobal();
       else if (confirmTarget === "tyagach") await closeAllTyagach();
+      else if (confirmTarget === "jony") await closeAllJony();
       else if (confirmTarget) await closeAllBot(confirmTarget);
       await loadStatus();
       loadTyagachState();
+      loadJonyState();
     } finally {
       setBusy(false);
       setConfirmTarget(null);
@@ -468,7 +571,7 @@ export default function MissionControl() {
             Mission Control
           </h2>
           <p className="text-[11px] text-slate-600 font-mono mt-0.5">
-            4 бота · 3 отдельных Bybit-аккаунта + Tyagach (отдельный сервис, paper)
+            5 ботов · 3 отдельных Bybit-аккаунта + Tyagach и Jony (отдельные сервисы, paper)
           </p>
         </div>
         <div className="flex gap-2">
@@ -507,6 +610,12 @@ export default function MissionControl() {
           onToggle={toggleTyagach}
           onCloseAll={() => setConfirmTarget("tyagach")}
         />
+        <JonyPanel
+          state={jonyState}
+          busy={busy}
+          onToggle={toggleJony}
+          onCloseAll={() => setConfirmTarget("jony")}
+        />
       </div>
 
       {confirmTarget && (
@@ -516,17 +625,21 @@ export default function MissionControl() {
               ? "Остановить и закрыть ВСЁ"
               : confirmTarget === "tyagach"
                 ? "Закрыть все позиции: TYAGACH"
-                : `Закрыть все позиции: ${BOT_META[confirmTarget].callsign}`
+                : confirmTarget === "jony"
+                  ? "Закрыть все позиции: JONY"
+                  : `Закрыть все позиции: ${BOT_META[confirmTarget].callsign}`
           }
           body={
             confirmTarget === "global"
-              ? "Все 3 бота будут поставлены на паузу и все открытые позиции закроются по рынку (в paper — симуляция по текущей цене; при live-торговле — реальные ордера). Tyagach в этот общий стоп НЕ входит — отдельный сервис, останавливается своей кнопкой."
+              ? "Все 3 бота будут поставлены на паузу и все открытые позиции закроются по рынку (в paper — симуляция по текущей цене; при live-торговле — реальные ордера). Tyagach и Jony в этот общий стоп НЕ входят — отдельные сервисы, останавливаются своими кнопками."
               : confirmTarget === "tyagach"
                 ? "Tyagach поставится на паузу; pending zone-сигналы будут инвалидированы. ВНИМАНИЕ: это НЕ закрывает уже открытые реальные позиции на бирже — close_all на стороне Tyagach сейчас только signal-level (см. api.py)."
-                : "Бот будет поставлен на паузу и все его открытые позиции закроются по рынку."
+                : confirmTarget === "jony"
+                  ? "Jony поставится на паузу, и его цикл выкупит все открытые paper-позиции по текущему ask/mark в течение ~5 секунд. Circuit breaker при ручном закрытии НЕ взводится."
+                  : "Бот будет поставлен на паузу и все его открытые позиции закроются по рынку."
           }
           confirmWord={
-            confirmTarget === "global" ? "CLOSE ALL" : confirmTarget === "tyagach" ? "TYAGACH" : BOT_META[confirmTarget].callsign
+            confirmTarget === "global" ? "CLOSE ALL" : confirmTarget === "tyagach" ? "TYAGACH" : confirmTarget === "jony" ? "JONY" : BOT_META[confirmTarget].callsign
           }
           onConfirm={runCloseAll}
           onCancel={() => setConfirmTarget(null)}

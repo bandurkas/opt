@@ -775,3 +775,32 @@ export async function fetchJonyEquityHistory(limit = 2000): Promise<EquityPoint[
     n_closed: 0,
   }));
 }
+
+async function jonyPost<T>(path: string): Promise<T> {
+  const res = await fetch(`${JONY_API_BASE}${path}`, { method: "POST" });
+  if (!res.ok) throw new Error(`Jony API ${res.status}: ${await res.text()}`);
+  return res.json();
+}
+
+export async function pauseJony(): Promise<void> {
+  await jonyPost(`/pause`);
+}
+
+export async function resumeJony(): Promise<void> {
+  await jonyPost(`/resume`);
+}
+
+// Sets a flag; Jony's LOOP executes the buybacks on its next ~5s tick
+// (single-writer discipline), so positions may take a few seconds to vanish.
+export async function closeAllJony(): Promise<void> {
+  await jonyPost(`/close_all`);
+}
+
+export type JonyChartData = {
+  coins: Record<string, { klines: Kline[]; spot: number | null }>;
+  positions: JonyPosition[];
+};
+
+export async function fetchJonyChart(klineLimit = 288): Promise<JonyChartData> {
+  return jonyGet(`/chart?kline_limit=${klineLimit}`);
+}

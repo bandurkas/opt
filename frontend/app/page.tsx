@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { fetchPaperState, fetchPaperConditions, fetchPaperPositions, fetchRecentTrades, fetchEquityHistory, fetchBtcStraddleState, fetchBtcStraddlePositions, fetchBtcStraddleEquityHistory, fetchBtcPrice, fetchTyagachState, fetchTyagachPositions, fetchTyagachEquityHistory, fetchTyagachChart, fetchJonyState, fetchJonyParams, fetchJonyPositions, fetchJonyEquityHistory, type PaperState, type PaperConditions, type PaperPosition, type EquityPoint, type BtcStraddleState, type BtcStraddlePosition, type Kline, type TyagachState, type TyagachPosition, type TyagachChartZone, type JonyState, type JonyParams, type JonyPosition } from "./lib/api";
+import { fetchPaperState, fetchPaperConditions, fetchPaperPositions, fetchRecentTrades, fetchEquityHistory, fetchBtcStraddleState, fetchBtcStraddlePositions, fetchBtcStraddleEquityHistory, fetchBtcPrice, fetchTyagachState, fetchTyagachPositions, fetchTyagachEquityHistory, fetchTyagachChart, fetchJonyState, fetchJonyParams, fetchJonyPositions, fetchJonyEquityHistory, fetchJonyChart, type PaperState, type PaperConditions, type PaperPosition, type EquityPoint, type BtcStraddleState, type BtcStraddlePosition, type Kline, type TyagachState, type TyagachPosition, type TyagachChartZone, type JonyState, type JonyParams, type JonyPosition, type JonyChartData } from "./lib/api";
 import MissionControl from "./components/MissionControl";
 import StraddleChart from "./components/StraddleChart";
 import TyagachChart from "./components/TyagachChart";
+import JonyChart from "./components/JonyChart";
 import { ActiveContractsRail, ItmBadge, Countdown, formatCountdown, useLiveNow, type Contract } from "./components/ActiveContracts";
 
 const REFRESH_MS = 15_000;
@@ -65,6 +66,7 @@ export default function Dashboard() {
   const [jonyOpenPositions, setJonyOpenPositions] = useState<JonyPosition[]>([]);
   const [jonyRecentTrades, setJonyRecentTrades] = useState<JonyPosition[]>([]);
   const [jonyEquityHistory, setJonyEquityHistory] = useState<EquityPoint[]>([]);
+  const [jonyChart, setJonyChart] = useState<JonyChartData | null>(null);
   const [jonyError, setJonyError] = useState<string | null>(null);
 
   // Separate effect/error state from the ETH signal book above — the BTC bot is a
@@ -139,11 +141,12 @@ export default function Dashboard() {
     let cancelled = false;
     const load = async () => {
       try {
-        const [s, prm, pos, eq] = await Promise.all([
+        const [s, prm, pos, eq, chart] = await Promise.all([
           fetchJonyState(),
           fetchJonyParams(),
           fetchJonyPositions(200),
           fetchJonyEquityHistory(2000),
+          fetchJonyChart(),
         ]);
         if (cancelled) return;
         setJonyState(s);
@@ -151,6 +154,7 @@ export default function Dashboard() {
         setJonyOpenPositions(pos.open);
         setJonyRecentTrades(pos.recent.filter((p) => p.status !== "open"));
         setJonyEquityHistory(eq);
+        setJonyChart(chart);
         setJonyError(null);
       } catch (e) {
         if (cancelled) return;
@@ -824,6 +828,21 @@ export default function Dashboard() {
                 <div className="p-2">
                   <EquityChart points={jonyEquityHistory} startEquity={jonyState.start_equity_usd} />
                 </div>
+              </div>
+            )}
+
+            {jonyChart && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {(["ETH", "BTC"] as const).map((coin) =>
+                  (jonyChart.coins[coin]?.klines?.length ?? 0) > 1 ? (
+                    <JonyChart
+                      key={coin}
+                      coin={coin}
+                      klines={jonyChart.coins[coin].klines}
+                      positions={jonyOpenPositions.filter((p) => p.coin === coin)}
+                    />
+                  ) : null,
+                )}
               </div>
             )}
 
