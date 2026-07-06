@@ -41,6 +41,15 @@ START_EQUITY_USD = float(os.getenv("BTC_STRADDLE_START_EQUITY_USD", "2000"))
 MARGIN_PCT_PER_CYCLE = float(os.getenv("BTC_STRADDLE_MARGIN_PCT", "0.15"))
 ABS_FLOOR_EQUITY = float(os.getenv("BTC_STRADDLE_ABS_FLOOR_EQUITY", "50"))
 
+# Operator heads-up: Telegram-ping ONCE per pair when its combined unrealized
+# profit first crosses this $ level, so a human can decide to lock it in via
+# Mission Control instead of always riding to the $22 quick_tp / time-stop.
+# Pure notification — does NOT change any auto-exit (QUICK_TP_COMBINED_USD stays
+# the backtested optimum; lowering the auto-take to $11 was rejected by the
+# train+holdout sweep, see btc_straddle_sl.py / btc_straddle_param_search.py).
+# Set to 0 to disable.
+PROFIT_ALERT_USD = float(os.getenv("BTC_STRADDLE_PROFIT_ALERT_USD", "11"))
+
 BOT_NAME = "btc_straddle"
 SPOT_SYMBOL = "BTCUSDT"
 BASE_COIN = "BTC"
@@ -326,6 +335,35 @@ def decide_pair_action(legs: list[dict], marks: dict[str, float], now_ms: int) -
     return "hold", None
 
 
+_profit_alerted_cycles: set[int] = set()
+
+
+def _maybe_profit_alert(legs: list[dict], marks: dict[str, float], now_ms: int) -> None:
+    """Ping the operator once per pair when its combined unrealized profit first
+    crosses PROFIT_ALERT_USD. Notification only — never closes anything and never
+    touches the auto-exit path. Pruned per-cycle by the monitor loop once the
+    pair is gone, so every fresh pair can alert again."""
+    if PROFIT_ALERT_USD <= 0 or not legs:
+        return
+    cyc = int(legs[0]["cycle_id"])
+    if cyc in _profit_alerted_cycles:
+        return
+    combined = sum(
+        (float(p["entry_credit_usd"]) - marks[p["leg"]]) * float(p["contracts"]) for p in legs
+    )
+    if combined < PROFIT_ALERT_USD:
+        return
+    _profit_alerted_cycles.add(cyc)
+    mins_left = max(0, (int(legs[0]["expiry_ms"]) - now_ms) // 60_000)
+    strike = float(legs[0]["strike"])
+    telegram_notify.notify(
+        f"💰 Boba1: комбинированный профит +${combined:.2f} на straddle ${strike:.0f} "
+        f"(порог ≥${PROFIT_ALERT_USD:.0f}). До экспирации {mins_left // 60}ч{mins_left % 60:02d}м. "
+        f"Авто-тейк стоит на ${sl.QUICK_TP_COMBINED_USD:.0f} — держим дальше на theta "
+        f"или закрыть вручную в Mission Control?"
+    )
+
+
 def check_and_close_pair(legs: list[dict], spot: float, chain_dict: dict[str, dict] | None) -> bool:
     """Quick-scalp exit for a Call+Put pair sharing one cycle_id (2026-06-26
     rewrite — see straddle_quick_scalp_backtest.py for the validated mechanic).
@@ -347,6 +385,7 @@ def check_and_close_pair(legs: list[dict], spot: float, chain_dict: dict[str, di
 
     action, tripped_leg = decide_pair_action(legs, marks, now_ms)
     if action == "hold":
+        _maybe_profit_alert(legs, marks, now_ms)
         return False
     if action == "sl":
         ok = True
@@ -569,6 +608,9 @@ async def loop(run_once: bool = False) -> None:
             by_cycle: dict[int, list[dict]] = {}
             for p in open_pos_now:
                 by_cycle.setdefault(int(p["cycle_id"]), []).append(p)
+            # Forget profit-alert flags for cycles that have closed, so the next
+            # fresh pair can alert again (and the set stays bounded).
+            _profit_alerted_cycles.intersection_update(by_cycle.keys())
             for cycle_id, legs in by_cycle.items():
                 try:
                     if len(legs) == 2:
