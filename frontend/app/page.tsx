@@ -228,6 +228,7 @@ export default function Dashboard() {
       expiryMs: p.expiry_ms, contracts: p.qty,
       spot: p.coin === "BTC" ? btcSpot : conditions?.spot ?? null,
       entryCreditUsd: p.entry_credit * p.qty, openedAtMs: p.opened_at_ms,
+      currentMarkUsd: p.current_mark_usd, unrealizedPnlUsd: p.unrealized_pnl_usd,
     })),
   ], [positions, btcPositions, tyagachOpenPositions, jonyOpenPositions, tyagachKlines, conditions?.spot, btcSpot]);
 

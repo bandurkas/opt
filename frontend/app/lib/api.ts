@@ -726,6 +726,8 @@ export type JonyPosition = {
   exit_reason: string | null;
   pnl_pct: number | null;
   pnl_usd: number | null;
+  current_mark_usd?: number | null;
+  unrealized_pnl_usd?: number | null;
 };
 
 export type JonyParams = {
