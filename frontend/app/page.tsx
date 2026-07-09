@@ -645,9 +645,9 @@ export default function Dashboard() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <StatCard
                 label="Equity"
-                value={fmtUsd(tyagachState.balance_usdt ?? 0)}
-                sub={`${((tyagachState.balance_usdt ?? 0) - tyagachState.start_balance_usdt) >= 0 ? "+" : ""}${fmtUsd((tyagachState.balance_usdt ?? 0) - tyagachState.start_balance_usdt)}`}
-                accent={(tyagachState.balance_usdt ?? 0) >= tyagachState.start_balance_usdt ? "text-emerald-300" : "text-rose-300"}
+                value={fmtUsd(tyagachState.equity_usd ?? tyagachState.balance_usdt ?? 0)}
+                sub={`${((tyagachState.equity_usd ?? tyagachState.balance_usdt ?? 0) - tyagachState.start_balance_usdt) >= 0 ? "+" : ""}${fmtUsd((tyagachState.equity_usd ?? tyagachState.balance_usdt ?? 0) - tyagachState.start_balance_usdt)}${(tyagachState.unrealized_usd ?? 0) !== 0 ? ` · нереал ${(tyagachState.unrealized_usd ?? 0) >= 0 ? "+" : ""}${fmtUsd(tyagachState.unrealized_usd ?? 0)}` : ""}`}
+                accent={(tyagachState.equity_usd ?? tyagachState.balance_usdt ?? 0) >= tyagachState.start_balance_usdt ? "text-emerald-300" : "text-rose-300"}
               />
               <StatCard
                 label="Win Rate"

@@ -577,6 +577,10 @@ export async function updateCredentials(accountName: AccountName, apiKey: string
 
 export type TyagachState = {
   balance_usdt: number | null;
+  // realized balance + unrealized PnL of open positions (API 2026-07-09);
+  // optional so the dashboard degrades gracefully against an older API.
+  equity_usd?: number | null;
+  unrealized_usd?: number | null;
   start_balance_usdt: number;
   started_at_ms: number | null;
   paused: boolean;
