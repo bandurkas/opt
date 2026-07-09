@@ -176,16 +176,124 @@ function ContractChip({ c, now, onOpen }: { c: Contract; now: number; onOpen: ()
   );
 }
 
+function PairLegRow({ c, onOpen }: { c: Contract; onOpen: () => void }) {
+  const info = itmInfo(c.side, c.strike, c.spot);
+  return (
+    <button
+      onClick={onOpen}
+      className="w-full flex items-center justify-between gap-2 rounded-lg px-1.5 py-1 hover:bg-slate-800/70 transition-colors"
+    >
+      <span className="flex items-center gap-1.5">
+        <span
+          className={`inline-block w-4 text-center py-0.5 rounded text-[9px] font-bold ${
+            c.side === "P" ? "bg-rose-500/10 text-rose-300" : "bg-emerald-500/10 text-emerald-300"
+          }`}
+        >
+          {c.side}
+        </span>
+        <span className="font-mono text-xs text-slate-200">${c.strike}</span>
+        {info && (
+          <span className={`h-1.5 w-1.5 rounded-full ${info.itm ? "bg-rose-400 animate-pulse" : "bg-emerald-400"}`} />
+        )}
+      </span>
+      {c.unrealizedPnlUsd != null && (
+        <span className={`font-mono text-[11px] ${c.unrealizedPnlUsd >= 0 ? "text-emerald-400/80" : "text-rose-400/80"}`}>
+          {c.unrealizedPnlUsd >= 0 ? "+" : ""}{c.unrealizedPnlUsd.toFixed(2)}
+        </span>
+      )}
+    </button>
+  );
+}
+
+function PairChip({ legs, now, onOpenLeg }: { legs: Contract[]; now: number; onOpenLeg: (c: Contract) => void }) {
+  const meta = BOT_DISPLAY.btc_straddle;
+  const expiryMs = Math.min(...legs.map((l) => l.expiryMs));
+  const msLeft = expiryMs - now;
+  // Combined PnL only when BOTH legs report one — a half-known sum shown as
+  // the pair total would misinform the close-all decision it exists for.
+  const total = legs.reduce<number | null>(
+    (s, l) => (s == null || l.unrealizedPnlUsd == null ? null : s + l.unrealizedPnlUsd),
+    0,
+  );
+  return (
+    <div
+      className={`shrink-0 snap-start rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2.5 ring-1 ${meta.ring} min-w-[200px]`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className={`font-(family-name:--font-orbitron) text-[10px] font-bold tracking-widest ${meta.accent}`}>
+          {meta.callsign}
+        </span>
+        <span className="inline-block px-1 py-0.5 rounded text-[9px] font-bold bg-orange-500/10 text-orange-300">
+          SELL STRADDLE
+        </span>
+      </div>
+      <div className="mt-1.5 flex items-baseline justify-between gap-2">
+        <span className="text-[9px] uppercase tracking-wider text-slate-500">PnL пары</span>
+        <span
+          className={`font-mono text-base font-bold ${
+            total == null ? "text-slate-500" : total >= 0 ? "text-emerald-400" : "text-rose-400"
+          }`}
+        >
+          {total == null ? "—" : `${total < 0 ? "−" : "+"}$${Math.abs(total).toFixed(2)}`}
+        </span>
+      </div>
+      <div className="mt-1 -mx-0.5 space-y-0.5 border-t border-slate-800/70 pt-1">
+        {legs.map((l) => (
+          <PairLegRow key={l.key} c={l} onOpen={() => onOpenLeg(l)} />
+        ))}
+      </div>
+      <div className="mt-1 flex items-center justify-between">
+        <Countdown expiryMs={expiryMs} now={now} />
+        {msLeft > 0 && msLeft < 3600_000 && (
+          <span className="text-[9px] text-rose-400 uppercase tracking-wide">expiry soon</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// btc_straddle opens legs in C+P pairs per cycle, and the operator's decision
+// unit (quick-TP $22, the $11 alert, Mission Control close-all) is the PAIR —
+// so the rail merges a cycle's two legs into one block with the summed PnL
+// instead of two disjoint leg chips. A lone straddle leg (sibling already
+// closed by SL/TP) falls back to a normal single chip.
+type RailItem =
+  | { kind: "pair"; legs: Contract[]; expiryMs: number; key: string }
+  | { kind: "single"; c: Contract; expiryMs: number; key: string };
+
+function buildRailItems(contracts: Contract[]): RailItem[] {
+  const pairs = new Map<string, Contract[]>();
+  const singles: Contract[] = [];
+  for (const c of contracts) {
+    if (c.bot === "btc_straddle" && c.cycleId != null) {
+      const k = `${c.bot}:${c.cycleId}`;
+      const arr = pairs.get(k);
+      if (arr) arr.push(c);
+      else pairs.set(k, [c]);
+    } else {
+      singles.push(c);
+    }
+  }
+  const items: RailItem[] = singles.map((c) => ({ kind: "single" as const, c, expiryMs: c.expiryMs, key: c.key }));
+  for (const [k, legs] of pairs) {
+    if (legs.length === 2) {
+      legs.sort((a, b) => a.side.localeCompare(b.side)); // C above P
+      items.push({ kind: "pair", legs, expiryMs: Math.min(...legs.map((l) => l.expiryMs)), key: `pair-${k}` });
+    } else {
+      for (const c of legs) items.push({ kind: "single", c, expiryMs: c.expiryMs, key: c.key });
+    }
+  }
+  items.sort((a, b) => a.expiryMs - b.expiryMs);
+  return items;
+}
+
 export function ActiveContractsRail({ contracts, now }: { contracts: Contract[]; now: number }) {
   const [selected, setSelected] = useState<Contract | null>(null);
 
   // Soonest-to-expire first — the thing the user most needs to see is the
   // contract about to roll off, not whatever happened to load first. Memoized
   // on `contracts` only — must NOT re-sort on every 1s `now` tick.
-  const sorted = useMemo(
-    () => [...contracts].sort((a, b) => a.expiryMs - b.expiryMs),
-    [contracts],
-  );
+  const items = useMemo(() => buildRailItems(contracts), [contracts]);
 
   if (contracts.length === 0) return null;
 
@@ -200,9 +308,13 @@ export function ActiveContractsRail({ contracts, now }: { contracts: Contract[];
           <span className="text-[10px] text-slate-500 font-mono uppercase tracking-wide">live</span>
         </div>
         <div className="flex gap-2 overflow-x-auto px-3 py-3 snap-x">
-          {sorted.map((c) => (
-            <ContractChip key={c.key} c={c} now={now} onOpen={() => setSelected(c)} />
-          ))}
+          {items.map((it) =>
+            it.kind === "pair" ? (
+              <PairChip key={it.key} legs={it.legs} now={now} onOpenLeg={setSelected} />
+            ) : (
+              <ContractChip key={it.key} c={it.c} now={now} onOpen={() => setSelected(it.c)} />
+            ),
+          )}
         </div>
       </div>
 
