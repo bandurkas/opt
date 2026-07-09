@@ -181,27 +181,71 @@ function PairLegRow({ c, onOpen }: { c: Contract; onOpen: () => void }) {
   return (
     <button
       onClick={onOpen}
-      className="w-full flex items-center justify-between gap-2 rounded-lg px-1.5 py-1 hover:bg-slate-800/70 transition-colors"
+      className="group/leg w-full flex items-center justify-between gap-2 rounded-md px-1.5 py-[3px]
+                 hover:bg-slate-800/60 transition-colors"
     >
-      <span className="flex items-center gap-1.5">
+      <span className="flex items-center gap-1.5 min-w-0">
         <span
-          className={`inline-block w-4 text-center py-0.5 rounded text-[9px] font-bold ${
+          className={`inline-block w-4 shrink-0 text-center py-px rounded text-[9px] font-bold leading-4 ${
             c.side === "P" ? "bg-rose-500/10 text-rose-300" : "bg-emerald-500/10 text-emerald-300"
           }`}
         >
           {c.side}
         </span>
-        <span className="font-mono text-xs text-slate-200">${c.strike}</span>
+        <span className="font-mono text-xs tabular-nums text-slate-200">${c.strike}</span>
         {info && (
-          <span className={`h-1.5 w-1.5 rounded-full ${info.itm ? "bg-rose-400 animate-pulse" : "bg-emerald-400"}`} />
+          <span
+            className={`h-1.5 w-1.5 shrink-0 rounded-full ${info.itm ? "bg-rose-400 animate-pulse" : "bg-emerald-400"}`}
+            title={info.itm ? "ITM — риск исполнения" : "OTM — премия тает в нашу пользу"}
+          />
         )}
       </span>
-      {c.unrealizedPnlUsd != null && (
-        <span className={`font-mono text-[11px] ${c.unrealizedPnlUsd >= 0 ? "text-emerald-400/80" : "text-rose-400/80"}`}>
-          {c.unrealizedPnlUsd >= 0 ? "+" : ""}{c.unrealizedPnlUsd.toFixed(2)}
-        </span>
-      )}
+      <span className="flex items-center gap-1">
+        {c.unrealizedPnlUsd != null && (
+          <span
+            className={`font-mono text-[11px] tabular-nums ${
+              c.unrealizedPnlUsd >= 0 ? "text-emerald-400/90" : "text-rose-400/90"
+            }`}
+          >
+            {c.unrealizedPnlUsd >= 0 ? "+" : "−"}{Math.abs(c.unrealizedPnlUsd).toFixed(2)}
+          </span>
+        )}
+        <span className="text-slate-600 text-[10px] opacity-0 group-hover/leg:opacity-100 transition-opacity">›</span>
+      </span>
     </button>
+  );
+}
+
+// Diverging contribution bar: each leg's |PnL| grows out from the center
+// axis (C left, P right), colored by that leg's sign — one glance shows
+// which leg is dragging the pair and how lopsided it is.
+function PairBalanceBar({ legs }: { legs: Contract[] }) {
+  const c = legs.find((l) => l.side === "C")?.unrealizedPnlUsd;
+  const p = legs.find((l) => l.side === "P")?.unrealizedPnlUsd;
+  if (c == null || p == null) return null;
+  const absSum = Math.abs(c) + Math.abs(p);
+  if (absSum <= 0) return null;
+  const cw = (Math.abs(c) / absSum) * 50;
+  const pw = (Math.abs(p) / absSum) * 50;
+  return (
+    <div
+      className="relative h-[3px] rounded-full bg-slate-800/80 overflow-hidden"
+      title={`C ${c >= 0 ? "+" : "−"}$${Math.abs(c).toFixed(2)} · P ${p >= 0 ? "+" : "−"}$${Math.abs(p).toFixed(2)}`}
+    >
+      <div
+        className={`absolute inset-y-0 right-1/2 rounded-l-full transition-all duration-700 ${
+          c >= 0 ? "bg-emerald-400/80" : "bg-rose-400/80"
+        }`}
+        style={{ width: `${cw}%` }}
+      />
+      <div
+        className={`absolute inset-y-0 left-1/2 rounded-r-full transition-all duration-700 ${
+          p >= 0 ? "bg-emerald-400/80" : "bg-rose-400/80"
+        }`}
+        style={{ width: `${pw}%` }}
+      />
+      <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-slate-500/70" />
+    </div>
   );
 }
 
@@ -217,32 +261,45 @@ function PairChip({ legs, now, onOpenLeg }: { legs: Contract[]; now: number; onO
   );
   return (
     <div
-      className={`shrink-0 snap-start rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2.5 ring-1 ${meta.ring} min-w-[200px]`}
+      className={`relative shrink-0 snap-start rounded-xl border border-slate-800 bg-slate-900/80 ring-1 ${meta.ring}
+                  min-w-[212px] overflow-hidden`}
     >
-      <div className="flex items-center justify-between gap-2">
-        <span className={`font-(family-name:--font-orbitron) text-[10px] font-bold tracking-widest ${meta.accent}`}>
-          {meta.callsign}
-        </span>
-        <span className="inline-block px-1 py-0.5 rounded text-[9px] font-bold bg-orange-500/10 text-orange-300">
-          SELL STRADDLE
-        </span>
+      {/* composite-card marker: hairline accent in the bot's hue */}
+      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-orange-500/70 via-orange-400/25 to-transparent" />
+      <div className="px-3 pt-2.5 pb-2">
+        <div className="flex items-center justify-between gap-2">
+          <span className={`font-(family-name:--font-orbitron) text-[10px] font-bold tracking-widest ${meta.accent}`}>
+            {meta.callsign}
+          </span>
+          <span className="inline-block px-1 py-0.5 rounded text-[9px] font-bold tracking-wide bg-orange-500/10 text-orange-300">
+            SELL STRADDLE
+          </span>
+        </div>
+
+        {/* the close-all decision number — the card's anchor */}
+        <div className="mt-2 flex items-end justify-between gap-2">
+          <span className="pb-0.5 text-[9px] uppercase tracking-[0.18em] text-slate-500">Σ PnL пары</span>
+          <span
+            className={`font-mono text-xl leading-none font-bold tabular-nums ${
+              total == null ? "text-slate-500" : total >= 0 ? "neon-green-text" : "neon-red-text"
+            }`}
+          >
+            {total == null ? "—" : `${total < 0 ? "−" : "+"}$${Math.abs(total).toFixed(2)}`}
+          </span>
+        </div>
+
+        <div className="mt-2">
+          <PairBalanceBar legs={legs} />
+        </div>
+
+        <div className="mt-1.5 -mx-1 space-y-px">
+          {legs.map((l) => (
+            <PairLegRow key={l.key} c={l} onOpen={() => onOpenLeg(l)} />
+          ))}
+        </div>
       </div>
-      <div className="mt-1.5 flex items-baseline justify-between gap-2">
-        <span className="text-[9px] uppercase tracking-wider text-slate-500">PnL пары</span>
-        <span
-          className={`font-mono text-base font-bold ${
-            total == null ? "text-slate-500" : total >= 0 ? "text-emerald-400" : "text-rose-400"
-          }`}
-        >
-          {total == null ? "—" : `${total < 0 ? "−" : "+"}$${Math.abs(total).toFixed(2)}`}
-        </span>
-      </div>
-      <div className="mt-1 -mx-0.5 space-y-0.5 border-t border-slate-800/70 pt-1">
-        {legs.map((l) => (
-          <PairLegRow key={l.key} c={l} onOpen={() => onOpenLeg(l)} />
-        ))}
-      </div>
-      <div className="mt-1 flex items-center justify-between">
+
+      <div className="px-3 py-1.5 border-t border-slate-800/70 bg-slate-950/40 flex items-center justify-between">
         <Countdown expiryMs={expiryMs} now={now} />
         {msLeft > 0 && msLeft < 3600_000 && (
           <span className="text-[9px] text-rose-400 uppercase tracking-wide">expiry soon</span>
