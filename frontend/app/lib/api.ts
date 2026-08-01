@@ -767,6 +767,24 @@ export async function fetchJonyPositions(limit = 200): Promise<{ open: JonyPosit
   return jonyGet(`/positions?limit=${limit}`);
 }
 
+export type JonyProximity = {
+  proximity_pct: number;
+  zone: "waiting" | "preparing" | "ready" | "entry";
+  factors: { vol: number; regime: number; mtf: number; bull: number };
+  weights: { vol: number; regime: number; mtf: number; bull: number };
+  debounce_unknown: boolean;
+  window_disqualified: boolean;
+  active_side: "P" | "C" | null;
+};
+
+// Display-only (core/proximity.py) — never drives sizing/entries. Reads
+// whatever the loop's last per-minute gate check persisted; 100% is only
+// ever shown once the live debounce window is confirmed non-disqualified
+// AT the close-tick minute, not from the raw gate snapshot alone.
+export async function fetchJonyProximity(): Promise<Record<"ETH" | "BTC", JonyProximity>> {
+  return jonyGet(`/proximity`);
+}
+
 // Jony's /equity rows are {ts_ms, equity_usd (realized), unrealized_usd,
 // open_positions} — mapped into EquityPoint (equity = realized + unrealized
 // mark-to-market) so the shared EquityChart renders without branching.
@@ -800,6 +818,13 @@ export async function resumeJony(): Promise<void> {
 // (single-writer discipline), so positions may take a few seconds to vanish.
 export async function closeAllJony(): Promise<void> {
   await jonyPost(`/close_all`);
+}
+
+// Same single-writer/~5s-tick pattern as closeAllJony, scoped to one
+// position — does NOT pause the bot. 404s if the position already closed
+// (e.g. hit SL/TP/expiry) between the dashboard rendering it and the click.
+export async function closeJonyPosition(id: number): Promise<void> {
+  await jonyPost(`/close_position/${id}`);
 }
 
 export type JonyChartData = {

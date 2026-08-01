@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { fetchBtcStraddleState, fetchBtcStraddlePositions, fetchBtcStraddleEquityHistory, fetchBtcPrice, fetchTyagachState, fetchTyagachPositions, fetchTyagachEquityHistory, fetchTyagachChart, fetchJonyState, fetchJonyParams, fetchJonyPositions, fetchJonyEquityHistory, fetchJonyChart, type EquityPoint, type BtcStraddleState, type BtcStraddlePosition, type Kline, type TyagachState, type TyagachPosition, type TyagachChartZone, type JonyState, type JonyParams, type JonyPosition, type JonyChartData } from "./lib/api";
+import { fetchBtcStraddleState, fetchBtcStraddlePositions, fetchBtcStraddleEquityHistory, fetchBtcPrice, fetchTyagachState, fetchTyagachPositions, fetchTyagachEquityHistory, fetchTyagachChart, fetchJonyState, fetchJonyParams, fetchJonyPositions, fetchJonyEquityHistory, fetchJonyChart, fetchJonyProximity, closeJonyPosition, type EquityPoint, type BtcStraddleState, type BtcStraddlePosition, type Kline, type TyagachState, type TyagachPosition, type TyagachChartZone, type JonyState, type JonyParams, type JonyPosition, type JonyChartData, type JonyProximity } from "./lib/api";
 import MissionControl from "./components/MissionControl";
 import StraddleChart from "./components/StraddleChart";
 import TyagachChart from "./components/TyagachChart";
 import JonyChart from "./components/JonyChart";
+import EquityChart from "./components/EquityChart";
+import ProximityGauge from "./components/ProximityGauge";
 import { ActiveContractsRail, ItmBadge, Countdown, useLiveNow, type Contract } from "./components/ActiveContracts";
 
 const REFRESH_MS = 15_000;
@@ -56,7 +58,9 @@ export default function Dashboard() {
   const [jonyRecentTrades, setJonyRecentTrades] = useState<JonyPosition[]>([]);
   const [jonyEquityHistory, setJonyEquityHistory] = useState<EquityPoint[]>([]);
   const [jonyChart, setJonyChart] = useState<JonyChartData | null>(null);
+  const [jonyProximity, setJonyProximity] = useState<Record<"ETH" | "BTC", JonyProximity> | null>(null);
   const [jonyError, setJonyError] = useState<string | null>(null);
+  const [closingJonyIds, setClosingJonyIds] = useState<Set<number>>(new Set());
 
   // Own effect/error state per bot — each is a distinct deploy (own
   // container/tables or own service) and may lag behind or be absent; one
@@ -130,12 +134,16 @@ export default function Dashboard() {
     let cancelled = false;
     const load = async () => {
       try {
-        const [s, prm, pos, eq, chart] = await Promise.all([
+        const [s, prm, pos, eq, chart, prox] = await Promise.all([
           fetchJonyState(),
           fetchJonyParams(),
           fetchJonyPositions(200),
           fetchJonyEquityHistory(2000),
           fetchJonyChart(),
+          // Isolated: an older deployed Jony without this route (or any
+          // transient failure) must not blank the rest of the section —
+          // same convention as fetchBtcPrice's isolation above.
+          fetchJonyProximity().catch(() => null),
         ]);
         if (cancelled) return;
         setJonyState(s);
@@ -144,6 +152,7 @@ export default function Dashboard() {
         setJonyRecentTrades(pos.recent.filter((p) => p.status !== "open"));
         setJonyEquityHistory(eq);
         setJonyChart(chart);
+        setJonyProximity(prox);
         setJonyError(null);
       } catch (e) {
         if (cancelled) return;
@@ -154,6 +163,27 @@ export default function Dashboard() {
     const id = setInterval(load, REFRESH_MS);
     return () => { cancelled = true; clearInterval(id); };
   }, []);
+
+  // Partial close (one position, not the whole book) — the loop executes on
+  // its next ~5s tick same as Close All, so re-fetch positions right after
+  // rather than waiting the full 15s poll for the row to disappear.
+  const closeOneJonyPosition = async (id: number) => {
+    setClosingJonyIds((prev) => new Set(prev).add(id));
+    try {
+      await closeJonyPosition(id);
+      const pos = await fetchJonyPositions(200);
+      setJonyOpenPositions(pos.open);
+      setJonyRecentTrades(pos.recent.filter((p) => p.status !== "open"));
+    } catch (e) {
+      setJonyError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setClosingJonyIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+  };
 
   // Unified, live-spot-aware view of every open short-option position across
   // the fleet — feeds the global "Active Contracts" rail/drawer. Built with
@@ -227,16 +257,13 @@ export default function Dashboard() {
               <StatCard label="Max DD" value={`${btcState.max_dd_pct.toFixed(1)}%`} sub={`cycle #${btcState.last_cycle_id}`} />
             </div>
 
-            {btcEquityHistory.length > 1 && (
-              <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-                <div className="px-4 py-2 bg-slate-800/50 text-xs font-semibold text-slate-400">
-                  Equity (14 days)
-                </div>
-                <div className="p-2">
-                  <EquityChart points={btcEquityHistory} startEquity={btcState.start_equity_usd} />
-                </div>
-              </div>
-            )}
+            <EquityChart
+              points={btcEquityHistory}
+              startEquity={btcState.start_equity_usd}
+              label="BOBA1"
+              sublabel="14 days"
+              accentDot="bg-orange-400"
+            />
 
             {btcPositions.length > 0 && (
               <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
@@ -350,16 +377,12 @@ export default function Dashboard() {
               />
             </div>
 
-            {tyagachEquityHistory.length > 1 && (
-              <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-                <div className="px-4 py-2 bg-slate-800/50 text-xs font-semibold text-slate-400">
-                  Equity (paper)
-                </div>
-                <div className="p-2">
-                  <EquityChart points={tyagachEquityHistory} startEquity={tyagachState.start_balance_usdt} />
-                </div>
-              </div>
-            )}
+            <EquityChart
+              points={tyagachEquityHistory}
+              startEquity={tyagachState.start_balance_usdt}
+              label="TYAGACH"
+              accentDot="bg-lime-400"
+            />
 
             {tyagachOpenPositions.length > 0 && (
               <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
@@ -505,16 +528,20 @@ export default function Dashboard() {
               </div>
             )}
 
-            {jonyEquityHistory.length > 1 && (
-              <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-                <div className="px-4 py-2 bg-slate-800/50 text-xs font-semibold text-slate-400">
-                  Equity (paper, realized + mark-to-market)
-                </div>
-                <div className="p-2">
-                  <EquityChart points={jonyEquityHistory} startEquity={jonyState.start_equity_usd} />
-                </div>
+            {jonyProximity && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <ProximityGauge coin="ETH" data={jonyProximity.ETH} />
+                <ProximityGauge coin="BTC" data={jonyProximity.BTC} />
               </div>
             )}
+
+            <EquityChart
+              points={jonyEquityHistory}
+              startEquity={jonyState.start_equity_usd}
+              label="JONY"
+              sublabel="realized + mark-to-market"
+              accentDot="bg-sky-400"
+            />
 
             {jonyChart && (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -554,9 +581,19 @@ export default function Dashboard() {
                         <span className="text-xs text-slate-500">{p.qty.toFixed(2)} ct</span>
                         <span className="text-xs text-slate-500">credit ${(p.entry_credit * p.qty).toFixed(2)}</span>
                       </div>
-                      <div className="text-right">
-                        <p className="text-xs text-slate-400">{fmtRemaining(p.hold_h, p.opened_at_ms)}</p>
-                        <p className="text-[10px] text-slate-600 mt-0.5">{p.option_symbol} · TP2 {(p.tp2_pct * 100).toFixed(0)}% / SL {(p.sl_pct * 100).toFixed(0)}%</p>
+                      <div className="flex items-center gap-3">
+                        <div className="text-right">
+                          <p className="text-xs text-slate-400">{fmtRemaining(p.hold_h, p.opened_at_ms)}</p>
+                          <p className="text-[10px] text-slate-600 mt-0.5">{p.option_symbol} · TP2 {(p.tp2_pct * 100).toFixed(0)}% / SL {(p.sl_pct * 100).toFixed(0)}%</p>
+                        </div>
+                        <button
+                          onClick={() => closeOneJonyPosition(p.id)}
+                          disabled={closingJonyIds.has(p.id)}
+                          className="px-2 py-1 text-[10px] font-semibold rounded-lg bg-rose-900/50 hover:bg-rose-800/70
+                                     disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
+                        >
+                          {closingJonyIds.has(p.id) ? "…" : "Закрыть"}
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -623,36 +660,3 @@ function StatCard({ label, value, sub, accent }: { label: string; value: React.R
   );
 }
 
-function EquityChart({ points, startEquity }: { points: EquityPoint[]; startEquity: number }) {
-  if (points.length < 2) return null;
-
-  const w = 800, h = 120, pad = 4;
-  const minEq = Math.min(...points.map(p => p.equity), startEquity);
-  const maxEq = Math.max(...points.map(p => p.equity), startEquity);
-  const range = maxEq - minEq || 1;
-
-  const toX = (i: number) => pad + (i / (points.length - 1)) * (w - pad * 2);
-  const toY = (v: number) => h - pad - ((v - minEq) / range) * (h - pad * 2);
-
-  const linePath = points.map((p, i) => `${i === 0 ? "M" : "L"} ${toX(i)} ${toY(p.equity)}`).join(" ");
-  const areaPath = linePath + ` L ${toX(points.length - 1)} ${h} L ${toX(0)} ${h} Z`;
-
-  const isProfit = points[points.length - 1].equity >= startEquity;
-  const lineColor = isProfit ? "#10b981" : "#f43f5e";
-  const fillColor = isProfit ? "rgba(16,185,129,0.1)" : "rgba(244,63,94,0.1)";
-
-  return (
-    <svg viewBox={`0 0 ${w} ${h}`} className="w-full h-28" preserveAspectRatio="none">
-      {/* Start line */}
-      <line x1={toX(0)} y1={toY(startEquity)} x2={toX(points.length - 1)} y2={toY(startEquity)} stroke="#334155" strokeWidth="1" strokeDasharray="4 4" />
-      {/* Area */}
-      <path d={areaPath} fill={fillColor} />
-      {/* Line */}
-      <path d={linePath} fill="none" stroke={lineColor} strokeWidth="2" />
-      {/* Current value */}
-      <text x={toX(points.length - 1)} y={toY(points[points.length - 1].equity) - 6} fill={lineColor} fontSize="11" fontWeight="bold" textAnchor="end">
-        {fmtUsd(points[points.length - 1].equity)}
-      </text>
-    </svg>
-  );
-}
