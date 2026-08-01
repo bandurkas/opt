@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { fetchPaperState, fetchPaperConditions, fetchPaperPositions, fetchRecentTrades, fetchEquityHistory, fetchBtcStraddleState, fetchBtcStraddlePositions, fetchBtcStraddleEquityHistory, fetchBtcPrice, fetchTyagachState, fetchTyagachPositions, fetchTyagachEquityHistory, fetchTyagachChart, fetchJonyState, fetchJonyParams, fetchJonyPositions, fetchJonyEquityHistory, fetchJonyChart, type PaperState, type PaperConditions, type PaperPosition, type EquityPoint, type BtcStraddleState, type BtcStraddlePosition, type Kline, type TyagachState, type TyagachPosition, type TyagachChartZone, type JonyState, type JonyParams, type JonyPosition, type JonyChartData } from "./lib/api";
+import { fetchBtcStraddleState, fetchBtcStraddlePositions, fetchBtcStraddleEquityHistory, fetchBtcPrice, fetchTyagachState, fetchTyagachPositions, fetchTyagachEquityHistory, fetchTyagachChart, fetchJonyState, fetchJonyParams, fetchJonyPositions, fetchJonyEquityHistory, fetchJonyChart, type EquityPoint, type BtcStraddleState, type BtcStraddlePosition, type Kline, type TyagachState, type TyagachPosition, type TyagachChartZone, type JonyState, type JonyParams, type JonyPosition, type JonyChartData } from "./lib/api";
 import MissionControl from "./components/MissionControl";
 import StraddleChart from "./components/StraddleChart";
 import TyagachChart from "./components/TyagachChart";
 import JonyChart from "./components/JonyChart";
-import { ActiveContractsRail, ItmBadge, Countdown, formatCountdown, useLiveNow, type Contract } from "./components/ActiveContracts";
+import { ActiveContractsRail, ItmBadge, Countdown, useLiveNow, type Contract } from "./components/ActiveContracts";
 
 const REFRESH_MS = 15_000;
 
@@ -32,19 +32,8 @@ const fmtDay = (ms: number) => {
   const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   return `${days[d.getDay()]} ${d.getDate()}`;
 };
-// Traffic-light dot: red = not met, yellow = met but waiting on others, green = met & all ready.
-const condDotColor = (met: boolean, ready: boolean) =>
-  !met ? "bg-rose-500" : ready ? "bg-emerald-500" : "bg-amber-400";
-
 export default function Dashboard() {
   const now = useLiveNow(1000);
-  const [state, setState] = useState<PaperState | null>(null);
-  const [conditions, setConditions] = useState<PaperConditions | null>(null);
-  const [positions, setPositions] = useState<PaperPosition[]>([]);
-  const [recentTrades, setRecentTrades] = useState<PaperPosition[]>([]);
-  const [equityHistory, setEquityHistory] = useState<EquityPoint[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
 
   const [btcState, setBtcState] = useState<BtcStraddleState | null>(null);
   const [btcPositions, setBtcPositions] = useState<BtcStraddlePosition[]>([]);
@@ -69,9 +58,9 @@ export default function Dashboard() {
   const [jonyChart, setJonyChart] = useState<JonyChartData | null>(null);
   const [jonyError, setJonyError] = useState<string | null>(null);
 
-  // Separate effect/error state from the ETH signal book above — the BTC bot is a
-  // distinct deploy (own container/tables) and may lag behind or be absent;
-  // its fetch failures must never blank out the ETH dashboard.
+  // Own effect/error state per bot — each is a distinct deploy (own
+  // container/tables or own service) and may lag behind or be absent; one
+  // bot's fetch failure must never blank out the rest of the dashboard.
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
@@ -166,49 +155,11 @@ export default function Dashboard() {
     return () => { cancelled = true; clearInterval(id); };
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const [s, c, p, t, eq] = await Promise.all([
-          fetchPaperState(),
-          fetchPaperConditions(),
-          fetchPaperPositions("open"),
-          fetchRecentTrades(200),
-          fetchEquityHistory(336), // 14 days
-        ]);
-        if (cancelled) return;
-        setState(s);
-        setConditions(c);
-        setPositions(p.positions);
-        setRecentTrades(t.positions.filter((pos: PaperPosition) => pos.closed_at_ms !== null));
-        setEquityHistory(eq.points);
-        setLastUpdate(new Date());
-        setError(null);
-      } catch (e) {
-        if (cancelled) return;
-        setError(e instanceof Error ? e.message : String(e));
-      }
-    };
-    load();
-    const id = setInterval(load, REFRESH_MS);
-    return () => { cancelled = true; clearInterval(id); };
-  }, []);
-
   // Unified, live-spot-aware view of every open short-option position across
-  // all 3 bots — feeds the global "Active Contracts" rail/drawer. Built with
+  // the fleet — feeds the global "Active Contracts" rail/drawer. Built with
   // useMemo so the 1s countdown ticker (inside ActiveContractsRail) doesn't
   // force this mapping to rerun every second, only when positions/spots change.
-  // Must stay ABOVE the `if (!state) return` below — hooks can never be
-  // called conditionally (React error #310: "rendered more hooks than during
-  // the previous render" the moment `state` flips from null to loaded).
   const allContracts: Contract[] = useMemo(() => [
-    ...positions.map((p): Contract => ({
-      key: `sniper1-${p.id}`, bot: "eth_signal", side: p.side, strike: p.strike,
-      expiryMs: p.expiry_ms, contracts: p.contracts, spot: conditions?.spot ?? null,
-      entryCreditUsd: p.entry_credit_usd, openedAtMs: p.opened_at_ms,
-      currentMarkUsd: p.current_mark_usd, unrealizedPnlUsd: p.unrealized_pnl_usd,
-    })),
     ...btcPositions.map((p): Contract => ({
       key: `boba1-${p.id}`, bot: "btc_straddle", side: p.leg, strike: p.strike,
       expiryMs: p.expiry_ms, contracts: p.contracts, spot: btcSpot,
@@ -222,62 +173,16 @@ export default function Dashboard() {
       currentMarkUsd: p.current_mark_usd, unrealizedPnlUsd: p.unrealized_pnl_usd,
     })),
     // Jony trades two underlyings from one book — spot must be per-position
-    // (ETH from the signal-bot conditions feed, BTC from the straddle feed).
+    // (ETH from Tyagach's own klines feed, BTC from the straddle feed — Jony
+    // has no live-price feed of its own, it borrows from siblings that do).
     ...jonyOpenPositions.map((p): Contract => ({
       key: `jony-${p.id}`, bot: "jony", side: p.side, strike: p.strike,
       expiryMs: p.expiry_ms, contracts: p.qty,
-      spot: p.coin === "BTC" ? btcSpot : conditions?.spot ?? null,
+      spot: p.coin === "BTC" ? btcSpot : (tyagachKlines.at(-1)?.close ?? null),
       entryCreditUsd: p.entry_credit * p.qty, openedAtMs: p.opened_at_ms,
       currentMarkUsd: p.current_mark_usd, unrealizedPnlUsd: p.unrealized_pnl_usd,
     })),
-  ], [positions, btcPositions, tyagachOpenPositions, jonyOpenPositions, tyagachKlines, conditions?.spot, btcSpot]);
-
-  if (!state) return <main className="min-h-screen bg-slate-950 text-white flex items-center justify-center">Loading...</main>;
-
-  const ret7d = conditions?.ret_7d ?? 0;
-  const activeSide = conditions?.active_side;
-  const deadZone = conditions?.dead_zone ?? false;
-  const retPutMax = conditions?.thresholds?.ret_threshold_put ?? -2.5;
-  const retCallMin = conditions?.thresholds?.ret_threshold_call ?? 1.0;
-
-  let distToSignal = "";
-  if (deadZone) {
-    if (ret7d < 0) {
-      const drop = Math.abs(retPutMax - ret7d);
-      distToSignal = `${drop.toFixed(2)}% more drop to sell Put`;
-    } else {
-      const rise = Math.abs(retCallMin - ret7d);
-      distToSignal = `${rise.toFixed(2)}% more rise to sell Call`;
-    }
-  } else if (activeSide === "P") {
-    distToSignal = `Conditions met for Put`;
-  } else if (activeSide === "C") {
-    distToSignal = `Conditions met for Call`;
-  }
-
-  const change = state.current_equity_usd - state.start_equity_usd;
-  const isUp = change >= 0;
-
-  // Last 24h stats
-  const last24h = recentTrades.filter(t => t.closed_at_ms && (Date.now() - t.closed_at_ms) < 86400000);
-  const last24hPnl = last24h.reduce((sum, t) => sum + (t.pnl_usd || 0), 0);
-
-  // Entry-condition checklist (traffic-light dots)
-  const ready = conditions?.ready ?? false;
-  const entryConds = conditions ? [
-    { label: "Сторона выбрана", met: conditions.active_side !== null,
-      value: conditions.active_side === "P" ? "Put" : conditions.active_side === "C" ? "Call" : "нет (флэт)" },
-    { label: "Волатильность", met: conditions.vol_high,
-      value: conditions.vol_pctile != null ? `${(conditions.vol_pctile * 100).toFixed(0)}%-ile` : "—" },
-    { label: "Режим (ADX)", met: conditions.regime_ok,
-      value: conditions.regime ?? "—" },
-    { label: "MTF тренд", met: conditions.mtf_direction_ok,
-      value: `${conditions.mtf_direction ?? "—"} ${conditions.mtf_aligned_count ?? 0}/3` },
-    ...(conditions.active_side === "P" ? [{
-      label: "Bull-фильтр", met: conditions.bull_filter_ok,
-      value: conditions.ema_ratio != null ? conditions.ema_ratio.toFixed(3) : "—",
-    }] : []),
-  ] : [];
+  ], [btcPositions, tyagachOpenPositions, jonyOpenPositions, tyagachKlines, btcSpot]);
 
   return (
     <main className="min-h-screen bg-slate-950 text-white">
@@ -285,12 +190,8 @@ export default function Dashboard() {
       <header className="border-b border-slate-800 px-4 py-3">
         <div className="max-w-5xl mx-auto flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold">ETH Options</h1>
-            <p className="text-xs text-slate-500">V2 hybrid · 7d switching · Paper $400</p>
-          </div>
-          <div className="text-right">
-            <p className="text-xs text-slate-500">{lastUpdate?.toLocaleTimeString("ru-RU")}</p>
-            {error && <p className="text-xs text-rose-400">{error}</p>}
+            <h1 className="text-xl font-bold">Options Fleet</h1>
+            <p className="text-xs text-slate-500">Boba1 · Tyagach · Jony — paper</p>
           </div>
         </div>
       </header>
@@ -298,223 +199,6 @@ export default function Dashboard() {
       <div className="max-w-5xl mx-auto p-4 space-y-4">
         <ActiveContractsRail contracts={allContracts} now={now} />
         <MissionControl />
-        {/* Active Side Banner */}
-        <div className={`rounded-xl p-4 border ${
-          deadZone ? "bg-slate-900 border-slate-700"
-            : activeSide === "P" ? "bg-rose-950/30 border-rose-800/50"
-            : "bg-emerald-950/30 border-emerald-800/50"
-        }`}>
-          <div className="flex items-center justify-between">
-            <div>
-              {deadZone ? (
-                <>
-                  <p className="text-slate-400 text-sm">⏸ Dead Zone</p>
-                  <p className="text-xs text-slate-500 mt-1">{distToSignal}</p>
-                </>
-              ) : (
-                <>
-                  <p className={`text-lg font-bold ${activeSide === "P" ? "text-rose-300" : "text-emerald-300"}`}>
-                    SELL {activeSide === "P" ? "PUT" : "CALL"}
-                  </p>
-                  <p className="text-xs text-slate-400 mt-1">{distToSignal}</p>
-                </>
-              )}
-            </div>
-            <div className="text-right">
-              <p className="text-2xl font-mono font-bold">{ret7d > 0 ? "+" : ""}{ret7d.toFixed(2)}%</p>
-              <p className="text-xs text-slate-500">7d return</p>
-            </div>
-          </div>
-          {deadZone && (
-            <div className="mt-3">
-              <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden relative">
-                <div className="absolute left-0 top-0 bottom-0 w-px bg-rose-600" />
-                <div className="absolute right-0 top-0 bottom-0 w-px bg-emerald-600" />
-                <div className="absolute top-0 bottom-0 w-2 bg-white rounded-full transition-all duration-500"
-                  style={{ left: `${Math.max(0, Math.min(100, ((ret7d - retPutMax) / (retCallMin - retPutMax)) * 100))}%` }} />
-              </div>
-              <div className="flex justify-between text-[10px] text-slate-600 mt-1">
-                <span>Put &lt;{retPutMax}%</span>
-                <span>Dead Zone</span>
-                <span>Call &gt;{retCallMin}%</span>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Entry-proximity gauge — how close the market is to a tradeable entry */}
-        {conditions?.proximity && (
-          <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-            <div className="px-4 py-2 bg-slate-800/50 text-xs font-semibold text-slate-400 flex justify-between items-center">
-              <span>Близость ко входу</span>
-              {conditions.adx && (
-                <span className="font-mono text-[10px] text-slate-500">
-                  ADX {conditions.adx.adx?.toFixed(0) ?? "—"} · score {conditions.adx.score.toFixed(1)}/10
-                </span>
-              )}
-            </div>
-            <div className="p-4">
-              <ProximityGauge pct={conditions.proximity.proximity_pct} zone={conditions.proximity.zone} />
-              <div className="grid grid-cols-4 gap-2 mt-3">
-                {([["MTF", "mtf"], ["Vol", "vol"], ["Режим", "regime"], ["Bull", "bull"]] as const).map(([lbl, k]) => (
-                  <FactorBar key={k} label={lbl} v={conditions.proximity!.factors[k]} />
-                ))}
-              </div>
-              {conditions.proximity.window_disqualified && (
-                <p className="text-[10px] text-amber-400 mt-2 text-center">
-                  Окно дисквалифицировано (debounce/FLICKER_TOLERANCE) — бот не откроет сделку в этом окне даже если условия сейчас выполнены.
-                </p>
-              )}
-              {conditions.proximity.debounce_unknown && (
-                <p className="text-[10px] text-slate-500 mt-2 text-center">
-                  Состояние debounce-окна недоступно (бот не пишет статус) — 100% отражает только текущий снимок условий.
-                </p>
-              )}
-              <p className="text-[10px] text-slate-600 mt-3 text-center">
-                100% = все условия входа выполнены и debounce-окно бота не дисквалифицировано — сделка будет открыта.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Entry conditions — traffic-light dots */}
-        {conditions && (
-          <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-            <div className="px-4 py-2 bg-slate-800/50 text-xs font-semibold text-slate-400 flex justify-between items-center">
-              <span>Условия входа</span>
-              <span className={`flex items-center gap-1.5 ${ready ? "text-emerald-400" : "text-slate-500"}`}>
-                <span className={`inline-block w-2 h-2 rounded-full ${ready ? "bg-emerald-500" : "bg-amber-400"}`} />
-                {ready ? "вход в сделку" : "ожидание"}
-              </span>
-            </div>
-            <div className="divide-y divide-slate-800">
-              {entryConds.map((c) => (
-                <div key={c.label} className="px-4 py-2.5 flex items-center justify-between text-sm">
-                  <div className="flex items-center gap-2.5">
-                    <span className={`inline-block w-2.5 h-2.5 rounded-full ${condDotColor(c.met, ready)}`} />
-                    <span className="text-slate-300">{c.label}</span>
-                  </div>
-                  <span className="font-mono text-xs text-slate-500">{c.value}</span>
-                </div>
-              ))}
-            </div>
-            <div className="px-4 py-2 flex flex-wrap gap-3 text-[10px] text-slate-500 border-t border-slate-800">
-              <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-rose-500" />не выполнено</span>
-              <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-amber-400" />ждём остальные</span>
-              <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />вход</span>
-            </div>
-          </div>
-        )}
-
-        {/* Stats Row */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <StatCard label="Equity" value={fmtUsd(state.current_equity_usd)} sub={`${isUp ? "+" : ""}${fmtUsd(change)} (${fmtPct((change / state.start_equity_usd) * 100)})`} accent={isUp ? "text-emerald-300" : "text-rose-300"} />
-          <StatCard label="Win Rate" value={state.win_rate ? `${(state.win_rate * 100).toFixed(0)}%` : "—"} sub={`${state.wins}W / ${state.losses}L`} />
-          <StatCard label="Trades" value={`${state.n_closed}`} sub={`${state.n_open} open`} />
-          <StatCard label="24h PnL" value={fmtUsd(last24hPnl)} sub={`${last24h.length} trades`} accent={last24hPnl >= 0 ? "text-emerald-300" : "text-rose-300"} />
-        </div>
-
-        {/* Circuit Breaker — Sniper takes a forced rest after a loss, so it
-            doesn't immediately re-fire into the same bad regime ("storm"
-            pattern, 2026-06-26 retune). Countdown counts DOWN to resume, so
-            the shared Countdown's red/pulsing-near-zero urgency styling
-            (tuned for "expiry approaching = bad") would read backwards here
-            — near-zero is good news (waking up soon). Use the plain
-            formatter instead of <Countdown> and keep it neutral amber. */}
-        {state.cb_active && (
-          <div className="bg-amber-950/30 border border-amber-800/50 rounded-xl px-4 py-3 text-sm text-amber-300 flex items-center justify-between gap-3">
-            <span>😴 Снайпер устал — отдыхает после проигрыша</span>
-            <span className="font-mono tabular-nums font-bold">
-              {formatCountdown(state.cb_cooldown_until_ms - now)}
-            </span>
-          </div>
-        )}
-
-        {/* Equity Chart */}
-        {equityHistory.length > 1 && (
-          <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-            <div className="px-4 py-2 bg-slate-800/50 text-xs font-semibold text-slate-400">
-              Equity (14 days)
-            </div>
-            <div className="p-2">
-              <EquityChart points={equityHistory} startEquity={state.start_equity_usd} />
-            </div>
-          </div>
-        )}
-
-        {/* Open Positions */}
-        {positions.length > 0 && (
-          <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-            <div className="px-4 py-2 bg-slate-800/50 text-xs font-semibold text-slate-400">
-              Open Positions ({positions.length})
-            </div>
-            <div className="divide-y divide-slate-800">
-              {positions.map((p) => (
-                <div key={p.id} className="px-4 py-3 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                      p.side === "P" ? "bg-rose-500/10 text-rose-300" : "bg-emerald-500/10 text-emerald-300"
-                    }`}>
-                      SELL {p.side}
-                    </span>
-                    <span className="text-sm font-mono">${p.strike}</span>
-                    <span className="text-xs text-slate-500">{p.contracts.toFixed(2)} ETH</span>
-                    <ItmBadge side={p.side} strike={p.strike} spot={conditions?.spot ?? null} compact />
-                  </div>
-                  <div className="text-right">
-                    <Countdown expiryMs={p.expiry_ms} now={now} />
-                    <p className="text-[10px] text-slate-600 mt-0.5">{fmtRemaining(p.hold_h, p.opened_at_ms)}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Trade Journal — real executed trades, grows over time */}
-        {recentTrades.length > 0 && (
-          <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-            <div className="px-4 py-2 bg-slate-800/50 text-xs font-semibold text-slate-400 flex justify-between">
-              <span>Журнал сделок</span>
-              <span>{recentTrades.length} total</span>
-            </div>
-            <div className="divide-y divide-slate-800 max-h-80 overflow-y-auto">
-              {recentTrades.map((t) => {
-                const isWin = (t.pnl_usd || 0) > 0;
-                return (
-                  <div key={t.id} className="px-4 py-2.5 flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-2">
-                      <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                        t.side === "P" ? "bg-rose-500/10 text-rose-300" : "bg-emerald-500/10 text-emerald-300"
-                      }`}>
-                        {t.side}
-                      </span>
-                      <span className="font-mono text-xs">${t.strike}</span>
-                      <span className="text-xs text-slate-500">{t.closed_at_ms ? fmtDay(t.closed_at_ms) : ""}</span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="text-xs text-slate-500">{t.exit_reason || ""}</span>
-                      <span className={`font-mono font-bold text-xs ${isWin ? "text-emerald-400" : "text-rose-400"}`}>
-                        {fmtPct(t.pnl_pct || 0)}
-                      </span>
-                      <span className={`font-mono text-xs ${isWin ? "text-emerald-400" : "text-rose-400"}`}>
-                        {t.pnl_usd != null ? fmtUsd(t.pnl_usd) : ""}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* No positions + no trades */}
-        {positions.length === 0 && recentTrades.length === 0 && !state.cb_active && (
-          <div className="bg-slate-900 border border-slate-800 rounded-xl px-4 py-6 text-center">
-            <p className="text-sm text-slate-400">No activity yet</p>
-            <p className="text-xs text-slate-500 mt-1">Waiting for first signal...</p>
-          </div>
-        )}
 
         {/* ───────────────────── BTC Straddle (separate book) ───────────────────── */}
         <div className="pt-2">
@@ -926,92 +610,6 @@ export default function Dashboard() {
         )}
       </div>
     </main>
-  );
-}
-
-const ZONE_LABEL: Record<string, string> = {
-  waiting: "Ожидание", preparing: "Подготовка", ready: "Готовность", entry: "Вход!",
-};
-const ZONE_COLOR: Record<string, string> = {
-  waiting: "#f43f5e", preparing: "#f59e0b", ready: "#10b981", entry: "#10b981",
-};
-
-function ProximityGauge({ pct, zone }: { pct: number; zone: string }) {
-  const cx = 100, cy = 100, r = 80;
-  const clamped = Math.max(0, Math.min(100, pct));
-  const color = ZONE_COLOR[zone] ?? "#64748b";
-
-  // 0% → 180° (left), 100% → 0° (right); top semicircle (screen y is down).
-  const polar = (deg: number, rad: number): [number, number] => {
-    const a = (deg * Math.PI) / 180;
-    return [cx + rad * Math.cos(a), cy - rad * Math.sin(a)];
-  };
-  // Sample [a,b] of the scale as a polyline (unambiguous vs SVG arc flags).
-  const scalePoints = (a: number, b: number) => {
-    const pts: string[] = [];
-    const steps = Math.max(2, Math.round(Math.abs(b - a) / 2));
-    for (let i = 0; i <= steps; i++) {
-      const p = a + ((b - a) * i) / steps;
-      const [x, y] = polar(180 - p * 1.8, r);
-      pts.push(`${x.toFixed(1)},${y.toFixed(1)}`);
-    }
-    return pts.join(" ");
-  };
-
-  const angle = (clamped / 100) * 180 - 90; // needle rotation: -90° left, 0° up, +90° right
-  const needleLen = r - 14;
-
-  return (
-    <div className="flex flex-col items-center">
-      {/* viewBox cropped to the arc; readout lives BELOW it so the needle never overlaps text */}
-      <svg viewBox="0 0 200 108" className="w-full max-w-[17rem] mx-auto">
-        {/* base track for depth */}
-        <polyline points={scalePoints(0, 100)} fill="none" stroke="#1e293b" strokeWidth="13" strokeLinecap="round" />
-        {/* dim coloured zones */}
-        <polyline points={scalePoints(0, 50)} fill="none" stroke="#f43f5e" strokeWidth="11" opacity="0.25" strokeLinecap="round" />
-        <polyline points={scalePoints(50, 80)} fill="none" stroke="#f59e0b" strokeWidth="11" opacity="0.25" />
-        <polyline points={scalePoints(80, 100)} fill="none" stroke="#10b981" strokeWidth="11" opacity="0.25" strokeLinecap="round" />
-        {/* bright value fill 0 → pct */}
-        {clamped > 0 && (
-          <polyline points={scalePoints(0, clamped)} fill="none" stroke={color} strokeWidth="11" strokeLinecap="round" />
-        )}
-        {/* needle */}
-        <g transform={`rotate(${angle} ${cx} ${cy})`}>
-          <polygon
-            points={`${cx - 3.2},${cy} ${cx + 3.2},${cy} ${cx},${cy - needleLen}`}
-            fill={color}
-          />
-        </g>
-        {/* hub bearing */}
-        <circle cx={cx} cy={cy} r="6.5" fill={color} />
-        <circle cx={cx} cy={cy} r="3" fill="#0f172a" />
-      </svg>
-      {/* readout — clear of the needle sweep */}
-      <div className="flex flex-col items-center -mt-1">
-        <div className="flex items-baseline gap-0.5 leading-none">
-          <span className="text-4xl font-bold tabular-nums" style={{ color }}>{clamped.toFixed(0)}</span>
-          <span className="text-lg font-semibold" style={{ color }}>%</span>
-        </div>
-        <span className="mt-1 text-[11px] font-medium uppercase tracking-[0.15em]" style={{ color }}>
-          {ZONE_LABEL[zone] ?? zone}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function FactorBar({ label, v }: { label: string; v: number }) {
-  const pct = Math.max(0, Math.min(100, v * 100));
-  const color = pct >= 80 ? "bg-emerald-500" : pct >= 50 ? "bg-amber-400" : "bg-rose-500";
-  return (
-    <div>
-      <div className="flex justify-between text-[10px] text-slate-500 mb-0.5">
-        <span>{label}</span><span className="font-mono">{pct.toFixed(0)}</span>
-      </div>
-      <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
-        <div className={`h-full ${color} rounded-full`} style={{ width: `${pct}%` }} />
-      </div>
-    </div>
   );
 }
 
