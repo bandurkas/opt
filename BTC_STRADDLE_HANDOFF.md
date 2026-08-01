@@ -89,6 +89,11 @@ Data: `data/btc_long_{5m,15m,1h}.json` — full BTCUSDT history back to 2020-04 
 5. **Paper-validation gate** — same bar ETH cleared: accumulate 20-30+ cycles, compare paper performance to backtest (expect some decay, per every other finding in this project), watch the dollar-stop actually fire correctly on a real losing cycle before trusting it with more size.
 6. Per user's explicit operating assumption: **this is meant to run with human monitoring**, not as a fully unsupervised bot — no algorithmic circuit breaker can foresee a LUNA/FTX-style event before it happens, only react after losses start. Keep that in the design (alerting, not just auto-pilot).
 
+## 7b. Deferred backlog (2026-07-11) — сделать ПЕРЕД масштабированием
+
+1. **Disaster-backstop: `SL_DOLLAR_FRAC` 2.0 → 0.75** (`backend/services/btc_straddle_sl.py`, константа — код-правка + тесты + review + ребилд `btc_paper`). **Жёсткое условие для депозита ≥$5k**; на paper/$600-live смысла нет (экономия ~$15). Экономит ~$400@$5k / ~$2,300@$25k на хвостовом дне; на всей живой истории не сработал бы ни разу (худшая combined-просадка −$60 при марже ноги $130 ≈ 0.46×; запас до 0.75 есть, но per-leg просадку перед внедрением перепроверить точнее — sim видел только combined). Контекст: `daily_loss_limit` (`_live_preopen_block`) блокирует только НОВЫЕ открытия по realized — открытую пару при гэпе не защищает вообще; единственная intra-cycle защита = этот SL.
+2. **НЕ делать никогда (без новых данных):** тактический стоп на combined mark (−$5…−$60 — все уровни в минус vs факт, просадки мин-ревертятся: trough −$60 → сеттл −$11, trough −$32 → +$9.5) и авто-формализацию ручного закрытия «при +$X» (любой X ≤ факта; медианный haircut закрытий оператора $0.59 — закрывает у пика; 7/8 убыточных циклов профита не показывали вовсе — TP их не спасает). Симы: сессия 2026-07-11, скрипты boba_stop_sim.py / boba_sim.py / sim_b.py (scratchpad, при необходимости восстановить из описания).
+
 ## 8. What's still NOT validated (be honest about this if asked)
 
 - Only ONE crash episode (2022) has been stress-tested. A different/worse crash (sharper, longer, or with worse liquidity than 2022) could behave differently — survival in backtest is not a guarantee.
