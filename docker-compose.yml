@@ -35,20 +35,25 @@ services:
       - POLLER_BASE_COIN=${POLLER_BASE_COIN:-ETH}
     restart: unless-stopped
 
-  paper:
-    build:
-      context: ./backend
-    command: python services/paper_loop.py
-    depends_on:
-      - postgres
-      - poller
-    env_file:
-      - .env
-    environment:
-      - DATABASE_URL=postgresql://user:password@postgres:5432/options_assistant
-      - PAPER_POLL_INTERVAL=${PAPER_POLL_INTERVAL:-30}
-      - MC_ACCOUNT_NAME=Sniper1
-    restart: unless-stopped
+  # --- ARCHIVED 2026-08-01: Sniper1 (paper_loop, ETH/BTC signal hybrid) retired.
+  # cluster_stop_worst_leg (40%) and the C-side dollar-SL never proved out live
+  # (43 closed trades, net -$79.61, 39.5% WR; those two exit mechanisms alone
+  # accounted for -$165.80 of the loss vs +$91.21 from tp2/manual_close_all).
+  # Decision: archive, not re-tune — see chat memory for the full breakdown.
+#  paper:
+#    build:
+#      context: ./backend
+#    command: python services/paper_loop.py
+#    depends_on:
+#      - postgres
+#      - poller
+#    env_file:
+#      - .env
+#    environment:
+#      - DATABASE_URL=postgresql://user:password@postgres:5432/options_assistant
+#      - PAPER_POLL_INTERVAL=${PAPER_POLL_INTERVAL:-30}
+#      - MC_ACCOUNT_NAME=Sniper1
+#    restart: unless-stopped
 
   # Second poller instance, BTC-only — writes BTCUSDT klines/option snapshots into
   # the SAME klines/option_snapshots tables (already keyed by symbol), so no new
@@ -138,35 +143,29 @@ services:
     profiles:
       - bot
 
-  # Live real-money trader. Same image as `paper`, but a SEPARATE database
-  # (options_trader) so live data never mixes with the paper shadow, and
-  # TRADING_MODE=live. Does NOT auto-start — launch explicitly:
-  #     docker compose --profile trader up -d trader
-  # Even then it is ARMED-OFF (LIVE_ENABLED=false) → no real orders until you set
-  # LIVE_ENABLED=true in .env. File kill-switch: `touch /data/STOP_TRADING` (or
-  # `docker exec opt-app-trader-1 touch /data/STOP_TRADING`). The `paper` service
-  # keeps running unchanged as a shadow.
-  trader:
-    build:
-      context: ./backend
-    command: sh -c "python db/bootstrap.py && python services/paper_loop.py"
-    depends_on:
-      - postgres
-      - poller
-    env_file:
-      - .env
-    environment:
-      - DATABASE_URL=postgresql://user:password@postgres:5432/options_trader
-      - PAPER_POLL_INTERVAL=${PAPER_POLL_INTERVAL:-30}
-      - MC_ACCOUNT_NAME=Sniper1
-      - TRADING_MODE=live
-      - LIVE_ENABLED=${LIVE_ENABLED:-false}
-      - LIVE_KILLSWITCH_FILE=/data/STOP_TRADING
-    volumes:
-      - trader_data:/data
-    restart: unless-stopped
-    profiles:
-      - trader
+  # --- ARCHIVED 2026-08-01: Sniper1's live counterpart — was never armed
+  # (LIVE_ENABLED=false, never started), archived alongside `paper` above.
+#  trader:
+#    build:
+#      context: ./backend
+#    command: sh -c "python db/bootstrap.py && python services/paper_loop.py"
+#    depends_on:
+#      - postgres
+#      - poller
+#    env_file:
+#      - .env
+#    environment:
+#      - DATABASE_URL=postgresql://user:password@postgres:5432/options_trader
+#      - PAPER_POLL_INTERVAL=${PAPER_POLL_INTERVAL:-30}
+#      - MC_ACCOUNT_NAME=Sniper1
+#      - TRADING_MODE=live
+#      - LIVE_ENABLED=${LIVE_ENABLED:-false}
+#      - LIVE_KILLSWITCH_FILE=/data/STOP_TRADING
+#    volumes:
+#      - trader_data:/data
+#    restart: unless-stopped
+#    profiles:
+#      - trader
 
   # Live real-money BTC straddle trader. Same image as `btc_paper`, same script
   # (services/btc_straddle_loop.py — broker.is_live() is the only thing that
