@@ -683,6 +683,14 @@ export async function closeAllTyagach(): Promise<void> {
   await tpost(`/close_all`);
 }
 
+// Same single-writer/~POLL_SECONDS-tick pattern as closeAllTyagach, scoped
+// to one position — does NOT pause the bot. 404s if the position already
+// closed (e.g. hit SL/TP/expiry) between the dashboard rendering it and the
+// click; caller should treat that as success and just re-fetch.
+export async function closeTyagachPosition(id: number): Promise<void> {
+  await tpost(`/close_position/${id}`);
+}
+
 // ───────────────────────── Jony (separate service, own API) ─────────────────────────
 // Multi-asset VRP basket paper bot (ETH P+C, BTC Call-only), /root/Jony on
 // VPS3, SQLite behind :8200 — same "fully separate service" pattern as

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { fetchBtcStraddleState, fetchBtcStraddlePositions, fetchBtcStraddleEquityHistory, fetchBtcPrice, fetchTyagachState, fetchTyagachPositions, fetchTyagachEquityHistory, fetchTyagachChart, fetchJonyState, fetchJonyParams, fetchJonyPositions, fetchJonyEquityHistory, fetchJonyChart, fetchJonyProximity, closeJonyPosition, type EquityPoint, type BtcStraddleState, type BtcStraddlePosition, type Kline, type TyagachState, type TyagachPosition, type TyagachChartZone, type JonyState, type JonyParams, type JonyPosition, type JonyChartData, type JonyProximity } from "./lib/api";
+import { fetchBtcStraddleState, fetchBtcStraddlePositions, fetchBtcStraddleEquityHistory, fetchBtcPrice, fetchTyagachState, fetchTyagachPositions, fetchTyagachEquityHistory, fetchTyagachChart, closeTyagachPosition, fetchJonyState, fetchJonyParams, fetchJonyPositions, fetchJonyEquityHistory, fetchJonyChart, fetchJonyProximity, closeJonyPosition, type EquityPoint, type BtcStraddleState, type BtcStraddlePosition, type Kline, type TyagachState, type TyagachPosition, type TyagachChartZone, type JonyState, type JonyParams, type JonyPosition, type JonyChartData, type JonyProximity } from "./lib/api";
 import MissionControl from "./components/MissionControl";
 import StraddleChart from "./components/StraddleChart";
 import TyagachChart from "./components/TyagachChart";
@@ -51,6 +51,7 @@ export default function Dashboard() {
   const [tyagachError, setTyagachError] = useState<string | null>(null);
   const [tyagachKlines, setTyagachKlines] = useState<Kline[]>([]);
   const [tyagachZones, setTyagachZones] = useState<TyagachChartZone[]>([]);
+  const [closingTyagachIds, setClosingTyagachIds] = useState<Set<number>>(new Set());
 
   const [jonyState, setJonyState] = useState<JonyState | null>(null);
   const [jonyParams, setJonyParams] = useState<JonyParams | null>(null);
@@ -126,6 +127,31 @@ export default function Dashboard() {
     const id = setInterval(load, REFRESH_MS);
     return () => { cancelled = true; clearInterval(id); };
   }, []);
+
+  // Partial close (one position, not the whole book) — the loop executes on
+  // its next ~POLL_SECONDS tick same as Close All, so re-fetch positions
+  // right after rather than waiting the full 15s poll for the row to
+  // disappear. Same pattern as closeOneJonyPosition below.
+  const closeOneTyagachPosition = async (id: number) => {
+    setClosingTyagachIds((prev) => new Set(prev).add(id));
+    try {
+      await closeTyagachPosition(id);
+      const [op, rt] = await Promise.all([
+        fetchTyagachPositions("open"),
+        fetchTyagachPositions("closed", 200),
+      ]);
+      setTyagachOpenPositions(op);
+      setTyagachRecentTrades(rt);
+    } catch (e) {
+      setTyagachError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setClosingTyagachIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+  };
 
   // Jony — same fully-separate-service pattern as Tyagach (own repo, own
   // SQLite, API on :8200); isolated effect so its unreachability never
@@ -401,10 +427,27 @@ export default function Dashboard() {
                         <span className="text-xs text-slate-500">{p.zone_kind}</span>
                         <span className="text-sm font-mono">${p.strike}</span>
                         <span className="text-xs text-slate-500">{p.num_units.toFixed(2)} ETH</span>
+                        {p.unrealized_pnl_usd != null && (
+                          <span className={`font-mono text-xs font-bold ${
+                            p.unrealized_pnl_usd >= 0 ? "text-emerald-400" : "text-rose-400"
+                          }`}>
+                            {fmtUsd(p.unrealized_pnl_usd)}
+                          </span>
+                        )}
                       </div>
-                      <div className="text-right">
-                        <Countdown expiryMs={p.expiry_ts_ms} now={now} />
-                        <p className="text-[10px] text-slate-600 mt-0.5">{p.symbol}</p>
+                      <div className="flex items-center gap-3">
+                        <div className="text-right">
+                          <Countdown expiryMs={p.expiry_ts_ms} now={now} />
+                          <p className="text-[10px] text-slate-600 mt-0.5">{p.symbol}</p>
+                        </div>
+                        <button
+                          onClick={() => closeOneTyagachPosition(p.id)}
+                          disabled={closingTyagachIds.has(p.id)}
+                          className="px-2 py-1 text-[10px] font-semibold rounded-lg bg-rose-900/50 hover:bg-rose-800/70
+                                     disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
+                        >
+                          {closingTyagachIds.has(p.id) ? "…" : "Закрыть"}
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -580,6 +623,13 @@ export default function Dashboard() {
                         <span className="text-sm font-mono">${p.strike}</span>
                         <span className="text-xs text-slate-500">{p.qty.toFixed(2)} ct</span>
                         <span className="text-xs text-slate-500">credit ${(p.entry_credit * p.qty).toFixed(2)}</span>
+                        {p.unrealized_pnl_usd != null && (
+                          <span className={`font-mono text-xs font-bold ${
+                            p.unrealized_pnl_usd >= 0 ? "text-emerald-400" : "text-rose-400"
+                          }`}>
+                            {fmtUsd(p.unrealized_pnl_usd)}
+                          </span>
+                        )}
                       </div>
                       <div className="flex items-center gap-3">
                         <div className="text-right">
