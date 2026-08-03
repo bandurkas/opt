@@ -1,7 +1,7 @@
 import os
 import asyncio
 import requests
-from aiogram import Bot, Dispatcher, types
+from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import Command
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
@@ -61,6 +61,29 @@ async def cmd_eth(message: types.Message):
         await msg.edit_text(text)
     except Exception as e:
         await msg.edit_text(f"❌ Ошибка получения данных: {e}")
+
+# Boba1 profit-milestone alerts (services/btc_straddle_loop.py ->
+# telegram_notify.notify_profit_decision) carry inline Закрыть/Держать
+# buttons. Long-polling (dp.start_polling below) already receives
+# callback_query updates with no extra setup — just handlers.
+@dp.callback_query(F.data.startswith("boba1_close:"))
+async def cb_boba1_close(callback: types.CallbackQuery):
+    cycle_id = callback.data.split(":", 1)[1]
+    try:
+        requests.post(f"{API_URL}/control/btc_straddle/close_pair/{cycle_id}", timeout=5)
+        await callback.answer("Закрываю...")
+        await callback.message.edit_reply_markup(reply_markup=None)
+        await callback.message.edit_text(callback.message.html_text + "\n\n✅ <b>Закрыто оператором</b>")
+    except Exception as e:
+        await callback.answer(f"Ошибка: {e}", show_alert=True)
+
+
+@dp.callback_query(F.data.startswith("boba1_hold:"))
+async def cb_boba1_hold(callback: types.CallbackQuery):
+    await callback.answer("Держим 👍")
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.message.edit_text(callback.message.html_text + "\n\n⏳ <b>Решение: держим</b>")
+
 
 async def main():
     if not TELEGRAM_TOKEN:

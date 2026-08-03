@@ -34,22 +34,29 @@ def is_enabled() -> bool:
     return bool(_TOKEN and _CHAT_IDS)
 
 
-def notify(text: str, *, parse_mode: str = "HTML", silent: bool = False) -> None:
-    """Send a message to every configured chat. Never raises — paper-loop should never break on this."""
+def notify(text: str, *, parse_mode: str = "HTML", silent: bool = False,
+          reply_markup: dict | None = None) -> None:
+    """Send a message to every configured chat. Never raises — paper-loop should never break on this.
+
+    `reply_markup` is passed straight through to the Bot API's sendMessage
+    payload (e.g. an inline keyboard: {"inline_keyboard": [[{"text": ..., "callback_data": ...}]]})."""
     if not is_enabled():
         return
     if BOT_LABEL:
         text = f"<b>[{BOT_LABEL}]</b> {text}"
     for chat_id in _CHAT_IDS:
         try:
+            payload = {
+                "chat_id": chat_id,
+                "text": text,
+                "parse_mode": parse_mode,
+                "disable_notification": silent,
+            }
+            if reply_markup is not None:
+                payload["reply_markup"] = reply_markup
             requests.post(
                 f"https://api.telegram.org/bot{_TOKEN}/sendMessage",
-                json={
-                    "chat_id": chat_id,
-                    "text": text,
-                    "parse_mode": parse_mode,
-                    "disable_notification": silent,
-                },
+                json=payload,
                 timeout=_TIMEOUT_S,
             )
         except Exception as e:  # noqa: BLE001
@@ -162,6 +169,28 @@ def notify_trader_start(*, mode: str, armed: bool, wallet_usdt: float | None) ->
         f"  USDT wallet: {wallet_usdt if wallet_usdt is not None else '?'}"
     )
     notify(text)
+
+
+def notify_profit_decision(*, cycle_id: int, strike: float, combined: float, kind: str,
+                           alert_level: float, mins_left: int, quick_tp_usd: float) -> None:
+    """Boba1 milestone/pullback profit alert with inline Закрыть/Держать
+    buttons — see services/btc_straddle_loop.py::next_profit_alert(). `kind`
+    is "milestone" (profit just crossed alert_level going up) or "pullback"
+    (profit fell PROFIT_PULLBACK_USD below its peak of alert_level)."""
+    if kind == "pullback":
+        headline = f"⚠️ Boba1: профит откатился до +${combined:.2f} (был пик ${alert_level:.2f})"
+    else:
+        headline = f"💰 Boba1: профит +${combined:.2f} на straddle ${strike:.0f} (порог ≥${alert_level:.0f})"
+    text = (
+        f"{headline}\n"
+        f"До экспирации {mins_left // 60}ч{mins_left % 60:02d}м. "
+        f"Авто-тейк стоит на ${quick_tp_usd:.0f}."
+    )
+    reply_markup = {"inline_keyboard": [[
+        {"text": "✅ Закрыть", "callback_data": f"boba1_close:{cycle_id}"},
+        {"text": "⏳ Держать", "callback_data": f"boba1_hold:{cycle_id}"},
+    ]]}
+    notify(text, reply_markup=reply_markup)
 
 
 def notify_cb_triggered(*, equity_after: float) -> None:

@@ -102,6 +102,79 @@ def test_new_cycle_id_unique_and_sortable_within_a_day() -> None:
     assert id_last // 100_000 == cyc, id_last  # must NOT overflow into cyc+1's range
 
 
+def _init_alert_state() -> dict:
+    return {"peak": 0.0, "last_milestone": 0.0, "pullback_alerted_peak": 0.0}
+
+
+def test_profit_alert_no_alert_below_first_threshold() -> None:
+    state, kind, level = loop.next_profit_alert(_init_alert_state(), 2.9)
+    assert kind is None, kind
+
+
+def test_profit_alert_first_milestone_fires_at_3() -> None:
+    state, kind, level = loop.next_profit_alert(_init_alert_state(), 3.0)
+    assert (kind, level) == ("milestone", 3.0)
+
+
+def test_profit_alert_sequential_milestones() -> None:
+    state = _init_alert_state()
+    state, kind, level = loop.next_profit_alert(state, 3.0)
+    assert (kind, level) == ("milestone", 3.0)
+    state, kind, level = loop.next_profit_alert(state, 3.5)
+    assert kind is None, kind  # not yet at the next threshold ($5)
+    state, kind, level = loop.next_profit_alert(state, 5.0)
+    assert (kind, level) == ("milestone", 5.0)
+    state, kind, level = loop.next_profit_alert(state, 7.0)
+    assert (kind, level) == ("milestone", 7.0)
+
+
+def test_profit_alert_big_jump_advances_to_highest_crossed_level_once() -> None:
+    state = _init_alert_state()
+    state, kind, level = loop.next_profit_alert(state, 9.0)
+    assert (kind, level) == ("milestone", 9.0)  # one alert, not 3/5/7/9 stacked
+    state, kind, level = loop.next_profit_alert(state, 9.0)
+    assert kind is None, kind  # same level again — no repeat
+
+
+def test_profit_alert_milestones_capped_below_quick_tp() -> None:
+    assert sl.QUICK_TP_COMBINED_USD == 22.0  # test assumes this default
+    state = _init_alert_state()
+    state["last_milestone"] = 19.0
+    state["peak"] = 19.0
+    state, kind, level = loop.next_profit_alert(state, 21.0)
+    assert (kind, level) == ("milestone", 21.0)
+    state, kind, level = loop.next_profit_alert(state, 22.0)
+    assert kind is None, kind  # quick_tp territory — milestones stop, auto-exit takes over
+
+
+def test_profit_alert_pullback_fires_from_peak() -> None:
+    state = _init_alert_state()
+    state, kind, level = loop.next_profit_alert(state, 4.0)
+    assert kind == "milestone"
+    state, kind, level = loop.next_profit_alert(state, 2.0)  # $4 peak - $2 = $2 pullback
+    assert (kind, level) == ("pullback", 4.0)
+
+
+def test_profit_alert_pullback_does_not_repeat_at_same_peak() -> None:
+    state = _init_alert_state()
+    state, _, _ = loop.next_profit_alert(state, 4.0)
+    state, kind, _ = loop.next_profit_alert(state, 2.0)
+    assert kind == "pullback"
+    state, kind, _ = loop.next_profit_alert(state, 1.0)  # still below the alerted peak
+    assert kind is None, kind
+
+
+def test_profit_alert_pullback_rearms_after_new_higher_peak() -> None:
+    state = _init_alert_state()
+    state, _, _ = loop.next_profit_alert(state, 4.0)
+    state, kind, _ = loop.next_profit_alert(state, 2.0)
+    assert kind == "pullback"
+    state, kind, _ = loop.next_profit_alert(state, 6.0)  # new peak
+    assert kind == "milestone"
+    state, kind, level = loop.next_profit_alert(state, 4.0)  # $6 peak - $2 = $4
+    assert (kind, level) == ("pullback", 6.0)
+
+
 if __name__ == "__main__":
     tests = [v for k, v in list(globals().items()) if k.startswith("test_")]
     failed = 0

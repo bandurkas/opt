@@ -196,6 +196,16 @@ def control_close_all_global():
     return {bot: control_repo.request_close_all(bot) for bot in _BOT_REPOS}
 
 
+@app.post("/api/v1/control/btc_straddle/close_pair/{cycle_id}")
+def control_close_btc_straddle_pair(cycle_id: int):
+    """Close ONE Boba1 pair (both legs) on its next tick — pressed from a
+    profit-milestone Telegram alert's "Закрыть" button. Does not pause the bot
+    or touch any other open pair, unlike close-all."""
+    btc_straddle_repo.request_close_pair(cycle_id, by="telegram")
+    telegram_notify.notify(f"🛑 Boba1: manual close requested for pair {cycle_id}", silent=True)
+    return {"ok": True, "cycle_id": cycle_id}
+
+
 # ───────────────────────── Settings: exchange credentials ─────────────────────────
 # One Bybit account per bot (separate key, separate wallet) — accounts_repo.
 # ACCOUNT_NAMES are the bots' call signs (Boba1/Grogu1/Sniper1, see

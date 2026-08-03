@@ -39,6 +39,26 @@ def _capture():
     return sent, orig_enabled, orig_post
 
 
+def _capture_payloads():
+    """Like _capture(), but keeps the full JSON payload (needed to inspect
+    reply_markup/callback_data, not just text)."""
+    payloads = []
+    orig_enabled = tn.is_enabled
+    orig_post = tn.requests.post
+    tn.is_enabled = lambda: True
+    tn._CHAT_IDS[:] = ["fake_chat"]
+
+    class _Resp:
+        status_code = 200
+
+    def fake_post(url, json, timeout):
+        payloads.append(json)
+        return _Resp()
+
+    tn.requests.post = fake_post
+    return payloads, orig_enabled, orig_post
+
+
 def _restore(orig_enabled, orig_post):
     tn.is_enabled = orig_enabled
     tn.requests.post = orig_post
@@ -133,6 +153,35 @@ def test_notify_close_cluster_stop_reason_label():
         tn.BOT_LABEL = orig_label
         _restore(oe, op)
     assert "Reason: cluster-stop (worst leg)" in sent[0]
+
+
+def test_notify_profit_decision_milestone_has_close_hold_buttons():
+    payloads, oe, op = _capture_payloads()
+    try:
+        tn.notify_profit_decision(cycle_id=1234500123, strike=64000.0, combined=3.05,
+                                  kind="milestone", alert_level=3.0, mins_left=125,
+                                  quick_tp_usd=22.0)
+    finally:
+        _restore(oe, op)
+    payload = payloads[0]
+    assert "+$3.05" in payload["text"]
+    buttons = payload["reply_markup"]["inline_keyboard"][0]
+    assert buttons[0]["callback_data"] == "boba1_close:1234500123"
+    assert buttons[1]["callback_data"] == "boba1_hold:1234500123"
+
+
+def test_notify_profit_decision_pullback_wording():
+    payloads, oe, op = _capture_payloads()
+    try:
+        tn.notify_profit_decision(cycle_id=999, strike=64000.0, combined=2.0,
+                                  kind="pullback", alert_level=4.0, mins_left=60,
+                                  quick_tp_usd=22.0)
+    finally:
+        _restore(oe, op)
+    text = payloads[0]["text"]
+    assert "откатился" in text
+    assert "$2.00" in text
+    assert "$4.00" in text
 
 
 def test_disabled_sends_nothing():

@@ -165,7 +165,7 @@ CREATE TABLE IF NOT EXISTS btc_straddle_positions (
     entry_credit_usd    NUMERIC(18,4) NOT NULL,               -- per-contract premium received
     entry_credit_pct    NUMERIC(10,4) NOT NULL,
     entry_source        TEXT         NOT NULL,                -- 'bybit' | 'bs_fallback'
-    status              TEXT         NOT NULL DEFAULT 'open', -- 'open' | 'closed_tp2' | 'closed_sl' | 'closed_time' | 'closed_reconciled'
+    status              TEXT         NOT NULL DEFAULT 'open', -- 'open' | 'closed_tp2' | 'closed_sl' | 'closed_time' | 'closed_reconciled' | 'closed_manual'
     margin_per_lot_usd  NUMERIC(18,4) NOT NULL,                -- IM_RATE*strike+premium, per 0.01 BTC lot
     sl_dollar_trip_usd  NUMERIC(18,4) NOT NULL,                -- SL_DOLLAR_FRAC * margin_per_lot_usd, constant for the leg's life
     closed_at_ms        BIGINT,
@@ -200,6 +200,16 @@ CREATE TABLE IF NOT EXISTS btc_straddle_state (
     cb_cooldown_until_ms     BIGINT    NOT NULL DEFAULT 0,
     consec_losses            INT       NOT NULL DEFAULT 0,
     recent_pnls_json         JSONB     NOT NULL DEFAULT '[]'
+);
+
+-- Per-pair manual-close requests from Telegram button presses (or any future
+-- UI). One-shot: the loop pops+deletes on its next tick, same idea as
+-- bot_control.close_all_requested below but scoped to a single cycle_id
+-- instead of the whole bot.
+CREATE TABLE IF NOT EXISTS btc_straddle_close_requests (
+    cycle_id        BIGINT PRIMARY KEY,
+    requested_at_ms BIGINT NOT NULL,
+    requested_by    TEXT
 );
 
 -- ETH unconditional short-straddle (24h cycle, dollar-margin SL) — separate

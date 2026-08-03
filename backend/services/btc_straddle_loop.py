@@ -41,14 +41,22 @@ START_EQUITY_USD = float(os.getenv("BTC_STRADDLE_START_EQUITY_USD", "2000"))
 MARGIN_PCT_PER_CYCLE = float(os.getenv("BTC_STRADDLE_MARGIN_PCT", "0.15"))
 ABS_FLOOR_EQUITY = float(os.getenv("BTC_STRADDLE_ABS_FLOOR_EQUITY", "50"))
 
-# Operator heads-up: Telegram-ping ONCE per pair when its combined unrealized
-# profit first crosses this $ level, so a human can decide to lock it in via
-# Mission Control instead of always riding to the $22 quick_tp / time-stop.
-# Pure notification — does NOT change any auto-exit (QUICK_TP_COMBINED_USD stays
-# the backtested optimum; lowering the auto-take to $11 was rejected by the
-# train+holdout sweep, see btc_straddle_sl.py / btc_straddle_param_search.py).
-# Set to 0 to disable.
-PROFIT_ALERT_USD = float(os.getenv("BTC_STRADDLE_PROFIT_ALERT_USD", "11"))
+# Operator heads-up: Telegram-ping (with inline Закрыть/Держать buttons) each
+# time a pair's combined unrealized profit crosses a new milestone (starting
+# at PROFIT_ALERT_FIRST_USD, then every +PROFIT_ALERT_STEP_USD, capped below
+# the $22 auto quick_tp so it never races with it), or gives back
+# PROFIT_PULLBACK_USD from its peak. A human decides in real time via the
+# Telegram buttons (routed to POST /control/btc_straddle/close_pair/{cycle_id}
+# in telegram_bot.py) instead of always riding to quick_tp/time-stop. Pure
+# notification + opt-in manual close — does NOT change any auto-exit
+# (QUICK_TP_COMBINED_USD stays the backtested optimum; lowering the auto-take
+# was rejected by the train+holdout sweep, see btc_straddle_sl.py /
+# btc_straddle_param_search.py). Set PROFIT_ALERT_FIRST_USD to 0 to disable
+# milestone alerts entirely; PROFIT_PULLBACK_USD to 0 to disable pullback
+# alerts only.
+PROFIT_ALERT_FIRST_USD = float(os.getenv("BTC_STRADDLE_PROFIT_ALERT_FIRST_USD", "3"))
+PROFIT_ALERT_STEP_USD = float(os.getenv("BTC_STRADDLE_PROFIT_ALERT_STEP_USD", "2"))
+PROFIT_PULLBACK_USD = float(os.getenv("BTC_STRADDLE_PROFIT_PULLBACK_USD", "2"))
 
 BOT_NAME = "btc_straddle"
 SPOT_SYMBOL = "BTCUSDT"
@@ -335,32 +343,63 @@ def decide_pair_action(legs: list[dict], marks: dict[str, float], now_ms: int) -
     return "hold", None
 
 
-_profit_alerted_cycles: set[int] = set()
+_pair_alert_state: dict[int, dict] = {}
+
+
+def next_profit_alert(state: dict, combined: float) -> tuple[dict, str | None, float | None]:
+    """Pure decision logic for the milestone/pullback alert state machine —
+    no DB, no network, unit-testable like decide_pair_action. `state` is
+    {"peak", "last_milestone", "pullback_alerted_peak"}. Returns
+    (updated_state, alert_kind, alert_level) where alert_kind is one of
+    None / "milestone" / "pullback"."""
+    peak = max(state["peak"], combined)
+    last_milestone = state["last_milestone"]
+    pullback_alerted_peak = state["pullback_alerted_peak"]
+
+    if PROFIT_ALERT_FIRST_USD > 0:
+        next_th = PROFIT_ALERT_FIRST_USD if last_milestone == 0 else last_milestone + PROFIT_ALERT_STEP_USD
+        if combined >= next_th and next_th < sl.QUICK_TP_COMBINED_USD:
+            # Advance to the highest threshold crossed this tick — one alert,
+            # not a stacked burst, if profit jumps several steps at once.
+            while (combined >= next_th + PROFIT_ALERT_STEP_USD
+                   and next_th + PROFIT_ALERT_STEP_USD < sl.QUICK_TP_COMBINED_USD):
+                next_th += PROFIT_ALERT_STEP_USD
+            new_state = {"peak": peak, "last_milestone": next_th,
+                         "pullback_alerted_peak": pullback_alerted_peak}
+            return new_state, "milestone", next_th
+
+    if (PROFIT_PULLBACK_USD > 0 and peak >= PROFIT_ALERT_FIRST_USD
+            and peak - combined >= PROFIT_PULLBACK_USD and pullback_alerted_peak < peak):
+        new_state = {"peak": peak, "last_milestone": last_milestone, "pullback_alerted_peak": peak}
+        return new_state, "pullback", peak
+
+    new_state = {"peak": peak, "last_milestone": last_milestone,
+                 "pullback_alerted_peak": pullback_alerted_peak}
+    return new_state, None, None
 
 
 def _maybe_profit_alert(legs: list[dict], marks: dict[str, float], now_ms: int) -> None:
-    """Ping the operator once per pair when its combined unrealized profit first
-    crosses PROFIT_ALERT_USD. Notification only — never closes anything and never
-    touches the auto-exit path. Pruned per-cycle by the monitor loop once the
-    pair is gone, so every fresh pair can alert again."""
-    if PROFIT_ALERT_USD <= 0 or not legs:
+    """Ping the operator (with Закрыть/Держать buttons) each time a pair's
+    combined unrealized profit crosses a new milestone or pulls back from its
+    peak. Notification + opt-in manual close only — never auto-closes
+    anything and never touches the auto-exit path. Pruned per-cycle by the
+    monitor loop once the pair is gone, so every fresh pair starts clean."""
+    if not legs or (PROFIT_ALERT_FIRST_USD <= 0 and PROFIT_PULLBACK_USD <= 0):
         return
     cyc = int(legs[0]["cycle_id"])
-    if cyc in _profit_alerted_cycles:
-        return
+    state = _pair_alert_state.setdefault(
+        cyc, {"peak": 0.0, "last_milestone": 0.0, "pullback_alerted_peak": 0.0})
     combined = sum(
         (float(p["entry_credit_usd"]) - marks[p["leg"]]) * float(p["contracts"]) for p in legs
     )
-    if combined < PROFIT_ALERT_USD:
+    new_state, kind, level = next_profit_alert(state, combined)
+    _pair_alert_state[cyc] = new_state
+    if kind is None:
         return
-    _profit_alerted_cycles.add(cyc)
     mins_left = max(0, (int(legs[0]["expiry_ms"]) - now_ms) // 60_000)
-    strike = float(legs[0]["strike"])
-    telegram_notify.notify(
-        f"💰 Boba1: комбинированный профит +${combined:.2f} на straddle ${strike:.0f} "
-        f"(порог ≥${PROFIT_ALERT_USD:.0f}). До экспирации {mins_left // 60}ч{mins_left % 60:02d}м. "
-        f"Авто-тейк стоит на ${sl.QUICK_TP_COMBINED_USD:.0f} — держим дальше на theta "
-        f"или закрыть вручную в Mission Control?"
+    telegram_notify.notify_profit_decision(
+        cycle_id=cyc, strike=float(legs[0]["strike"]), combined=combined, kind=kind,
+        alert_level=level, mins_left=mins_left, quick_tp_usd=sl.QUICK_TP_COMBINED_USD,
     )
 
 
@@ -601,6 +640,29 @@ async def loop(run_once: bool = False) -> None:
                     _report_close_all_stuck(n_closed, n_target)
                 open_pos_now = repo.open_positions()
 
+            # 0.5) Per-pair manual close requests (Telegram "Закрыть" button,
+            # via POST /control/btc_straddle/close_pair/{cycle_id}). Unlike
+            # close-all above, this never pauses the bot or touches any other
+            # open pair.
+            requested_cycles = repo.pop_close_requested_cycles()
+            if requested_cycles:
+                by_requested_cycle: dict[int, list[dict]] = {}
+                for p in open_pos_now:
+                    by_requested_cycle.setdefault(int(p["cycle_id"]), []).append(p)
+                for cyc in requested_cycles:
+                    for p in by_requested_cycle.get(cyc, []):
+                        try:
+                            mark = current_mark(p["leg"], float(p["strike"]), int(p["expiry_ms"]), chain_dict)
+                            if mark is None:
+                                mark = price_option_bs(p["leg"], spot, float(p["strike"]),
+                                                       int(p["expiry_ms"]), trailing_sigma())
+                            _do_close(p, mark, "manual_close_pair", int(time.time() * 1000))
+                        except Exception:  # noqa: BLE001
+                            print(f"[btc_straddle] ERROR closing requested pair cycle={cyc} "
+                                  f"#{p.get('id')}:\n{traceback.format_exc()}", flush=True)
+                            _report_loop_error(f"manual-close-pair cycle={cyc}")
+                open_pos_now = repo.open_positions()
+
             # 1) Monitor open legs — pairs (2 legs sharing a cycle_id) get the
             # quick-scalp joint check; anything else (a straggler from a
             # partial-open failure) falls back to the old independent per-leg
@@ -608,9 +670,12 @@ async def loop(run_once: bool = False) -> None:
             by_cycle: dict[int, list[dict]] = {}
             for p in open_pos_now:
                 by_cycle.setdefault(int(p["cycle_id"]), []).append(p)
-            # Forget profit-alert flags for cycles that have closed, so the next
-            # fresh pair can alert again (and the set stays bounded).
-            _profit_alerted_cycles.intersection_update(by_cycle.keys())
+            # Forget profit-alert state for cycles that have closed, so the next
+            # fresh pair starts clean (and the dict stays bounded). Mutated in
+            # place (not rebound) — _pair_alert_state is a module-level global
+            # also written by _maybe_profit_alert().
+            for stale_cyc in [k for k in _pair_alert_state if k not in by_cycle]:
+                del _pair_alert_state[stale_cyc]
             for cycle_id, legs in by_cycle.items():
                 try:
                     if len(legs) == 2:

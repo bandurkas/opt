@@ -129,6 +129,8 @@ def close_position(position_id: int, *, closed_at_ms: int,
         "sl_paired": "closed_sl",     # other leg force-closed alongside a tripped sibling
         "time_stop": "closed_time",
         "reconciled": "closed_reconciled",
+        "manual_close_all": "closed_manual",
+        "manual_close_pair": "closed_manual",
     }
     conn = get_conn()
     try:
@@ -303,6 +305,43 @@ def realized_pnl_since(ts_ms: int) -> float:
             )
             row = cur.fetchone()
             return float(row[0]) if row and row[0] is not None else 0.0
+    finally:
+        put_conn(conn)
+
+
+# ───────────────────────── Per-pair close requests ─────────────────────────
+
+def request_close_pair(cycle_id: int, *, by: str = "telegram") -> None:
+    """Flag one pair (both legs, sharing cycle_id) for closing on the loop's
+    next tick. Mirrors control_repo.request_close_all but scoped to a single
+    pair instead of the whole bot."""
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            now_ms = int(time.time() * 1000)
+            cur.execute(
+                """
+                INSERT INTO btc_straddle_close_requests (cycle_id, requested_at_ms, requested_by)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (cycle_id) DO NOTHING
+                """,
+                (cycle_id, now_ms, by),
+            )
+        conn.commit()
+    finally:
+        put_conn(conn)
+
+
+def pop_close_requested_cycles() -> list[int]:
+    """Read-and-clear every pending close request in one round trip, so a
+    request can't be actioned twice."""
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM btc_straddle_close_requests RETURNING cycle_id")
+            rows = cur.fetchall()
+        conn.commit()
+        return [int(r[0]) for r in rows]
     finally:
         put_conn(conn)
 
