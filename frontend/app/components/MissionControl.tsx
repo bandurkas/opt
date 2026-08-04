@@ -60,9 +60,10 @@ export const BOT_META: Record<
 };
 
 // eth_straddle (Grogu) archived 2026-07-01, eth_signal (Sniper1) archived
-// 2026-08-01 — both omitted from BOT_ORDER so their control cards no longer
-// render; BOT_META entries kept to satisfy Record<BotName>.
-const BOT_ORDER: BotName[] = ["btc_straddle"];
+// 2026-08-01, btc_straddle (Boba1) archived 2026-08-04 — all omitted from
+// BOT_ORDER so their control cards no longer render; BOT_META entries kept
+// to satisfy Record<BotName>.
+const BOT_ORDER: BotName[] = [];
 
 function StatusLED({ paused }: { paused: boolean }) {
   return (
