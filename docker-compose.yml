@@ -72,25 +72,30 @@ services:
       - POLLER_BASE_COIN=BTC
     restart: unless-stopped
 
-  # BTC unconditional short-straddle paper bot — separate book from the ETH V3
-  # book above (own btc_straddle_* tables, same Postgres DB). Auto-starts. See
-  # BTC_STRADDLE_HANDOFF.md / services/btc_straddle_loop.py.
-  btc_paper:
-    build:
-      context: ./backend
-    command: python services/btc_straddle_loop.py
-    depends_on:
-      - postgres
-      - btc_poller
-    env_file:
-      - .env
-    environment:
-      - DATABASE_URL=postgresql://user:password@postgres:5432/options_assistant
-      - BTC_STRADDLE_POLL_INTERVAL=${BTC_STRADDLE_POLL_INTERVAL:-30}
-      - BTC_STRADDLE_START_EQUITY_USD=${BTC_STRADDLE_START_EQUITY_USD:-2000}
-      - BTC_STRADDLE_MARGIN_PCT=${BTC_STRADDLE_MARGIN_PCT:-0.15}
-      - MC_ACCOUNT_NAME=Boba1
-    restart: unless-stopped
+  # --- ARCHIVED 2026-08-04: Boba1 (BTC unconditional short-straddle) retired.
+  # ~7.5 weeks live paper (124 closed legs), net -$24.59, 62.1% WR vs the 2yr
+  # backtest's own 74.5% WR / +$1.29-per-leg expectation — no positive trend
+  # across weekly buckets (alternating small +/- weeks), thin edge never
+  # materialized live. Decision to archive rather than keep watching, per user
+  # review 2026-08-04. btc_poller LEFT RUNNING — Jony's BTC-leg dashboard
+  # spot display (fetchBtcPrice) still reads its data; only the actual
+  # trading loops are stopped here.
+#  btc_paper:
+#    build:
+#      context: ./backend
+#    command: python services/btc_straddle_loop.py
+#    depends_on:
+#      - postgres
+#      - btc_poller
+#    env_file:
+#      - .env
+#    environment:
+#      - DATABASE_URL=postgresql://user:password@postgres:5432/options_assistant
+#      - BTC_STRADDLE_POLL_INTERVAL=${BTC_STRADDLE_POLL_INTERVAL:-30}
+#      - BTC_STRADDLE_START_EQUITY_USD=${BTC_STRADDLE_START_EQUITY_USD:-2000}
+#      - BTC_STRADDLE_MARGIN_PCT=${BTC_STRADDLE_MARGIN_PCT:-0.15}
+#      - MC_ACCOUNT_NAME=Boba1
+#    restart: unless-stopped
 
   # ETH unconditional short-straddle paper bot — separate book from the ETH V3
   # signal book above (own eth_straddle_* tables, same Postgres DB). Depends on
@@ -167,43 +172,31 @@ services:
 #    profiles:
 #      - trader
 
-  # Live real-money BTC straddle trader. Same image as `btc_paper`, same script
-  # (services/btc_straddle_loop.py — broker.is_live() is the only thing that
-  # changes behaviour), but a SEPARATE database (options_trader_btc) so live data
-  # never mixes with the btc_paper shadow, and TRADING_MODE=live. Does NOT
-  # auto-start — launch explicitly:
-  #     docker compose --profile trader up -d btc_trader
-  # Even then it is ARMED-OFF (LIVE_ENABLED_BTC=false) until you set it in .env.
-  # File kill-switch: `touch /data/STOP_TRADING_BTC` (own kill-switch, independent
-  # of the ETH trader's). The `btc_paper` service keeps running unchanged as a
-  # shadow. Capital note: this and `trader` now run on SEPARATE Bybit accounts
-  # (one key + wallet per bot — see services/execution_config.py's
-  # MC_ACCOUNT_NAME / Mission Control settings UI), so the old shared-capital
-  # split is no longer a concern; LIVE_MAX_CAPITAL_USDT is just a per-bot cap
-  # on its own account's funds.
-  btc_trader:
-    build:
-      context: ./backend
-    command: sh -c "python db/bootstrap.py && python services/btc_straddle_loop.py"
-    depends_on:
-      - postgres
-      - btc_poller
-    env_file:
-      - .env
-    environment:
-      - DATABASE_URL=postgresql://user:password@postgres:5432/options_trader_btc
-      - BTC_STRADDLE_POLL_INTERVAL=${BTC_STRADDLE_POLL_INTERVAL:-30}
-      - BTC_STRADDLE_START_EQUITY_USD=${BTC_STRADDLE_START_EQUITY_USD:-2000}
-      - BTC_STRADDLE_MARGIN_PCT=${BTC_STRADDLE_MARGIN_PCT:-0.15}
-      - MC_ACCOUNT_NAME=Boba1
-      - TRADING_MODE=live
-      - LIVE_ENABLED=${LIVE_ENABLED_BTC:-false}
-      - LIVE_KILLSWITCH_FILE=/data/STOP_TRADING_BTC
-    volumes:
-      - btc_trader_data:/data
-    restart: unless-stopped
-    profiles:
-      - trader
+  # --- ARCHIVED 2026-08-04: Boba1's live counterpart — was never armed
+  # (LIVE_ENABLED_BTC=false, never started), archived alongside `btc_paper` above.
+#  btc_trader:
+#    build:
+#      context: ./backend
+#    command: sh -c "python db/bootstrap.py && python services/btc_straddle_loop.py"
+#    depends_on:
+#      - postgres
+#      - btc_poller
+#    env_file:
+#      - .env
+#    environment:
+#      - DATABASE_URL=postgresql://user:password@postgres:5432/options_trader_btc
+#      - BTC_STRADDLE_POLL_INTERVAL=${BTC_STRADDLE_POLL_INTERVAL:-30}
+#      - BTC_STRADDLE_START_EQUITY_USD=${BTC_STRADDLE_START_EQUITY_USD:-2000}
+#      - BTC_STRADDLE_MARGIN_PCT=${BTC_STRADDLE_MARGIN_PCT:-0.15}
+#      - MC_ACCOUNT_NAME=Boba1
+#      - TRADING_MODE=live
+#      - LIVE_ENABLED=${LIVE_ENABLED_BTC:-false}
+#      - LIVE_KILLSWITCH_FILE=/data/STOP_TRADING_BTC
+#    volumes:
+#      - btc_trader_data:/data
+#    restart: unless-stopped
+#    profiles:
+#      - trader
 
 volumes:
   postgres_data:
