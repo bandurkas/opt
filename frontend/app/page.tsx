@@ -10,6 +10,7 @@ import BubuChart from "./components/BubuChart";
 import EquityChart from "./components/EquityChart";
 import ProximityGauge from "./components/ProximityGauge";
 import { ActiveContractsRail, Countdown, useLiveNow, type Contract } from "./components/ActiveContracts";
+import BubuSummaryRail from "./components/BubuSummary";
 
 const REFRESH_MS = 15_000;
 
@@ -297,6 +298,7 @@ export default function Dashboard() {
 
       <div className="max-w-5xl mx-auto p-4 space-y-4">
         <ActiveContractsRail contracts={allContracts} now={now} />
+        {bubuState && <BubuSummaryRail state={bubuState} recentCycles={bubuRecentCycles} />}
         <MissionControl />
 
         {/* ───────────────────── Tyagach (separate service, own API) ───────────────────── */}
