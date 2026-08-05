@@ -15,16 +15,24 @@ import type { Kline, BubuChartOverlay } from "../lib/api";
 const ACCENT = {
   up: "#34d399",
   down: "#fb7185",
-  avg: "#94a3b8",
+  avg: "#e2b93b",
   tp: "#34d399",
+  liq: "#fb7185",
+  fillOld: "rgba(148, 163, 184, 0.55)",
+  fillNew: "rgba(226, 185, 59, 0.9)",
+  rangeBand: "rgba(56, 189, 248, 0.5)",
   grid: "rgba(148, 163, 184, 0.06)",
 };
 
-// BUBU holds at most ONE open cycle at a time (grid DCA + range scalp on
-// BTCUSDT perp) — unlike Tyagach's multi-position zone book, there's just
-// one avg_price line (current grid average) and one tp_price line (next
-// take-profit target) to draw, no back-solving needed (both already spot
-// price levels).
+// BUBU holds at most ONE open cycle (grid DCA + range scalp on BTCUSDT
+// perp) — but that one cycle can carry MULTIPLE filled grid levels (the
+// "ladder"), each at its own price. This draws every level as its own line
+// (fading from grey → amber, oldest → newest fill — the same visual idea as
+// Jony's stacked "SELL PUT ENTRY" lines for a multi-leg position), plus the
+// three numbers that actually matter for risk: AVG (the blended cost basis
+// TP is measured from), TP (exit target), and LIQ (the line that ends the
+// cycle badly — drawn in the same red as a losing PnL, always visible so
+// distance-to-liquidation is a glance, not a mental subtraction).
 export default function BubuChart({
   klines,
   overlay,
@@ -91,18 +99,58 @@ export default function BubuChart({
     priceLinesRef.current = [];
 
     if (overlay) {
+      // Ladder: one line per filled grid level, oldest→newest fades grey→amber
+      // so the eye reads "how deep and how recent" at once.
+      const n = overlay.fills.length;
+      overlay.fills.forEach((f, i) => {
+        const t = n > 1 ? i / (n - 1) : 1;
+        const color = t > 0.5 ? ACCENT.fillNew : ACCENT.fillOld;
+        priceLinesRef.current.push(
+          series.createPriceLine({
+            price: f.price, color, lineWidth: 1, lineStyle: LineStyle.Dotted,
+            axisLabelVisible: false, title: `L${f.level ?? ""}`,
+          }),
+        );
+      });
+
+      if (overlay.range_top != null && overlay.range_bottom != null) {
+        priceLinesRef.current.push(
+          series.createPriceLine({
+            price: overlay.range_top, color: ACCENT.rangeBand, lineWidth: 1, lineStyle: LineStyle.Dashed,
+            axisLabelVisible: true, title: "RANGE TOP",
+          }),
+          series.createPriceLine({
+            price: overlay.range_bottom, color: ACCENT.rangeBand, lineWidth: 1, lineStyle: LineStyle.Dashed,
+            axisLabelVisible: true, title: "RANGE BOT",
+          }),
+        );
+      }
+
       priceLinesRef.current.push(
         series.createPriceLine({
-          price: overlay.avg_price, color: ACCENT.avg, lineWidth: 1, lineStyle: LineStyle.Dotted,
-          axisLabelVisible: true, title: `AVG (L${overlay.levels_reached})`,
+          price: overlay.avg_price, color: ACCENT.avg, lineWidth: 2, lineStyle: LineStyle.Solid,
+          axisLabelVisible: true, title: `AVG · L${overlay.levels_reached}`,
         }),
         series.createPriceLine({
-          price: overlay.tp_price, color: ACCENT.tp, lineWidth: 1, lineStyle: LineStyle.Dashed,
+          price: overlay.tp_price, color: ACCENT.tp, lineWidth: 2, lineStyle: LineStyle.Dashed,
           axisLabelVisible: true, title: "TP",
         }),
       );
+
+      if (overlay.liq_price != null) {
+        priceLinesRef.current.push(
+          series.createPriceLine({
+            price: overlay.liq_price, color: ACCENT.liq, lineWidth: 2, lineStyle: LineStyle.Solid,
+            axisLabelVisible: true, title: "LIQUIDATION",
+          }),
+        );
+      }
     }
   }, [klines, overlay]);
+
+  const liqDistancePct = overlay?.liq_price
+    ? ((overlay.avg_price - overlay.liq_price) / overlay.avg_price) * 100
+    : null;
 
   return (
     <div className="glass-panel console-grid overflow-hidden">
@@ -115,21 +163,36 @@ export default function BubuChart({
             BUBU <span className="text-slate-600">{"// "}BTC PERP GRID</span>
           </h3>
         </div>
-        <span className="text-[10px] text-slate-500 tracking-wide">
-          grid DCA + range scalp, paper — v1 baseline
-        </span>
+        {liqDistancePct != null && (
+          <span className="text-[10px] text-slate-500 tracking-wide font-mono">
+            запас до ликвидации: <span className={liqDistancePct < 15 ? "text-rose-400 font-bold" : "text-slate-400"}>
+              {liqDistancePct.toFixed(1)}%
+            </span>
+          </span>
+        )}
       </div>
-      <div ref={containerRef} className="h-72 w-full" />
+      <div ref={containerRef} className="h-80 w-full" />
       {overlay && (
-        <div className="px-4 py-3 border-t border-slate-800/60 flex justify-between text-[11px]">
-          <span className="text-slate-400">
-            level <span className="font-(family-name:--font-geist-mono)">{overlay.levels_reached}</span>
-          </span>
-          <span className="font-(family-name:--font-geist-mono) text-slate-500">
-            avg ${overlay.avg_price.toFixed(1)} · tp ${overlay.tp_price.toFixed(1)}
-          </span>
+        <div className="px-4 py-2.5 border-t border-slate-800/60 grid grid-cols-4 gap-2 text-[11px]">
+          <LegendStat label="avg" value={`$${overlay.avg_price.toFixed(1)}`} color="text-amber-300" />
+          <LegendStat label="tp" value={`$${overlay.tp_price.toFixed(1)}`} color="text-emerald-400" />
+          <LegendStat
+            label="liq"
+            value={overlay.liq_price != null ? `$${overlay.liq_price.toFixed(1)}` : "—"}
+            color="text-rose-400"
+          />
+          <LegendStat label="уровней" value={`${overlay.levels_reached}`} color="text-slate-300" />
         </div>
       )}
+    </div>
+  );
+}
+
+function LegendStat({ label, value, color }: { label: string; value: string; color: string }) {
+  return (
+    <div>
+      <p className="text-slate-600 uppercase tracking-widest text-[9px]">{label}</p>
+      <p className={`font-mono font-bold ${color}`}>{value}</p>
     </div>
   );
 }

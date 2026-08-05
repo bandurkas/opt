@@ -7,6 +7,7 @@ import StraddleChart from "./components/StraddleChart";
 import TyagachChart from "./components/TyagachChart";
 import JonyChart from "./components/JonyChart";
 import BubuChart from "./components/BubuChart";
+import BubuLadder from "./components/BubuLadder";
 import EquityChart from "./components/EquityChart";
 import ProximityGauge from "./components/ProximityGauge";
 import { ActiveContractsRail, Countdown, useLiveNow, type Contract } from "./components/ActiveContracts";
@@ -633,11 +634,23 @@ export default function Dashboard() {
           </>
         )}
 
-        {/* ───────────────────── BUBU (separate service, own API :8300) ───────────────────── */}
-        <div className="pt-2">
-          <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3">
-            BUBU <span className="text-slate-600 font-normal">· BTC perp grid DCA + range scalp (paper, v1 baseline)</span>
+        {/* ───────────────────── FUTURES: BUBU (separate service, own API :8300) ───────────────────── */}
+        {/* Own category, deliberately separate from the options bots above —
+            long-only spot/perp grid, not a short-premium seller: no strike,
+            no expiry, no ITM/OTM. Risk here is distance-to-liquidation, not
+            moneyness, so it gets its own control center rather than being
+            squeezed into ActiveContractsRail's options-shaped Contract model. */}
+        <div className="pt-4 flex items-center gap-3">
+          <h2 className="text-sm font-bold text-amber-300 uppercase tracking-widest">
+            Futures
           </h2>
+          <div className="h-px flex-1 bg-gradient-to-r from-amber-500/40 to-transparent" />
+          <span className="text-[10px] text-slate-600 uppercase tracking-wide">long-only · BTC perp grid</span>
+        </div>
+        <div className="-mt-1">
+          <h3 className="text-xs font-semibold text-slate-500">
+            BUBU <span className="text-slate-600 font-normal">· grid DCA + range scalp (paper, v1 baseline)</span>
+          </h3>
         </div>
 
         {bubuError && (
@@ -702,6 +715,10 @@ export default function Dashboard() {
 
             {bubuKlines.length > 1 && (
               <BubuChart klines={bubuKlines} overlay={bubuOverlay} />
+            )}
+
+            {bubuState.open_cycle && (
+              <BubuLadder cycle={bubuState.open_cycle} spot={bubuKlines.at(-1)?.close ?? null} />
             )}
 
             {bubuRecentCycles.length > 0 && (

@@ -866,12 +866,30 @@ async function bpost<T>(path: string): Promise<T> {
   return res.json();
 }
 
+export type BubuFill = {
+  kind: "grid" | "range_buy" | "range_sell";
+  ts: number;
+  price: number;
+  qty: number;
+  level?: number;
+};
+
 export type BubuOpenCycle = {
   start_ts: number;
   levels_reached: number;
   live_qty: number;
   live_avg_price: number;
   leverage_used: number;
+  liq_price: number | null;
+  grid_pnl_mtm: number;
+  range_pnl: number;
+  funding_paid: number;
+  fees_paid: number;
+  range_trades: number;
+  range_top: number | null;
+  range_bottom: number | null;
+  range_status: "idle" | "bought_waiting_sell" | null;
+  fills: BubuFill[];
 };
 
 export type BubuState = {
@@ -905,6 +923,7 @@ export type BubuCycle = {
   margin_used: number;
   range_trades: number;
   leverage_used: number;
+  fills: BubuFill[];
 };
 
 export async function fetchBubuState(): Promise<BubuState> {
@@ -930,7 +949,11 @@ export async function fetchBubuEquityHistory(limit = 2000): Promise<EquityPoint[
 export type BubuChartOverlay = {
   avg_price: number;
   tp_price: number;
+  liq_price: number | null;
   levels_reached: number;
+  range_top: number | null;
+  range_bottom: number | null;
+  fills: BubuFill[];
 };
 
 export async function fetchBubuChart(
