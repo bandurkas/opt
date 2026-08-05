@@ -843,3 +843,112 @@ export type JonyChartData = {
 export async function fetchJonyChart(klineLimit = 288): Promise<JonyChartData> {
   return jonyGet(`/chart?kline_limit=${klineLimit}`);
 }
+
+// ───────────────────────── BUBU (separate service, own API) ─────────────────────────
+// Grid DCA + range-scalp paper bot, BTCUSDT perp on Bybit, /root/BUBU on
+// VPS3, SQLite behind :8300 — same "fully separate service" pattern as
+// Tyagach/Jony above. v1 baseline strategy only, $300 starting balance.
+// At most ONE open cycle at a time (unlike Tyagach/Jony's multi-position book).
+
+export const BUBU_API_BASE =
+  process.env.NEXT_PUBLIC_BUBU_API_URL?.replace(/\/+$/, "") ||
+  "http://187.127.114.34:8300/api/v1/bubu";
+
+async function bget<T>(path: string): Promise<T> {
+  const res = await fetch(`${BUBU_API_BASE}${path}`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`BUBU API ${res.status}: ${await res.text()}`);
+  return res.json();
+}
+
+async function bpost<T>(path: string): Promise<T> {
+  const res = await fetch(`${BUBU_API_BASE}${path}`, { method: "POST" });
+  if (!res.ok) throw new Error(`BUBU API ${res.status}: ${await res.text()}`);
+  return res.json();
+}
+
+export type BubuOpenCycle = {
+  start_ts: number;
+  levels_reached: number;
+  live_qty: number;
+  live_avg_price: number;
+  leverage_used: number;
+};
+
+export type BubuState = {
+  balance_usdt: number;
+  equity_usd: number;
+  unrealized_usd: number;
+  start_balance_usdt: number;
+  started_at_ms: number | null;
+  paused: boolean;
+  leverage: number;
+  open_cycle: BubuOpenCycle | null;
+  n_closed: number;
+  wins: number;
+  losses: number;
+  win_rate: number | null;
+  realized_usd: number;
+  max_dd_pct: number;
+};
+
+export type BubuCycle = {
+  id: number;
+  start_ts: number;
+  end_ts: number | null;
+  end_reason: "tp" | "bust" | "emergency_close" | "manual_close" | "open_at_end" | null;
+  status: "open" | "closed";
+  levels_reached: number;
+  grid_pnl: number;
+  range_pnl: number;
+  funding_paid: number;
+  fees_paid: number;
+  margin_used: number;
+  range_trades: number;
+  leverage_used: number;
+};
+
+export async function fetchBubuState(): Promise<BubuState> {
+  return bget(`/state`);
+}
+
+export async function fetchBubuCycles(
+  status: "open" | "closed" | null = null,
+  limit = 200,
+): Promise<BubuCycle[]> {
+  const qs = status ? `status=${status}&limit=${limit}` : `limit=${limit}`;
+  return bget(`/cycles?${qs}`);
+}
+
+// BUBU's equity_history returns {ts_ms, balance_usdt} rows (same shape as
+// Tyagach's) — mapped into EquityPoint so the same EquityChart component
+// renders it without bot-specific branching.
+export async function fetchBubuEquityHistory(limit = 2000): Promise<EquityPoint[]> {
+  const rows = await bget<{ ts_ms: number; balance_usdt: number }[]>(`/equity_history?limit=${limit}`);
+  return rows.map((r) => ({ ts_ms: r.ts_ms, equity: r.balance_usdt, realized: 0, unrealized: 0, n_open: 0, n_closed: 0 }));
+}
+
+export type BubuChartOverlay = {
+  avg_price: number;
+  tp_price: number;
+  levels_reached: number;
+};
+
+export async function fetchBubuChart(
+  klineLimit = 500,
+): Promise<{ spot: number | null; klines: Kline[]; overlay: BubuChartOverlay | null }> {
+  return bget(`/chart?kline_limit=${klineLimit}`);
+}
+
+export async function pauseBubu(): Promise<void> {
+  await bpost(`/pause`);
+}
+
+export async function resumeBubu(): Promise<void> {
+  await bpost(`/resume`);
+}
+
+// Single open-cycle close (BUBU never holds more than one) — does NOT pause
+// the bot, same convention as Tyagach/Jony's per-position close_position.
+export async function closeBubuPosition(): Promise<void> {
+  await bpost(`/close_position`);
+}

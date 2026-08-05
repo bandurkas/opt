@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { fetchBtcPrice, fetchTyagachState, fetchTyagachPositions, fetchTyagachEquityHistory, fetchTyagachChart, closeTyagachPosition, fetchJonyState, fetchJonyParams, fetchJonyPositions, fetchJonyEquityHistory, fetchJonyChart, fetchJonyProximity, closeJonyPosition, type EquityPoint, type Kline, type TyagachState, type TyagachPosition, type TyagachChartZone, type JonyState, type JonyParams, type JonyPosition, type JonyChartData, type JonyProximity } from "./lib/api";
+import { fetchBtcPrice, fetchTyagachState, fetchTyagachPositions, fetchTyagachEquityHistory, fetchTyagachChart, closeTyagachPosition, fetchJonyState, fetchJonyParams, fetchJonyPositions, fetchJonyEquityHistory, fetchJonyChart, fetchJonyProximity, closeJonyPosition, fetchBubuState, fetchBubuCycles, fetchBubuEquityHistory, fetchBubuChart, pauseBubu, resumeBubu, closeBubuPosition, type EquityPoint, type Kline, type TyagachState, type TyagachPosition, type TyagachChartZone, type JonyState, type JonyParams, type JonyPosition, type JonyChartData, type JonyProximity, type BubuState, type BubuCycle, type BubuChartOverlay } from "./lib/api";
 import MissionControl from "./components/MissionControl";
 import StraddleChart from "./components/StraddleChart";
 import TyagachChart from "./components/TyagachChart";
 import JonyChart from "./components/JonyChart";
+import BubuChart from "./components/BubuChart";
 import EquityChart from "./components/EquityChart";
 import ProximityGauge from "./components/ProximityGauge";
 import { ActiveContractsRail, Countdown, useLiveNow, type Contract } from "./components/ActiveContracts";
@@ -59,6 +60,14 @@ export default function Dashboard() {
   const [jonyProximity, setJonyProximity] = useState<Record<"ETH" | "BTC", JonyProximity> | null>(null);
   const [jonyError, setJonyError] = useState<string | null>(null);
   const [closingJonyIds, setClosingJonyIds] = useState<Set<number>>(new Set());
+
+  const [bubuState, setBubuState] = useState<BubuState | null>(null);
+  const [bubuRecentCycles, setBubuRecentCycles] = useState<BubuCycle[]>([]);
+  const [bubuEquityHistory, setBubuEquityHistory] = useState<EquityPoint[]>([]);
+  const [bubuKlines, setBubuKlines] = useState<Kline[]>([]);
+  const [bubuOverlay, setBubuOverlay] = useState<BubuChartOverlay | null>(null);
+  const [bubuError, setBubuError] = useState<string | null>(null);
+  const [bubuBusy, setBubuBusy] = useState(false);
 
   // BTC spot only (Boba1's own state/positions/equity fetch removed with the
   // archive) — Jony's BTC leg still needs a live spot for its ItmBadge/mark
@@ -190,6 +199,64 @@ export default function Dashboard() {
         next.delete(id);
         return next;
       });
+    }
+  };
+
+  // BUBU — same fully-separate-service pattern as Tyagach/Jony (own repo,
+  // own SQLite, API on :8300); isolated effect so its unreachability never
+  // blanks out the rest of the dashboard. v1 baseline strategy, $300 start.
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const [s, cycles, eq, chart] = await Promise.all([
+          fetchBubuState(),
+          fetchBubuCycles(null, 200),
+          fetchBubuEquityHistory(2000),
+          fetchBubuChart(),
+        ]);
+        if (cancelled) return;
+        setBubuState(s);
+        setBubuRecentCycles(cycles.filter((c) => c.status === "closed"));
+        setBubuEquityHistory(eq);
+        setBubuKlines(chart.klines);
+        setBubuOverlay(chart.overlay);
+        setBubuError(null);
+      } catch (e) {
+        if (cancelled) return;
+        setBubuError(e instanceof Error ? e.message : String(e));
+      }
+    };
+    load();
+    const id = setInterval(load, REFRESH_MS);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
+
+  const toggleBubuPause = async () => {
+    if (!bubuState) return;
+    setBubuBusy(true);
+    try {
+      if (bubuState.paused) await resumeBubu(); else await pauseBubu();
+      setBubuState(await fetchBubuState());
+    } catch (e) {
+      setBubuError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBubuBusy(false);
+    }
+  };
+
+  // Единственный открытый цикл (BUBU держит максимум один), тот же
+  // single-writer/~POLL_SECONDS-tick паттерн, что и close-по-ID у флота —
+  // не паузит бота, просто закрывает текущую позицию на следующем тике.
+  const closeBubuOpenPosition = async () => {
+    setBubuBusy(true);
+    try {
+      await closeBubuPosition();
+      setBubuState(await fetchBubuState());
+    } catch (e) {
+      setBubuError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBubuBusy(false);
     }
   };
 
@@ -559,6 +626,120 @@ export default function Dashboard() {
               <div className="bg-slate-900 border border-slate-800 rounded-xl px-4 py-6 text-center">
                 <p className="text-sm text-slate-400">No activity yet</p>
                 <p className="text-xs text-slate-500 mt-1">Waiting for vol≥gate + regime + MTF to hold 4 of 5 minutes...</p>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ───────────────────── BUBU (separate service, own API :8300) ───────────────────── */}
+        <div className="pt-2">
+          <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3">
+            BUBU <span className="text-slate-600 font-normal">· BTC perp grid DCA + range scalp (paper, v1 baseline)</span>
+          </h2>
+        </div>
+
+        {bubuError && (
+          <div className="bg-rose-950/30 border border-rose-800/50 rounded-xl px-4 py-3 text-sm text-rose-300">
+            BUBU unreachable: {bubuError}
+          </div>
+        )}
+
+        {bubuState && (
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <StatCard
+                label="Equity"
+                value={fmtUsd(bubuState.equity_usd)}
+                sub={`${bubuState.equity_usd - bubuState.start_balance_usdt >= 0 ? "+" : ""}${fmtUsd(bubuState.equity_usd - bubuState.start_balance_usdt)}${bubuState.unrealized_usd !== 0 ? ` · нереал ${bubuState.unrealized_usd >= 0 ? "+" : ""}${fmtUsd(bubuState.unrealized_usd)}` : ""}`}
+                accent={bubuState.equity_usd >= bubuState.start_balance_usdt ? "text-emerald-300" : "text-rose-300"}
+              />
+              <StatCard
+                label="Win Rate"
+                value={bubuState.win_rate != null ? `${bubuState.win_rate.toFixed(0)}%` : "—"}
+                sub={`${bubuState.wins}W / ${bubuState.losses}L`}
+              />
+              <StatCard
+                label="Cycles closed"
+                value={`${bubuState.n_closed}`}
+                sub={bubuState.open_cycle ? `level ${bubuState.open_cycle.levels_reached}, ${bubuState.leverage}x` : "no open cycle"}
+              />
+              <StatCard
+                label="Max DD"
+                value={`${bubuState.max_dd_pct.toFixed(1)}%`}
+                sub={bubuState.paused ? "PAUSED" : "armed"}
+              />
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={toggleBubuPause}
+                disabled={bubuBusy}
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700
+                           disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                {bubuState.paused ? "Resume" : "Pause"}
+              </button>
+              {bubuState.open_cycle && (
+                <button
+                  onClick={closeBubuOpenPosition}
+                  disabled={bubuBusy}
+                  className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-rose-900/50 hover:bg-rose-800/70
+                             disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  {bubuBusy ? "…" : "Закрыть позицию"}
+                </button>
+              )}
+            </div>
+
+            <EquityChart
+              points={bubuEquityHistory}
+              startEquity={bubuState.start_balance_usdt}
+              label="BUBU"
+              accentDot="bg-amber-400"
+            />
+
+            {bubuKlines.length > 1 && (
+              <BubuChart klines={bubuKlines} overlay={bubuOverlay} />
+            )}
+
+            {bubuRecentCycles.length > 0 && (
+              <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+                <div className="px-4 py-2 bg-slate-800/50 text-xs font-semibold text-slate-400 flex justify-between">
+                  <span>Журнал циклов</span>
+                  <span>{bubuRecentCycles.length} total</span>
+                </div>
+                <div className="divide-y divide-slate-800 max-h-80 overflow-y-auto">
+                  {bubuRecentCycles.map((c) => {
+                    const net = c.grid_pnl + c.range_pnl - c.funding_paid - c.fees_paid;
+                    const isWin = net > 0;
+                    return (
+                      <div key={c.id} className="px-4 py-2.5 flex items-center justify-between text-sm">
+                        <div className="flex items-center gap-2">
+                          <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                            c.end_reason === "bust" ? "bg-rose-500/10 text-rose-300" : "bg-emerald-500/10 text-emerald-300"
+                          }`}>
+                            {c.end_reason ?? "?"}
+                          </span>
+                          <span className="text-xs text-slate-500">level {c.levels_reached}</span>
+                          <span className="text-xs text-slate-500">{c.end_ts ? fmtDay(c.end_ts) : ""}</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs text-slate-500">{c.range_trades} range trades</span>
+                          <span className={`font-mono font-bold text-xs ${isWin ? "text-emerald-400" : "text-rose-400"}`}>
+                            {fmtUsd(net)}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {!bubuState.open_cycle && bubuRecentCycles.length === 0 && (
+              <div className="bg-slate-900 border border-slate-800 rounded-xl px-4 py-6 text-center">
+                <p className="text-sm text-slate-400">No activity yet</p>
+                <p className="text-xs text-slate-500 mt-1">Waiting for the first grid cycle to open...</p>
               </div>
             )}
           </>
