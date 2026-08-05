@@ -24,7 +24,8 @@ function fmtTime(ms: number) {
 // out by component (grid = unrealized mark-to-market, range = already
 // realized round-trips, funding/fees = pure cost) because summing them into
 // one number would hide which lever is actually doing the work.
-export default function BubuLadder({ cycle, spot }: { cycle: BubuOpenCycle; spot: number | null }) {
+export default function BubuLadder({ cycle, spot, symbol }: { cycle: BubuOpenCycle; spot: number | null; symbol: string }) {
+  const asset = symbol.replace(/USDT$/, "");
   const sortedFills = [...cycle.fills].sort((a, b) => b.ts - a.ts);
   const netUnrealized = cycle.grid_pnl_mtm + cycle.range_pnl - cycle.funding_paid - cycle.fees_paid;
 
@@ -61,7 +62,7 @@ export default function BubuLadder({ cycle, spot }: { cycle: BubuOpenCycle; spot
                   </span>
                   {f.level != null && <span className="text-slate-500 font-mono">L{f.level}</span>}
                   <span className="font-mono text-slate-200">${f.price.toFixed(1)}</span>
-                  <span className="text-slate-600 font-mono">{f.qty.toFixed(5)} BTC</span>
+                  <span className="text-slate-600 font-mono">{f.qty.toFixed(5)} {asset}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   {distPct != null && (

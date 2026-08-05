@@ -88,7 +88,7 @@ function BubuDrawer({
               BUBU
             </div>
             <div className="text-[11px] text-slate-500 font-mono uppercase tracking-wide mt-0.5">
-              BTC PERP GRID · {state.n_closed} сделок закрыто
+              {state.symbol.replace(/USDT$/, "")} PERP GRID · {state.n_closed} сделок закрыто
             </div>
           </div>
           <button onClick={onClose} className="text-slate-500 hover:text-slate-200 text-xl leading-none px-2">×</button>

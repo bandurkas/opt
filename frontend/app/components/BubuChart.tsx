@@ -36,9 +36,11 @@ const ACCENT = {
 export default function BubuChart({
   klines,
   overlay,
+  symbol,
 }: {
   klines: Kline[];
   overlay: BubuChartOverlay | null;
+  symbol: string;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -160,7 +162,7 @@ export default function BubuChart({
             <span className="absolute inline-flex h-full w-full rounded-full bg-amber-400 led-armed" />
           </span>
           <h3 className="font-(family-name:--font-orbitron) text-xs font-bold tracking-[0.2em] uppercase text-slate-300">
-            BUBU <span className="text-slate-600">{"// "}BTC PERP GRID</span>
+            BUBU <span className="text-slate-600">{"// "}{symbol.replace(/USDT$/, "")} PERP GRID</span>
           </h3>
         </div>
         {liqDistancePct != null && (

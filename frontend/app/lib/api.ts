@@ -893,6 +893,7 @@ export type BubuOpenCycle = {
 };
 
 export type BubuState = {
+  symbol: string;
   balance_usdt: number;
   equity_usd: number;
   unrealized_usd: number;

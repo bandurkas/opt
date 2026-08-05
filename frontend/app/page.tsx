@@ -714,11 +714,11 @@ export default function Dashboard() {
             />
 
             {bubuKlines.length > 1 && (
-              <BubuChart klines={bubuKlines} overlay={bubuOverlay} />
+              <BubuChart klines={bubuKlines} overlay={bubuOverlay} symbol={bubuState.symbol} />
             )}
 
             {bubuState.open_cycle && (
-              <BubuLadder cycle={bubuState.open_cycle} spot={bubuKlines.at(-1)?.close ?? null} />
+              <BubuLadder cycle={bubuState.open_cycle} spot={bubuKlines.at(-1)?.close ?? null} symbol={bubuState.symbol} />
             )}
 
             {bubuRecentCycles.length > 0 && (
