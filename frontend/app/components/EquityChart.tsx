@@ -13,7 +13,7 @@ import {
 import type { EquityPoint } from "../lib/api";
 
 // Same profit/loss pair used everywhere else in this dashboard (candle
-// up/down in JonyChart/TyagachChart, PnL badges in the trade logs) — kept
+// up/down in JonyChart, PnL badges in the trade logs) — kept
 // identical here rather than introducing a second status pair, so "green =
 // good" reads the same way across every chart on the page. This is a
 // diverging/status encoding (polarity around the start-equity baseline),

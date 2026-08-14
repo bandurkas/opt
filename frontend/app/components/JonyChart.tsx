@@ -20,7 +20,7 @@ const ACCENT = {
   grid: "rgba(148, 163, 184, 0.06)",
 };
 
-// Unlike Tyagach (whose SL/TP ARE spot levels), Jony's TP/SL are premium
+// Jony's TP/SL are premium
 // levels (% of entry credit) — back-solving them to spot would need a live
 // BS reprice like StraddleChart's primitive. So the chart draws what is
 // honest on a spot axis: the strike and the entry-time spot; TP/SL live in

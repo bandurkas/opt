@@ -1,10 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { fetchBtcPrice, fetchTyagachState, fetchTyagachPositions, fetchTyagachEquityHistory, fetchTyagachChart, closeTyagachPosition, fetchJonyState, fetchJonyParams, fetchJonyPositions, fetchJonyEquityHistory, fetchJonyChart, fetchJonyProximity, closeJonyPosition, fetchBubuState, fetchBubuCycles, fetchBubuEquityHistory, fetchBubuChart, pauseBubu, resumeBubu, closeBubuPosition, type EquityPoint, type Kline, type TyagachState, type TyagachPosition, type TyagachChartZone, type JonyState, type JonyParams, type JonyPosition, type JonyChartData, type JonyProximity, type BubuState, type BubuCycle, type BubuChartOverlay } from "./lib/api";
+import { fetchBtcPrice, fetchJonyState, fetchJonyParams, fetchJonyPositions, fetchJonyEquityHistory, fetchJonyChart, fetchJonyProximity, closeJonyPosition, fetchBubuState, fetchBubuCycles, fetchBubuEquityHistory, fetchBubuChart, pauseBubu, resumeBubu, closeBubuPosition, type EquityPoint, type Kline, type JonyState, type JonyParams, type JonyPosition, type JonyChartData, type JonyProximity, type BubuState, type BubuCycle, type BubuChartOverlay } from "./lib/api";
 import MissionControl from "./components/MissionControl";
 import StraddleChart from "./components/StraddleChart";
-import TyagachChart from "./components/TyagachChart";
 import JonyChart from "./components/JonyChart";
 import BubuChart from "./components/BubuChart";
 import BubuLadder from "./components/BubuLadder";
@@ -44,14 +43,6 @@ export default function Dashboard() {
   // Jony's BTC-leg spot lookup below (allContracts + ItmBadge).
   const [btcSpot, setBtcSpot] = useState<number | null>(null);
 
-  const [tyagachState, setTyagachState] = useState<TyagachState | null>(null);
-  const [tyagachOpenPositions, setTyagachOpenPositions] = useState<TyagachPosition[]>([]);
-  const [tyagachRecentTrades, setTyagachRecentTrades] = useState<TyagachPosition[]>([]);
-  const [tyagachEquityHistory, setTyagachEquityHistory] = useState<EquityPoint[]>([]);
-  const [tyagachError, setTyagachError] = useState<string | null>(null);
-  const [tyagachKlines, setTyagachKlines] = useState<Kline[]>([]);
-  const [tyagachZones, setTyagachZones] = useState<TyagachChartZone[]>([]);
-  const [closingTyagachIds, setClosingTyagachIds] = useState<Set<number>>(new Set());
 
   const [jonyState, setJonyState] = useState<JonyState | null>(null);
   const [jonyParams, setJonyParams] = useState<JonyParams | null>(null);
@@ -87,66 +78,7 @@ export default function Dashboard() {
     return () => { cancelled = true; clearInterval(id); };
   }, []);
 
-  // Tyagach is a fully separate SERVICE, not just a separate container in
-  // this same opt-app deploy — own repo (TG), own SQLite, own API on :8100,
-  // no opt-app auth on that call path (see lib/api.ts's TYAGACH_API_BASE
-  // comment). Isolated the same way as the BTC/ETH straddle effects above:
-  // its unreachability must never blank out the rest of the dashboard.
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const [s, op, rt, eq, chart] = await Promise.all([
-          fetchTyagachState(),
-          fetchTyagachPositions("open"),
-          fetchTyagachPositions("closed", 200),
-          fetchTyagachEquityHistory(2000),
-          fetchTyagachChart(),
-        ]);
-        if (cancelled) return;
-        setTyagachState(s);
-        setTyagachOpenPositions(op);
-        setTyagachRecentTrades(rt);
-        setTyagachEquityHistory(eq);
-        setTyagachKlines(chart.klines);
-        setTyagachZones(chart.zones);
-        setTyagachError(null);
-      } catch (e) {
-        if (cancelled) return;
-        setTyagachError(e instanceof Error ? e.message : String(e));
-      }
-    };
-    load();
-    const id = setInterval(load, REFRESH_MS);
-    return () => { cancelled = true; clearInterval(id); };
-  }, []);
-
-  // Partial close (one position, not the whole book) — the loop executes on
-  // its next ~POLL_SECONDS tick same as Close All, so re-fetch positions
-  // right after rather than waiting the full 15s poll for the row to
-  // disappear. Same pattern as closeOneJonyPosition below.
-  const closeOneTyagachPosition = async (id: number) => {
-    setClosingTyagachIds((prev) => new Set(prev).add(id));
-    try {
-      await closeTyagachPosition(id);
-      const [op, rt] = await Promise.all([
-        fetchTyagachPositions("open"),
-        fetchTyagachPositions("closed", 200),
-      ]);
-      setTyagachOpenPositions(op);
-      setTyagachRecentTrades(rt);
-    } catch (e) {
-      setTyagachError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setClosingTyagachIds((prev) => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
-    }
-  };
-
-  // Jony — same fully-separate-service pattern as Tyagach (own repo, own
+  // Jony — fully-separate-service pattern (own repo, own
   // SQLite, API on :8200); isolated effect so its unreachability never
   // blanks out the rest of the dashboard.
   useEffect(() => {
@@ -204,7 +136,7 @@ export default function Dashboard() {
     }
   };
 
-  // BUBU — same fully-separate-service pattern as Tyagach/Jony (own repo,
+  // BUBU — same fully-separate-service pattern as Jony (own repo,
   // own SQLite, API on :8300); isolated effect so its unreachability never
   // blanks out the rest of the dashboard. v1 baseline strategy, $300 start.
   useEffect(() => {
@@ -267,23 +199,16 @@ export default function Dashboard() {
   // useMemo so the 1s countdown ticker (inside ActiveContractsRail) doesn't
   // force this mapping to rerun every second, only when positions/spots change.
   const allContracts: Contract[] = useMemo(() => [
-    ...tyagachOpenPositions.map((p): Contract => ({
-      key: `tyagach-${p.id}`, bot: "tyagach", side: p.option_side, strike: p.strike,
-      expiryMs: p.expiry_ts_ms, contracts: p.num_units, spot: tyagachKlines.at(-1)?.close ?? null,
-      entryCreditUsd: p.sell_premium_received, openedAtMs: p.entry_ts_ms,
-      currentMarkUsd: p.current_mark_usd, unrealizedPnlUsd: p.unrealized_pnl_usd,
-    })),
     // Jony trades two underlyings from one book — spot must be per-position
-    // (ETH from Tyagach's own klines feed, BTC from the straddle feed — Jony
-    // has no live-price feed of its own, it borrows from siblings that do).
+    // (ETH from Jony's own chart klines, BTC from the straddle feed).
     ...jonyOpenPositions.map((p): Contract => ({
       key: `jony-${p.id}`, bot: "jony", side: p.side, strike: p.strike,
       expiryMs: p.expiry_ms, contracts: p.qty,
-      spot: p.coin === "BTC" ? btcSpot : (tyagachKlines.at(-1)?.close ?? null),
+      spot: p.coin === "BTC" ? btcSpot : (jonyChart?.coins["ETH"]?.klines?.at(-1)?.close ?? null),
       entryCreditUsd: p.entry_credit * p.qty, openedAtMs: p.opened_at_ms,
       currentMarkUsd: p.current_mark_usd, unrealizedPnlUsd: p.unrealized_pnl_usd,
     })),
-  ], [tyagachOpenPositions, jonyOpenPositions, tyagachKlines, btcSpot]);
+  ], [jonyOpenPositions, jonyChart, btcSpot]);
 
   return (
     <main className="min-h-screen bg-slate-950 text-white">
@@ -292,7 +217,7 @@ export default function Dashboard() {
         <div className="max-w-5xl mx-auto flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold">Options Fleet</h1>
-            <p className="text-xs text-slate-500">Tyagach · Jony — paper</p>
+            <p className="text-xs text-slate-500">BUBU · Jony — paper</p>
           </div>
         </div>
       </header>
@@ -301,147 +226,6 @@ export default function Dashboard() {
         <ActiveContractsRail contracts={allContracts} now={now} />
         {bubuState && <BubuSummaryRail state={bubuState} recentCycles={bubuRecentCycles} />}
         <MissionControl />
-
-        {/* ───────────────────── Tyagach (separate service, own API) ───────────────────── */}
-        <div className="pt-2">
-          <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3">
-            Tyagach <span className="text-slate-600 font-normal">· ETH OB/BB/MB zones · sell rich IV (paper)</span>
-          </h2>
-        </div>
-
-        {tyagachError && (
-          <div className="bg-rose-950/30 border border-rose-800/50 rounded-xl px-4 py-3 text-sm text-rose-300">
-            Tyagach unreachable: {tyagachError}
-          </div>
-        )}
-
-        {tyagachState && (
-          <>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <StatCard
-                label="Equity"
-                value={fmtUsd(tyagachState.equity_usd ?? tyagachState.balance_usdt ?? 0)}
-                sub={`${((tyagachState.equity_usd ?? tyagachState.balance_usdt ?? 0) - tyagachState.start_balance_usdt) >= 0 ? "+" : ""}${fmtUsd((tyagachState.equity_usd ?? tyagachState.balance_usdt ?? 0) - tyagachState.start_balance_usdt)}${(tyagachState.unrealized_usd ?? 0) !== 0 ? ` · нереал ${(tyagachState.unrealized_usd ?? 0) >= 0 ? "+" : ""}${fmtUsd(tyagachState.unrealized_usd ?? 0)}` : ""}`}
-                accent={(tyagachState.equity_usd ?? tyagachState.balance_usdt ?? 0) >= tyagachState.start_balance_usdt ? "text-emerald-300" : "text-rose-300"}
-              />
-              <StatCard
-                label="Win Rate"
-                value={tyagachState.win_rate != null ? `${(tyagachState.win_rate * 100).toFixed(0)}%` : "—"}
-                sub={`${tyagachState.wins}W / ${tyagachState.losses}L`}
-              />
-              <StatCard
-                label="Trades closed"
-                value={`${tyagachState.n_closed}`}
-                sub={`${tyagachState.open_position_count} open`}
-              />
-              <StatCard
-                label="Max DD"
-                value={`${tyagachState.max_dd_pct.toFixed(1)}%`}
-                sub={tyagachState.paused ? "PAUSED" : "armed"}
-              />
-            </div>
-
-            <EquityChart
-              points={tyagachEquityHistory}
-              startEquity={tyagachState.start_balance_usdt}
-              label="TYAGACH"
-              accentDot="bg-lime-400"
-            />
-
-            {tyagachOpenPositions.length > 0 && (
-              <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-                <div className="px-4 py-2 bg-slate-800/50 text-xs font-semibold text-slate-400">
-                  Open positions ({tyagachOpenPositions.length})
-                </div>
-                <div className="divide-y divide-slate-800">
-                  {tyagachOpenPositions.map((p) => (
-                    <div key={p.id} className="px-4 py-3 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                          p.option_side === "P" ? "bg-rose-500/10 text-rose-300" : "bg-emerald-500/10 text-emerald-300"
-                        }`}>
-                          SELL {p.option_side === "P" ? "PUT" : "CALL"}
-                        </span>
-                        <span className="text-xs text-slate-500">{p.zone_kind}</span>
-                        <span className="text-sm font-mono">${p.strike}</span>
-                        <span className="text-xs text-slate-500">{p.num_units.toFixed(2)} ETH</span>
-                        {p.unrealized_pnl_usd != null && (
-                          <span className={`font-mono text-xs font-bold ${
-                            p.unrealized_pnl_usd >= 0 ? "text-emerald-400" : "text-rose-400"
-                          }`}>
-                            {fmtUsd(p.unrealized_pnl_usd)}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <div className="text-right">
-                          <Countdown expiryMs={p.expiry_ts_ms} now={now} />
-                          <p className="text-[10px] text-slate-600 mt-0.5">{p.symbol}</p>
-                        </div>
-                        <button
-                          onClick={() => closeOneTyagachPosition(p.id)}
-                          disabled={closingTyagachIds.has(p.id)}
-                          className="px-2 py-1 text-[10px] font-semibold rounded-lg bg-rose-900/50 hover:bg-rose-800/70
-                                     disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
-                        >
-                          {closingTyagachIds.has(p.id) ? "…" : "Закрыть"}
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {tyagachKlines.length > 1 && (
-              <TyagachChart klines={tyagachKlines} zones={tyagachZones} />
-            )}
-
-            {tyagachRecentTrades.length > 0 && (
-              <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-                <div className="px-4 py-2 bg-slate-800/50 text-xs font-semibold text-slate-400 flex justify-between">
-                  <span>Журнал сделок</span>
-                  <span>{tyagachRecentTrades.length} total</span>
-                </div>
-                <div className="divide-y divide-slate-800 max-h-80 overflow-y-auto">
-                  {tyagachRecentTrades.map((t) => {
-                    const isWin = (t.pnl_net || 0) > 0;
-                    const pnlPct = t.sell_premium_received > 0 ? ((t.pnl_net || 0) / t.sell_premium_received) * 100 : 0;
-                    return (
-                      <div key={t.id} className="px-4 py-2.5 flex items-center justify-between text-sm">
-                        <div className="flex items-center gap-2">
-                          <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                            t.option_side === "P" ? "bg-rose-500/10 text-rose-300" : "bg-emerald-500/10 text-emerald-300"
-                          }`}>
-                            {t.zone_kind} {t.option_side}
-                          </span>
-                          <span className="font-mono text-xs">${t.strike}</span>
-                          <span className="text-xs text-slate-500">{t.exit_ts_ms ? fmtDay(t.exit_ts_ms) : ""}</span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <span className="text-xs text-slate-500">{t.exit_reason || ""}</span>
-                          <span className={`font-mono font-bold text-xs ${isWin ? "text-emerald-400" : "text-rose-400"}`}>
-                            {fmtPct(pnlPct)}
-                          </span>
-                          <span className={`font-mono text-xs ${isWin ? "text-emerald-400" : "text-rose-400"}`}>
-                            {t.pnl_net != null ? fmtUsd(t.pnl_net) : ""}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {tyagachOpenPositions.length === 0 && tyagachRecentTrades.length === 0 && (
-              <div className="bg-slate-900 border border-slate-800 rounded-xl px-4 py-6 text-center">
-                <p className="text-sm text-slate-400">No activity yet</p>
-                <p className="text-xs text-slate-500 mt-1">Waiting for a zone signal with rich enough IV...</p>
-              </div>
-            )}
-          </>
-        )}
 
         {/* ───────────────────── Jony (separate service, own API :8200) ───────────────────── */}
         <div className="pt-2">

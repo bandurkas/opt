@@ -2,17 +2,6 @@ export const API_BASE =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "") ||
   "http://localhost:8000/api/v1";
 
-// Tyagach is a fully separate service (own repo, own SQLite, own process —
-// see ARCHITECTURE.md in the TG repo), not part of opt-app's Postgres/
-// control_repo. Its API has no auth of its own, so this is a direct
-// cross-origin call from the browser, NOT proxied through opt-app's
-// password-gated backend like every other Mission Control call below —
-// an accepted, documented tradeoff (open port, same exposure pattern as
-// opt-app's own :8000/:3000).
-export const TYAGACH_API_BASE =
-  process.env.NEXT_PUBLIC_TYAGACH_API_URL?.replace(/\/+$/, "") ||
-  "http://187.127.114.34:8100/api/v1/tyagach";
-
 // Every request carries the mc_session cookie (Mission Control auth). A 401
 // means the session is missing/expired — bounce to /login from one place
 // instead of every call site having to handle it.
@@ -573,128 +562,10 @@ export async function updateCredentials(accountName: AccountName, apiKey: string
   await jpost(`/settings/credentials/${accountName}`, { api_key: apiKey, api_secret: apiSecret });
 }
 
-// ───────────────────────── Tyagach (separate service, own API) ─────────────────────────
-
-export type TyagachState = {
-  balance_usdt: number | null;
-  // realized balance + unrealized PnL of open positions (API 2026-07-09);
-  // optional so the dashboard degrades gracefully against an older API.
-  equity_usd?: number | null;
-  unrealized_usd?: number | null;
-  start_balance_usdt: number;
-  started_at_ms: number | null;
-  paused: boolean;
-  last_processed_ts_ms: number | null;
-  open_position_count: number;
-  n_closed: number;
-  wins: number;
-  losses: number;
-  win_rate: number | null;
-  realized_usd: number;
-  max_dd_pct: number;
-};
-
-export type TyagachPosition = {
-  id: number;
-  zone_kind: "OB" | "BB" | "MB";
-  direction: "bullish" | "bearish";
-  option_side: "C" | "P";
-  symbol: string;
-  strike: number;
-  entry_ts_ms: number;
-  entry_spot: number;
-  stop_price: number;
-  tp_price: number;
-  expiry_ts_ms: number;
-  num_units: number;
-  sell_premium_received: number;
-  status: "open" | "closed";
-  exit_ts_ms: number | null;
-  exit_spot: number | null;
-  exit_reason: string | null;
-  pnl_net: number | null;
-  current_mark_usd: number | null;
-  unrealized_pnl_usd: number | null;
-};
-
-// Tyagach's stop_price/tp_price are already SPOT price levels (the
-// R-multiple system operates directly on price) — unlike StraddleChartLeg,
-// no premium-to-spot back-solving is needed to draw them on a chart.
-export type TyagachChartZone = {
-  id: number;
-  zone_kind: "OB" | "BB" | "MB";
-  direction: "bullish" | "bearish";
-  option_side: "C" | "P";
-  symbol: string;
-  strike: number;
-  entry_spot: number;
-  stop_price: number;
-  tp_price: number;
-};
-
-async function tget<T>(path: string): Promise<T> {
-  const res = await fetch(`${TYAGACH_API_BASE}${path}`, { cache: "no-store" });
-  if (!res.ok) throw new Error(`Tyagach API ${res.status}: ${await res.text()}`);
-  return res.json();
-}
-
-async function tpost<T>(path: string): Promise<T> {
-  const res = await fetch(`${TYAGACH_API_BASE}${path}`, { method: "POST" });
-  if (!res.ok) throw new Error(`Tyagach API ${res.status}: ${await res.text()}`);
-  return res.json();
-}
-
-export async function fetchTyagachState(): Promise<TyagachState> {
-  return tget(`/state`);
-}
-
-export async function fetchTyagachPositions(
-  status: "open" | "closed" | null = null,
-  limit = 50,
-): Promise<TyagachPosition[]> {
-  const qs = status ? `status=${status}&limit=${limit}` : `limit=${limit}`;
-  return tget(`/positions?${qs}`);
-}
-
-// Tyagach's equity_history returns {ts_ms, balance_usdt} rows (its own
-// shape, no realized/unrealized/n_open/n_closed breakdown per point like
-// the straddle bots) — mapped here into EquityPoint so the SAME EquityChart
-// component on the page can render it without bot-specific branching.
-export async function fetchTyagachEquityHistory(limit = 2000): Promise<EquityPoint[]> {
-  const rows = await tget<{ ts_ms: number; balance_usdt: number }[]>(`/equity_history?limit=${limit}`);
-  return rows.map((r) => ({ ts_ms: r.ts_ms, equity: r.balance_usdt, realized: 0, unrealized: 0, n_open: 0, n_closed: 0 }));
-}
-
-export async function fetchTyagachChart(
-  klineLimit = 288,
-): Promise<{ spot: number | null; klines: Kline[]; zones: TyagachChartZone[] }> {
-  return tget(`/chart?kline_limit=${klineLimit}`);
-}
-
-export async function pauseTyagach(): Promise<void> {
-  await tpost(`/pause`);
-}
-
-export async function resumeTyagach(): Promise<void> {
-  await tpost(`/resume`);
-}
-
-export async function closeAllTyagach(): Promise<void> {
-  await tpost(`/close_all`);
-}
-
-// Same single-writer/~POLL_SECONDS-tick pattern as closeAllTyagach, scoped
-// to one position — does NOT pause the bot. 404s if the position already
-// closed (e.g. hit SL/TP/expiry) between the dashboard rendering it and the
-// click; caller should treat that as success and just re-fetch.
-export async function closeTyagachPosition(id: number): Promise<void> {
-  await tpost(`/close_position/${id}`);
-}
-
 // ───────────────────────── Jony (separate service, own API) ─────────────────────────
 // Multi-asset VRP basket paper bot (ETH P+C, BTC Call-only), /root/Jony on
 // VPS3, SQLite behind :8200 — same "fully separate service" pattern as
-// Tyagach above.
+// archived Tyagach used to.
 
 export const JONY_API_BASE =
   process.env.NEXT_PUBLIC_JONY_API_URL?.replace(/\/+$/, "") ||
@@ -847,8 +718,8 @@ export async function fetchJonyChart(klineLimit = 288): Promise<JonyChartData> {
 // ───────────────────────── BUBU (separate service, own API) ─────────────────────────
 // Grid DCA + range-scalp paper bot, BTCUSDT perp on Bybit, /root/BUBU on
 // VPS3, SQLite behind :8300 — same "fully separate service" pattern as
-// Tyagach/Jony above. v1 baseline strategy only, $300 starting balance.
-// At most ONE open cycle at a time (unlike Tyagach/Jony's multi-position book).
+// Jony above. v1 baseline strategy only, $300 starting balance.
+// At most ONE open cycle at a time (unlike Jony's multi-position book).
 
 export const BUBU_API_BASE =
   process.env.NEXT_PUBLIC_BUBU_API_URL?.replace(/\/+$/, "") ||
@@ -940,7 +811,7 @@ export async function fetchBubuCycles(
 }
 
 // BUBU's equity_history returns {ts_ms, balance_usdt} rows (same shape as
-// Tyagach's) — mapped into EquityPoint so the same EquityChart component
+// Jony's) — mapped into EquityPoint so the same EquityChart component
 // renders it without bot-specific branching.
 export async function fetchBubuEquityHistory(limit = 2000): Promise<EquityPoint[]> {
   const rows = await bget<{ ts_ms: number; balance_usdt: number }[]>(`/equity_history?limit=${limit}`);
@@ -972,7 +843,7 @@ export async function resumeBubu(): Promise<void> {
 }
 
 // Single open-cycle close (BUBU never holds more than one) — does NOT pause
-// the bot, same convention as Tyagach/Jony's per-position close_position.
+// the bot, same convention as Jony's per-position close_position.
 export async function closeBubuPosition(): Promise<void> {
   await bpost(`/close_position`);
 }
