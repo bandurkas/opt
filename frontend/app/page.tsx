@@ -281,7 +281,15 @@ export default function Dashboard() {
                 </div>
                 <div className="px-4 py-3 grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-2 text-[11px] font-mono text-slate-400">
                   <span>ETH: {jonyParams.coins.ETH?.join("+")} · BTC: {jonyParams.coins.BTC?.join("")}-only</span>
-                  <span>PUT: vol≥{jonyParams.put_gen.vol_threshold} · {jonyParams.put_gen.regime_filter.join("/")} · MTF {jonyParams.put_gen.mtf_direction_filter}</span>
+                  {jonyParams.put_gen_by_coin ? (
+                    <span>
+                      PUT ETH: vol≥{jonyParams.put_gen_by_coin.ETH?.vol_threshold} · {jonyParams.put_gen_by_coin.ETH?.regime_filter.join("/")}
+                      {" · "}BTC: vol≥{jonyParams.put_gen_by_coin.BTC?.vol_threshold} · {jonyParams.put_gen_by_coin.BTC?.regime_filter.join("/")}
+                      {jonyParams.ret_7d_threshold != null && <> · ret7d±{jonyParams.ret_7d_threshold}%</>}
+                    </span>
+                  ) : (
+                    <span>PUT: vol≥{jonyParams.put_gen.vol_threshold} · {jonyParams.put_gen.regime_filter.join("/")} · MTF {jonyParams.put_gen.mtf_direction_filter}</span>
+                  )}
                   <span>CALL: vol≥{jonyParams.call_gen.vol_threshold} · {jonyParams.call_gen.regime_filter.join("/")} · 1h {jonyParams.call_gen.mtf_direction_filter} · bull≤{jonyParams.call_gen.bull_market_ratio_max}</span>
                   <span>PUT exit: TP2 {(jonyParams.put_exit.tp2_pct * 100).toFixed(0)}% · SL {(jonyParams.put_exit.sl_pct * 100).toFixed(0)}% · {jonyParams.put_exit.hold_h}h</span>
                   <span>CALL exit: TP2 {(jonyParams.call_exit.tp2_pct * 100).toFixed(0)}% · SL {(jonyParams.call_exit.sl_pct * 100).toFixed(0)}% · {jonyParams.call_exit.hold_h}h</span>

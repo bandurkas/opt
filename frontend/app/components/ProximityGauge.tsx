@@ -14,7 +14,11 @@ const ZONE_STYLE: Record<JonyProximity["zone"], { bar: string; text: string; lab
   preparing: { bar: "bg-amber-600", text: "text-amber-400", label: "PREPARING" },
   ready: { bar: "bg-amber-400", text: "text-amber-300", label: "READY" },
   entry: { bar: "bg-emerald-400", text: "text-emerald-300", label: "ENTRY" },
+  // селектор сторон не оставил ни одной (puts-only + даунтренд) — гейты не
+  // считаются вовсе; это «торговать нечем», не «ждём условий» (2026-08-17)
+  "side-off": { bar: "bg-slate-700", text: "text-slate-500", label: "SIDE OFF" },
 };
+const DEFAULT_ZONE = ZONE_STYLE.waiting; // неизвестная зона от старого/нового API — не падаем
 
 const FACTOR_LABEL: Record<keyof JonyProximity["factors"], string> = {
   vol: "VOL", regime: "REGIME", mtf: "MTF", bull: "BULL",
@@ -42,7 +46,7 @@ export default function ProximityGauge({
   data: JonyProximity | undefined;
 }) {
   if (!data) return null;
-  const style = ZONE_STYLE[data.zone];
+  const style = ZONE_STYLE[data.zone] ?? DEFAULT_ZONE;
 
   return (
     <div className="rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-2.5">

@@ -337,7 +337,7 @@ export type PaperConditions = {
   };
   proximity?: {
     proximity_pct: number;
-    zone: "waiting" | "preparing" | "ready" | "entry";
+    zone: "waiting" | "preparing" | "ready" | "entry" | "side-off";
     factors: { adx: number; mtf: number; vol: number; regime: number; bull: number };
     weights: { adx: number; mtf: number; vol: number; regime: number; bull: number };
     debounce_unknown: boolean;
@@ -616,6 +616,8 @@ export type JonyPosition = {
 export type JonyParams = {
   coins: Record<string, string[]>;
   put_gen: { vol_threshold: number; regime_filter: string[]; mtf_direction_filter: string };
+  put_gen_by_coin?: Record<string, { vol_threshold: number; regime_filter: string[]; mtf_direction_filter: string }>;
+  ret_7d_threshold?: number;
   call_gen: { vol_threshold: number; regime_filter: string[]; mtf_direction_filter: string; bull_market_ratio_max: number };
   put_exit: { tp2_pct: number; sl_pct: number; hold_h: number };
   call_exit: { tp2_pct: number; sl_pct: number; hold_h: number };
@@ -648,7 +650,7 @@ export async function fetchJonyPositions(limit = 200): Promise<{ open: JonyPosit
 
 export type JonyProximity = {
   proximity_pct: number;
-  zone: "waiting" | "preparing" | "ready" | "entry";
+  zone: "waiting" | "preparing" | "ready" | "entry" | "side-off";
   factors: { vol: number; regime: number; mtf: number; bull: number };
   weights: { vol: number; regime: number; mtf: number; bull: number };
   debounce_unknown: boolean;
