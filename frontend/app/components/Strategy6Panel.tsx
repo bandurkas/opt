@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { metrics } from "./n6Metrics";
+import N6InteractiveChart from "./N6InteractiveChart";
 
 type Position = { id:string; asset:string; bybit_symbol:string; frame:string; status:string; sign:number;
   avg:number|null; stop:number|null; t2:number|null; net:number|null; marked_at:number|null;
@@ -88,7 +89,7 @@ export default function Strategy6Panel(){
         <p className="text-xs text-amber-200/80">Учёт сделок: OKX / SIM-001. Котировки и график: Bybit USDT perpetual. Цены бирж могут различаться; котировки Bybit не меняют историю PnL.</p>
         {(state.quote_error||stale>0)&&<p className="text-xs text-rose-300">{state.quote_error} {stale>0?`Устаревших оценок открытых позиций: ${stale}`:''}</p>}
         <div className="flex flex-wrap gap-2 items-center justify-between"><label className="text-xs text-slate-400">График сделки <select aria-label="Сделка №6" value={current?.id??''} onChange={e=>setSelected(e.target.value)} className="ml-2 bg-slate-950 border border-slate-700 rounded p-2 text-white max-w-full">{state.positions.map(p=><option key={p.id} value={p.id}>{p.asset} · {p.frame} · {p.sign===1?'LONG':'SHORT'} · {stamp(p.entered)} · {p.status}</option>)}</select></label><span className="text-xs text-slate-500">Bybit {stamp(chartAt)} МСК</span></div>
-        {chartError?<p className="text-amber-300 text-sm">{chartError}</p>:<Chart candles={candles} position={current}/>}
+        {chartError?<p className="text-amber-300 text-sm">{chartError}</p>:<N6InteractiveChart key={current?.id??'empty'} candles={candles} position={current}/>}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">{current?.fills?.map((f,i)=><div key={`${f.kind}-${f.at}-${i}`} className={`rounded border p-3 ${f.kind==='entry'?'border-cyan-800 text-cyan-200':'border-amber-800 text-amber-200'}`}><b>{reason(f.kind)}</b><p className="font-mono">{price(f.price)} · {stamp(f.at)} МСК</p><p className="text-xs text-slate-400">{f.kind==='entry'?'Цена исполнения модели со проскальзыванием':'Цена исполнения модели; время фиксации по завершению минутной свечи'}</p></div>)}</div>
         {current?.status==='open'&&<p className="text-cyan-200 text-sm">Позиция открыта — выхода ещё нет.</p>}
         {current?.status==='closed'&&!current.fills?.some(f=>f.kind!=='entry')&&<p className="text-amber-300">Событие выхода недоступно; цену выхода не восстанавливаем из стопа.</p>}
