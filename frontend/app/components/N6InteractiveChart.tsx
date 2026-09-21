@@ -25,7 +25,7 @@ export default function N6InteractiveChart({candles,position}:{candles:Candle[];
       localization:{locale:'ru-RU',timeFormatter:(time:Time)=>typeof time==='number'?date(time*1000):String(time)},
       handleScroll:{mouseWheel:false,pressedMouseMove:true,horzTouchDrag:true,vertTouchDrag:false},
       handleScale:{mouseWheel:true,pinch:true,axisPressedMouseMove:true,axisDoubleClickReset:true}});
-    const s=c.addSeries(CandlestickSeries,{upColor:'#22c55e',downColor:'#ef4444',wickUpColor:'#22c55e',wickDownColor:'#ef4444',borderVisible:false,
+    const s=c.addSeries(CandlestickSeries,{upColor:'#568d82',downColor:'#ac717e',wickUpColor:'#568d82',wickDownColor:'#ac717e',borderVisible:false,
       priceFormat:{type:'price',precision:8,minMove:.00000001}});
     chart.current=c;series.current=s;
     c.subscribeCrosshairMove(p=>{const v=p.seriesData.get(s);if(v&&'open' in v&&typeof p.time==='number')setHover(`${date(p.time*1000)} МСК · O ${price(v.open)} · H ${price(v.high)} · L ${price(v.low)} · C ${price(v.close)}`);});
@@ -50,7 +50,12 @@ export default function N6InteractiveChart({candles,position}:{candles:Candle[];
         shape:f.kind==='entry'?'arrowUp':'arrowDown',color:f.kind==='entry'?'#22d3ee':'#fbbf24',
         text:`${f.kind==='entry'?'ВХОД':f.kind==='stop'?'СТОП':f.kind==='target'?'ТЕЙК':'ВЫХОД'} ${price(f.price)}`};
     }).filter(m=>candles.some(b=>Math.floor(b.time/1000)===m.time)).sort((a,b)=>a.time-b.time);
-    const marks=createSeriesMarkers(s,markers);
+    const dots:SeriesMarker<UTCTimestamp>[]=(position?.fills??[]).filter(f=>Number.isFinite(f.price)).map(f=>({
+      time:Math.floor(Math.floor((f.at-(f.kind==='entry'?0:1))/step)*step/1000) as UTCTimestamp,
+      position:'atPriceMiddle' as const,price:f.price,shape:'circle' as const,
+      color:f.kind==='entry'?'#7eb9c5':'#d2b57a',size:.65,
+    })).filter(m=>candles.some(b=>Math.floor(b.time/1000)===m.time));
+    const marks=createSeriesMarkers(s,[...markers,...dots].sort((a,b)=>a.time-b.time),{zOrder:'top'});
     return()=>{if(initialFrame!=null)cancelAnimationFrame(initialFrame);marks.detach();};
   },[candles,position]);
   function zoom(factor:number){const t=chart.current?.timeScale(),r=t?.getVisibleLogicalRange();if(!t||!r)return;const mid=(r.from+r.to)/2,half=(r.to-r.from)*factor/2;t.setVisibleLogicalRange({from:mid-half,to:mid+half});}
@@ -59,6 +64,6 @@ export default function N6InteractiveChart({candles,position}:{candles:Candle[];
     <p className="text-xs font-mono px-3 py-2 text-slate-300 min-h-8" aria-live="off">{hover}</p>
     {!candles.length&&<p className="p-2 text-slate-500 text-xs">Загрузка свечей…</p>}
     <div ref={host} className="h-[440px] w-full" role="region" aria-label="Интерактивные свечи Bybit стратегии №6"/>
-    <p className="p-2 text-[11px] text-slate-500">Стрелки отмечают свечи исполнения модели, точные цены и время — в карточках ниже. Масштаб сохраняется при обновлении данных. Доступно перемещение по загруженному периоду сделки.</p>
+    <p className="p-2 text-[11px] text-slate-500">Стрелки — свечи исполнения; маленькие кружки — цены входа (голубой) и выхода (песочный). Точное время — в карточках ниже. Масштаб сохраняется при обновлении. Перемещение доступно по загруженному периоду сделки.</p>
   </div>;
 }
