@@ -4,12 +4,15 @@ import { metrics } from "./n6Metrics";
 
 type Position = { id:string; asset:string; bybit_symbol:string; frame:string; status:string; sign:number;
   avg:number|null; stop:number|null; t2:number|null; net:number|null; marked_at:number|null;
-  entered:number|null; closed_at:number|null; bybit_last:number|null; fees:number|null; funding:number|null };
+  entered:number|null; closed_at:number|null; bybit_last:number|null; fees:number|null; funding:number|null;
+  fills?:{kind:string;at:number;price:number;qty:number}[] };
 type State = { at:number; quote_at:number|null; quote_error:string|null; closed:number; open:number;
   wins:number; losses:number; skipped:number; pending:number; closed_net:number; open_net:number; positions:Position[] };
 type Candle = {time:number;open:number;high:number;low:number;close:number};
 const money=(v:number|null)=>v==null?'—':`${v>=0?'+':'−'}$${Math.abs(v).toFixed(2)}`;
 const price=(v:number|null)=>v==null?'—':v.toLocaleString('ru-RU',{maximumSignificantDigits:7});
+const balance=(v:number)=>v.toLocaleString('ru-RU',{style:'currency',currency:'USD',minimumFractionDigits:2});
+const reason=(kind:string)=>({entry:'ВХОД',stop:'ВЫХОД · СТОП',target:'ВЫХОД · ТЕЙК',timeout:'ВЫХОД · 24 ЧАСА'}[kind]??kind);
 const stamp=(v:number|null)=>v==null?'—':new Date(v).toLocaleString('ru-RU',{timeZone:'Europe/Moscow',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
 
 export default function Strategy6Panel(){
@@ -31,16 +34,17 @@ export default function Strategy6Panel(){
   },[]);
   const current=state?.positions.find(p=>p.id===selected)??state?.positions.find(p=>p.status==='open')??state?.positions[0];
   const symbol=current?.bybit_symbol??'BTCUSDT';const frame=current?.frame==='30m'?'30':'15';
+  const positionId=current?.entered?current.id:'';
   useEffect(()=>{
     let cancelled=false;const controller=new AbortController();setCandles([]);setChartAt(null);
     async function load(){try{
-      const r=await fetch(`/api/strategy6?kind=chart&symbol=${encodeURIComponent(symbol)}&frame=${frame}`,{cache:'no-store',signal:controller.signal});
+      const r=await fetch(`/api/strategy6?kind=chart&symbol=${encodeURIComponent(symbol)}&frame=${frame}&position=${encodeURIComponent(positionId)}`,{cache:'no-store',signal:controller.signal});
       if(!r.ok)throw new Error('Свечи Bybit недоступны для этого контракта');
       const data=await r.json();if(!cancelled){setCandles(data.candles);setChartAt(data.at);setChartError(null);}
     }catch(e){if(!cancelled)setChartError(e instanceof Error?e.message:'Ошибка Bybit');}}
     void load();const timer=setInterval(load,15000);
     return()=>{cancelled=true;controller.abort();clearInterval(timer);};
-  },[symbol,frame]);
+  },[symbol,frame,positionId,current?.closed_at]);
   const opened=state?.positions.filter(p=>p.status==='open')??[];
   const closed=(state?.positions.filter(p=>p.status==='closed')??[]).sort((a,b)=>(b.closed_at??0)-(a.closed_at??0));
   const stats=metrics(closed);
@@ -54,6 +58,11 @@ export default function Strategy6Panel(){
       {error&&<p role="alert" className="text-rose-300">{error}. Старые значения не являются текущими.</p>}
       {!state&&!error&&<p className="text-slate-400">Загрузка №6…</p>}
       {state&&<>
+        <div className="rounded-lg border border-cyan-800 bg-cyan-950/30 p-4">
+          <h3 className="text-cyan-200 font-semibold">Условный депозит · старт $10 000</h3>
+          <p className="font-mono text-lg mt-2">Было {balance(10000)} → баланс {balance(10000+state.closed_net)} → с открытыми {balance(10000+state.closed_net+state.open_net)}</p>
+          <p className="text-xs text-slate-400 mt-2">Закрытые: {money(state.closed_net)} ({(state.closed_net/100).toFixed(2)}% от старта). С открытыми: {money(state.closed_net+state.open_net)}. Это $10 000 + сумма независимых симуляций, не реальный баланс и не портфель с ограничением общего капитала.</p>
+        </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[['Закрытые · Σ net',money(state.closed_net)],['Открытые · модельный net',money(state.open_net)],['Прибыль / убыток',`${state.wins} / ${state.losses}`],['Открыто / закрыто',`${state.open} / ${state.closed}`]].map(([label,value])=><div key={label} className="bg-slate-950/60 rounded-lg p-3 border border-slate-800"><div className="text-[10px] text-slate-400 uppercase">{label}</div><div className="font-mono text-lg mt-1">{value}</div></div>)}
         </div>
@@ -80,6 +89,9 @@ export default function Strategy6Panel(){
         {(state.quote_error||stale>0)&&<p className="text-xs text-rose-300">{state.quote_error} {stale>0?`Устаревших оценок открытых позиций: ${stale}`:''}</p>}
         <div className="flex flex-wrap gap-2 items-center justify-between"><label className="text-xs text-slate-400">График сделки <select aria-label="Сделка №6" value={current?.id??''} onChange={e=>setSelected(e.target.value)} className="ml-2 bg-slate-950 border border-slate-700 rounded p-2 text-white max-w-full">{state.positions.map(p=><option key={p.id} value={p.id}>{p.asset} · {p.frame} · {p.sign===1?'LONG':'SHORT'} · {stamp(p.entered)} · {p.status}</option>)}</select></label><span className="text-xs text-slate-500">Bybit {stamp(chartAt)} МСК</span></div>
         {chartError?<p className="text-amber-300 text-sm">{chartError}</p>:<Chart candles={candles} position={current}/>}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">{current?.fills?.map((f,i)=><div key={`${f.kind}-${f.at}-${i}`} className={`rounded border p-3 ${f.kind==='entry'?'border-cyan-800 text-cyan-200':'border-amber-800 text-amber-200'}`}><b>{reason(f.kind)}</b><p className="font-mono">{price(f.price)} · {stamp(f.at)} МСК</p><p className="text-xs text-slate-400">{f.kind==='entry'?'Цена исполнения модели со проскальзыванием':'Цена исполнения модели; время фиксации по завершению минутной свечи'}</p></div>)}</div>
+        {current?.status==='open'&&<p className="text-cyan-200 text-sm">Позиция открыта — выхода ещё нет.</p>}
+        {current?.status==='closed'&&!current.fills?.some(f=>f.kind!=='entry')&&<p className="text-amber-300">Событие выхода недоступно; цену выхода не восстанавливаем из стопа.</p>}
         <p className="text-[11px] text-slate-500">Линии входа / стопа / цели — уровни симулятора OKX поверх графика Bybit. Последняя свеча может быть незакрытой.</p>
         <h3 className="text-sm font-semibold">Открытые позиции</h3><Trades positions={opened} onSelect={setSelected}/>
         <h3 className="text-sm font-semibold">Журнал закрытых · {closed.length}</h3><div className="max-h-96 overflow-auto"><Trades positions={closed} onSelect={setSelected}/></div>
@@ -112,13 +124,19 @@ function Trades({positions,onSelect}:{positions:Position[];onSelect:(id:string)=
 function Chart({candles,position}:{candles:Candle[];position:Position|undefined}){
   if(!candles.length)return <div className="h-48 flex items-center justify-center text-slate-500 text-sm">Загрузка свечей Bybit…</div>;
   const levels=[{name:'Вход',value:position?.avg,color:'#38bdf8'},{name:'Стоп',value:position?.stop,color:'#fb7185'},{name:'Цель',value:position?.t2,color:'#34d399'}].filter(l=>l.value!=null&&l.value>0);
-  const values=[...candles.flatMap(c=>[c.low,c.high]),...levels.map(l=>l.value as number)];
+  const fills=(position?.fills??[]).filter(f=>Number.isFinite(f.price)&&Number.isFinite(f.at));
+  const values=[...candles.flatMap(c=>[c.low,c.high]),...levels.map(l=>l.value as number),...fills.map(f=>f.price)];
   const lo=Math.min(...values),hi=Math.max(...values),pad=(hi-lo)*.08||1;
   const y=(v:number)=>250-(v-lo+pad)/(hi-lo+2*pad)*225;
   const x=(i:number)=>15+i*780/Math.max(1,candles.length-1);
-  return <svg viewBox="0 0 940 285" role="img" aria-label="Свечи Bybit и уровни симулятора №6" className="w-full rounded-lg bg-slate-950 border border-slate-800">
+  const first=candles[0].time,step=(position?.frame==='30m'?30:15)*60000;
+  const fx=(at:number)=>15+(at-first)/step*780/Math.max(1,candles.length-1);
+  const labels=levels.map(l=>({...l,labelY:y(l.value as number)})).sort((a,b)=>a.labelY-b.labelY);
+  for(let i=1;i<labels.length;i++)labels[i].labelY=Math.max(labels[i].labelY,labels[i-1].labelY+18);
+  return <svg viewBox="0 0 1020 320" role="img" aria-label="Свечи Bybit, точки входа и выхода симулятора №6" className="w-full rounded-lg bg-slate-950 border border-slate-800">
     {candles.map((c,i)=><g key={c.time} stroke={c.close>=c.open?'#34d399':'#fb7185'} fill={c.close>=c.open?'#34d399':'#fb7185'}><line x1={x(i)} x2={x(i)} y1={y(c.high)} y2={y(c.low)}/><rect x={x(i)-2} y={Math.min(y(c.open),y(c.close))} width="4" height={Math.max(1,Math.abs(y(c.open)-y(c.close)))}/></g>)}
-    {levels.map(l=><g key={l.name}><line x1="8" x2="805" y1={y(l.value as number)} y2={y(l.value as number)} stroke={l.color} strokeDasharray="5 4"/><text x="812" y={y(l.value as number)+4} fill={l.color} fontSize="11">{l.name} {price(l.value as number)}</text></g>)}
+    {labels.map(l=><g key={l.name}><line x1="8" x2="805" y1={y(l.value as number)} y2={y(l.value as number)} stroke={l.color} strokeDasharray="5 4"/><line x1="805" x2="817" y1={y(l.value as number)} y2={l.labelY} stroke={l.color}/><text x="820" y={l.labelY+4} fill={l.color} fontSize="12">{l.name} {price(l.value as number)}</text></g>)}
+    {fills.filter(f=>f.at>=first&&f.at<candles[candles.length-1].time+step).map((f,i)=>{const xx=fx(f.at),yy=y(f.price),entry=f.kind==='entry',color=entry?'#22d3ee':'#fbbf24';return <g key={`${f.kind}-${i}`}><title>{reason(f.kind)} {price(f.price)} · {stamp(f.at)} МСК</title><line x1={xx} x2={xx} y1="12" y2="250" stroke={color} strokeDasharray="2 5" opacity="0.6"/><circle cx={xx} cy={yy} r="6" stroke={color} strokeWidth="2" fill="#020617"/><path d={`M ${xx-5} ${yy+(entry?15:-15)} L ${xx} ${yy+(entry?8:-8)} L ${xx+5} ${yy+(entry?15:-15)}`} fill="none" stroke={color} strokeWidth="2"/><text x={Math.max(20,Math.min(680,xx))} y={entry?15:303} fill={color} fontSize="12">{reason(f.kind)} {price(f.price)}</text></g>})}
     <text x="15" y="275" fill="#94a3b8" fontSize="11">{stamp(candles[0].time)} МСК</text><text x="650" y="275" fill="#94a3b8" fontSize="11">{stamp(candles[candles.length-1].time)} МСК</text>
   </svg>;
 }

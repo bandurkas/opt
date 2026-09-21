@@ -30,6 +30,11 @@ def bybit(path, **params):
 def read_positions():
     c=sqlite3.connect('file:'+str(DB)+'?mode=ro',uri=True,timeout=5)
     try:
+        events={}
+        for key,raw in c.execute('SELECT position_id,payload FROM n6_sim_events'):
+            e=json.loads(raw)
+            if e.get('kind') in ('entry','stop','target','timeout'):
+                events.setdefault(key,[]).append({k:e.get(k) for k in ('kind','at','price','qty')})
         rows=[]
         for key,raw in c.execute('SELECT id,payload FROM n6_sim_positions'):
             p=json.loads(raw)
@@ -37,6 +42,7 @@ def read_positions():
             allowed=['symbol','frame','status','sign','avg','stop','t2','q','net','gross',
                      'fees','funding','entered','closed_at','marked_at','eligible','ambiguous']
             row={k:p.get(k) for k in allowed};row['id']=key
+            row['fills']=sorted(events.get(key,[]),key=lambda e:e['at'])
             row['asset']=p['symbol'].removesuffix('-USDT-SWAP')
             row['bybit_symbol']=row['asset']+'USDT'
             rows.append(row)
@@ -73,11 +79,20 @@ def state():
         closed_net=sum(p['net'] or 0 for p in closed),
         open_net=sum(p['net'] or 0 for p in opened),positions=rows)
 
-def chart(symbol, frame):
-    allowed={p['bybit_symbol'] for p in read_positions()}|{'BTCUSDT'}
+def chart(symbol, frame, position_id=None):
+    positions=read_positions()
+    allowed={p['bybit_symbol'] for p in positions}|{'BTCUSDT'}
     if symbol not in allowed or not re.fullmatch(r'[A-Z0-9]{2,30}',symbol):raise ValueError('Unknown symbol')
     if frame not in ('15','30'):raise ValueError('Unsupported interval')
-    response=bybit('kline',category='linear',symbol=symbol,interval=frame,limit=120)
+    params=dict(category='linear',symbol=symbol,interval=frame,limit=120)
+    if position_id:
+        p=next((p for p in positions if p['id']==position_id),None)
+        if not p or p['bybit_symbol']!=symbol or p['frame']!=frame+'m' or not p.get('entered'):
+            raise ValueError('Unknown executed position')
+        step=int(frame)*60000
+        params.update(start=max(0,(p['entered']//step-12)*step),
+                      end=min(int(time.time()*1000),(p.get('closed_at') or int(time.time()*1000))+12*step),limit=1000)
+    response=bybit('kline',**params)
     return dict(symbol=symbol,frame=frame,at=response['time'],source='Bybit',
         candles=[dict(time=int(r[0]),open=float(r[1]),high=float(r[2]),low=float(r[3]),close=float(r[4]))
                  for r in reversed(response['result']['list'])])
@@ -87,7 +102,7 @@ class Handler(BaseHTTPRequestHandler):
         u=urlparse(self.path);q=parse_qs(u.query)
         try:
             if u.path=='/state':payload=state()
-            elif u.path=='/chart':payload=chart(q.get('symbol',['BTCUSDT'])[0],q.get('frame',['15'])[0])
+            elif u.path=='/chart':payload=chart(q.get('symbol',['BTCUSDT'])[0],q.get('frame',['15'])[0],q.get('position',[''])[0])
             elif u.path=='/health':payload={'ok':True,'read_only':True}
             else:self.send_error(404);return
             body=json.dumps(payload,allow_nan=False).encode();self.send_response(200)

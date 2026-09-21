@@ -10,6 +10,7 @@ export async function GET(request: Request) {
   if (kind === "chart") {
     url.searchParams.set("symbol", query.get("symbol") || "BTCUSDT");
     url.searchParams.set("frame", query.get("frame") || "15");
+    if(query.get("position")) url.searchParams.set("position", query.get("position")!);
   }
   try {
     const auth = await fetch("http://backend:8000/api/v1/control/status", {
