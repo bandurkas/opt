@@ -40,7 +40,8 @@ export default function N6InteractiveChart({candles,position}:{candles:Candle[];
     for(const [title,value,color] of [['Вход',position?.avg,'#22d3ee'],['Стоп',position?.stop,'#fb7185'],['Цель',position?.t2,'#34d399']] as const){
       if(value!=null&&Number.isFinite(value)&&value>0)lines.current.push(s.createPriceLine({price:value,color,lineWidth:1,lineStyle:LineStyle.Dashed,axisLabelVisible:true,title}));
     }
-    if(!fitted.current){c.timeScale().fitContent();fitted.current=true;}else if(previous)c.timeScale().setVisibleLogicalRange(previous);
+    let initialFrame:number|undefined;
+    if(!fitted.current){c.timeScale().fitContent();fitted.current=true;initialFrame=requestAnimationFrame(()=>c.timeScale().fitContent());}else if(previous)c.timeScale().setVisibleLogicalRange(previous);
     const step=(position?.frame==='30m'?30:15)*60000;
     const markers:SeriesMarker<UTCTimestamp>[]=(position?.fills??[]).filter(f=>Number.isFinite(f.price)).map<SeriesMarker<UTCTimestamp>>(f=>{
       // Exits are recorded at minute close; anchor them to the candle containing that minute.
@@ -50,7 +51,7 @@ export default function N6InteractiveChart({candles,position}:{candles:Candle[];
         text:`${f.kind==='entry'?'ВХОД':f.kind==='stop'?'СТОП':f.kind==='target'?'ТЕЙК':'ВЫХОД'} ${price(f.price)}`};
     }).filter(m=>candles.some(b=>Math.floor(b.time/1000)===m.time)).sort((a,b)=>a.time-b.time);
     const marks=createSeriesMarkers(s,markers);
-    return()=>marks.detach();
+    return()=>{if(initialFrame!=null)cancelAnimationFrame(initialFrame);marks.detach();};
   },[candles,position]);
   function zoom(factor:number){const t=chart.current?.timeScale(),r=t?.getVisibleLogicalRange();if(!t||!r)return;const mid=(r.from+r.to)/2,half=(r.to-r.from)*factor/2;t.setVisibleLogicalRange({from:mid-half,to:mid+half});}
   return <div className="rounded-lg border border-slate-800 bg-slate-950 overflow-hidden">
