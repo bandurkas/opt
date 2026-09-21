@@ -1,9 +1,10 @@
 "use client";
 import { useEffect, useState } from "react";
+import { metrics } from "./n6Metrics";
 
 type Position = { id:string; asset:string; bybit_symbol:string; frame:string; status:string; sign:number;
   avg:number|null; stop:number|null; t2:number|null; net:number|null; marked_at:number|null;
-  entered:number|null; closed_at:number|null; bybit_last:number|null };
+  entered:number|null; closed_at:number|null; bybit_last:number|null; fees:number|null; funding:number|null };
 type State = { at:number; quote_at:number|null; quote_error:string|null; closed:number; open:number;
   wins:number; losses:number; skipped:number; pending:number; closed_net:number; open_net:number; positions:Position[] };
 type Candle = {time:number;open:number;high:number;low:number;close:number};
@@ -41,7 +42,8 @@ export default function Strategy6Panel(){
     return()=>{cancelled=true;controller.abort();clearInterval(timer);};
   },[symbol,frame]);
   const opened=state?.positions.filter(p=>p.status==='open')??[];
-  const closed=state?.positions.filter(p=>p.status==='closed')??[];
+  const closed=(state?.positions.filter(p=>p.status==='closed')??[]).sort((a,b)=>(b.closed_at??0)-(a.closed_at??0));
+  const stats=metrics(closed);
   const stale=opened.filter(p=>!p.marked_at||Date.now()-p.marked_at>1200000).length;
   return <section id="strategy6" className="rounded-xl border border-slate-800 bg-slate-900/60 overflow-hidden">
     <div className="p-4 border-b border-slate-800 flex flex-wrap justify-between gap-2">
@@ -55,6 +57,24 @@ export default function Strategy6Panel(){
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[['Закрытые · Σ net',money(state.closed_net)],['Открытые · модельный net',money(state.open_net)],['Прибыль / убыток',`${state.wins} / ${state.losses}`],['Открыто / закрыто',`${state.open} / ${state.closed}`]].map(([label,value])=><div key={label} className="bg-slate-950/60 rounded-lg p-3 border border-slate-800"><div className="text-[10px] text-slate-400 uppercase">{label}</div><div className="font-mono text-lg mt-1">{value}</div></div>)}
         </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {[
+            ['Всего net · закрытые + открытые',money(state.closed_net+state.open_net)],
+            ['Win rate · закрытые',stats.winRate==null?'—':`${stats.winRate.toFixed(1)}%`],
+            ['Profit factor · net',stats.profitFactor==null?(stats.noLoss?'Нет убытков':'—'):stats.profitFactor.toFixed(2)],
+            ['Средняя закрытая сделка',money(stats.average)],
+            ['Лучший результат',money(stats.best)],['Худший результат',money(stats.worst)],
+            ['Комиссии · закрытые',stats.fees==null?'—':`$${stats.fees.toFixed(2)}`],
+            ['Funding · закрытые',money(stats.funding)],
+            ['Просадка Σ закрытых, не счёта',`$${stats.drawdown.toFixed(2)}`],
+            ['Среднее удержание',stats.hours==null?'—':`${stats.hours.toFixed(1)} ч`],
+            ['Безубыточных закрытий',String(stats.flat)],['Результаты без данных',String(stats.missing)]
+          ].map(([label,value])=><div key={label} className="bg-slate-950/60 rounded-lg p-3 border border-slate-800"><div className="text-[10px] text-slate-400 uppercase">{label}</div><div className="font-mono text-lg mt-1 text-cyan-100">{value}</div></div>)}
+        </div>
+        <h3 className="text-sm font-semibold text-cyan-200">Накопленный net закрытых сделок</h3>
+        <ResultCurve points={stats.curve}/>
+        <p className="text-xs text-slate-500">По времени закрытия, МСК. Это не equity счёта: внутрисделочная просадка не восстановлена. Маленькая выборка не доказывает прибыльность.</p>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">{[['15m',closed.filter(p=>p.frame==='15m')],['30m',closed.filter(p=>p.frame==='30m')],['LONG',closed.filter(p=>p.sign===1)],['SHORT',closed.filter(p=>p.sign===-1)]].map(([label,rows])=>{const m=metrics(rows as Position[]);return <div key={label as string} className="rounded-lg border border-slate-800 p-3 text-xs"><b>{label as string}</b><p className="font-mono text-base my-1">{money(m.total)}</p><p>{m.count} закрыто · {m.wins} плюс / {m.losses} минус</p></div>})}</div>
         <p className="text-xs text-slate-400">Пропущено {state.skipped} · ожидают {state.pending}. Условная база $10 000, плановый риск до $100 на независимый сетап. Σ net — сумма отдельных расчётов, не доходность общего счёта.</p>
         <p className="text-xs text-amber-200/80">Учёт сделок: OKX / SIM-001. Котировки и график: Bybit USDT perpetual. Цены бирж могут различаться; котировки Bybit не меняют историю PnL.</p>
         {(state.quote_error||stale>0)&&<p className="text-xs text-rose-300">{state.quote_error} {stale>0?`Устаревших оценок открытых позиций: ${stale}`:''}</p>}
@@ -62,11 +82,26 @@ export default function Strategy6Panel(){
         {chartError?<p className="text-amber-300 text-sm">{chartError}</p>:<Chart candles={candles} position={current}/>}
         <p className="text-[11px] text-slate-500">Линии входа / стопа / цели — уровни симулятора OKX поверх графика Bybit. Последняя свеча может быть незакрытой.</p>
         <h3 className="text-sm font-semibold">Открытые позиции</h3><Trades positions={opened} onSelect={setSelected}/>
-        <h3 className="text-sm font-semibold">Последние закрытые · {closed.length}</h3><Trades positions={closed.slice(0,50)} onSelect={setSelected}/>
+        <h3 className="text-sm font-semibold">Журнал закрытых · {closed.length}</h3><div className="max-h-96 overflow-auto"><Trades positions={closed} onSelect={setSelected}/></div>
         <p className="text-[11px] text-slate-500">Обновление панели каждые 15 секунд · снимок {stamp(state.at)} МСК · комиссия 0,05% и проскальзывание 0,02% за исполнение · funding предварительный.</p>
       </>}
     </div>
   </section>;
+}
+
+function ResultCurve({points}:{points:{time:number;value:number}[]}){
+  if(points.length<2)return <p className="text-slate-500 text-xs">График появится после первого закрытия.</p>;
+  const lo=Math.min(0,...points.map(p=>p.value)),hi=Math.max(0,...points.map(p=>p.value)),range=hi-lo||1;
+  const y=(v:number)=>165-(v-lo)/range*130;
+  const start=points[0].time,end=points[points.length-1].time;
+  const x=(t:number)=>65+(t-start)/Math.max(1,end-start)*760;
+  return <svg viewBox="0 0 940 205" className="w-full rounded-lg bg-slate-950 border border-slate-800" role="img" aria-label="Накопленный net закрытых сделок стратегии №6">
+    <line x1="65" x2="830" y1={y(0)} y2={y(0)} stroke="#475569" strokeDasharray="4 4"/>
+    <polyline points={points.map(p=>`${x(p.time)},${y(p.value)}`).join(' ')} fill="none" stroke="#22d3ee" strokeWidth="2"/>
+    <text x="5" y="25" fill="#94a3b8" fontSize="11">{money(hi)}</text><text x="5" y="175" fill="#94a3b8" fontSize="11">{money(lo)}</text>
+    <text x="65" y="195" fill="#94a3b8" fontSize="11">{stamp(start)}</text><text x="680" y="195" fill="#94a3b8" fontSize="11">{stamp(end)}</text>
+    <text x="835" y={y(points[points.length-1].value)+4} fill="#22d3ee" fontSize="11">{money(points[points.length-1].value)}</text>
+  </svg>;
 }
 
 function Trades({positions,onSelect}:{positions:Position[];onSelect:(id:string)=>void}){
