@@ -11,6 +11,7 @@ import EquityChart from "./components/EquityChart";
 import ProximityGauge from "./components/ProximityGauge";
 import { ActiveContractsRail, Countdown, useLiveNow, type Contract } from "./components/ActiveContracts";
 import BubuSummaryRail from "./components/BubuSummary";
+import Strategy6Panel from "./components/Strategy6Panel";
 
 const REFRESH_MS = 15_000;
 
@@ -217,7 +218,7 @@ export default function Dashboard() {
         <div className="max-w-5xl mx-auto flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold">Options Fleet</h1>
-            <p className="text-xs text-slate-500">BUBU · Jony — paper</p>
+            <p className="text-xs text-slate-500">BUBU · Jony · №6 A — simulation</p>
           </div>
         </div>
       </header>
@@ -226,6 +227,7 @@ export default function Dashboard() {
         <ActiveContractsRail contracts={allContracts} now={now} />
         {bubuState && <BubuSummaryRail state={bubuState} recentCycles={bubuRecentCycles} />}
         <MissionControl />
+        <Strategy6Panel />
 
         {/* ───────────────────── Jony (separate service, own API :8200) ───────────────────── */}
         <div className="pt-2">

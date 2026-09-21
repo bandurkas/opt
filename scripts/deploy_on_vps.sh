@@ -4,6 +4,14 @@
 
 set -e
 
+# Read-only dashboard deploy: do not restart backend, pollers or trading loops.
+if [ "${1:-}" = "--frontend-only" ]; then
+  cd /root/opt-app
+  docker compose build frontend
+  docker compose up -d --no-deps --no-build --force-recreate frontend
+  exit 0
+fi
+
 cd /root/opt-app
 
 echo "=== VPS Deployer ==="
