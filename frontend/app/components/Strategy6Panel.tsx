@@ -19,7 +19,7 @@ const stamp=(v:number|null)=>v==null?'—':new Date(v).toLocaleString('ru-RU',{t
 
 export default function Strategy6Panel(){
   const [rawState,setState]=useState<State|null>(null);
-  const [filtered,setFiltered]=useState(true);
+  const [filtered,setFiltered]=useState(false);
   const economic=rawState?economicView(rawState.positions):null;
   const state=rawState&&economic&&filtered?{...rawState,...economic}:rawState;
   const [error,setError]=useState<string|null>(null);
