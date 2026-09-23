@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { metrics } from "./n6Metrics";
 import N6InteractiveChart from "./N6InteractiveChart";
+import { economicView } from "./n6Economics";
 
 type Position = { id:string; asset:string; bybit_symbol:string; frame:string; status:string; sign:number;
   avg:number|null; stop:number|null; t2:number|null; net:number|null; marked_at:number|null;
@@ -17,7 +18,10 @@ const reason=(kind:string)=>({entry:'ВХОД',stop:'ВЫХОД · СТОП',tar
 const stamp=(v:number|null)=>v==null?'—':new Date(v).toLocaleString('ru-RU',{timeZone:'Europe/Moscow',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
 
 export default function Strategy6Panel(){
-  const [state,setState]=useState<State|null>(null);
+  const [rawState,setState]=useState<State|null>(null);
+  const [filtered,setFiltered]=useState(true);
+  const economic=rawState?economicView(rawState.positions):null;
+  const state=rawState&&economic&&filtered?{...rawState,...economic}:rawState;
   const [error,setError]=useState<string|null>(null);
   const [selected,setSelected]=useState<string>('');
   const [candles,setCandles]=useState<Candle[]>([]);
@@ -54,10 +58,15 @@ export default function Strategy6Panel(){
   const stale=opened.filter(p=>!p.marked_at||Date.now()-p.marked_at>1200000).length;
   return <section id="strategy6" className="rounded-xl border border-slate-800 bg-slate-900/60 overflow-hidden">
     <div className="p-4 border-b border-slate-800 flex flex-wrap justify-between gap-2">
-      <div><h2 className="font-bold text-cyan-300 text-lg">Стратегия №6 v2 · A</h2><p className="text-xs text-slate-400">Дневной FVG → слом → откат 50–60% · 15m / 30m</p></div>
+      <div><h2 className="font-bold text-cyan-300 text-lg">Стратегия №6 v2 · {filtered?'A · E2':'A · исходная'}</h2><p className="text-xs text-slate-400">Дневной FVG → слом → откат 50–60% · 15m / 30m</p></div>
       <span className="text-xs text-cyan-200 border border-cyan-900 rounded px-2 py-1 self-start">СИМУЛЯЦИЯ · без ордеров</span>
     </div>
     <div className="p-4 space-y-4">
+      <div className="rounded-lg border border-slate-700 p-3 text-sm text-slate-300 space-y-2">
+        <label className="flex gap-2 items-center"><input type="checkbox" checked={filtered} onChange={e=>{setFiltered(e.target.checked);setSelected('');}}/>A · E2: прибыль до исходного тейка ≥ 2 рисков после расходов</label>
+        <p className="text-xs text-slate-400">Исследовательский пересчёт сохранённых и новых модельных входов. Не новая реальная торговля. Стоп, тейк и объём прежние; комиссии 0,05% и проскальзывание 0,02% за исполнение. Будущий funding не участвует в отборе, но учитывается в результате. Исходная история сохранена.</p>
+        {filtered&&economic&&<p className="text-xs">Отсеяно по правилу: {economic.skipped} · Недостаточно данных входа: {economic.unknown} · Ожидают входа: {economic.pending}. Обновление каждые 15 секунд.</p>}
+      </div>
       {error&&<p role="alert" className="text-rose-300">{error}. Старые значения не являются текущими.</p>}
       {!state&&!error&&<p className="text-slate-400">Загрузка №6…</p>}
       {state&&<>
