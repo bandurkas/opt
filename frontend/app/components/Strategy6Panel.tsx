@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { metrics } from "./n6Metrics";
+import { dailySummary, metrics } from "./n6Metrics";
 import N6InteractiveChart from "./N6InteractiveChart";
 
 type Position = { id:string; asset:string; bybit_symbol:string; frame:string; status:string; sign:number;
@@ -11,6 +11,7 @@ type State = { at:number; quote_at:number|null; quote_error:string|null; closed:
   wins:number; losses:number; skipped:number; pending:number; closed_net:number; open_net:number; positions:Position[] };
 type Candle = {time:number;open:number;high:number;low:number;close:number};
 const money=(v:number|null)=>v==null?'—':`${v>=0?'+':'−'}$${Math.abs(v).toFixed(2)}`;
+const dayMoney=(v:number)=>v===0?'$0.00':money(v);
 const price=(v:number|null)=>v==null?'—':v.toLocaleString('ru-RU',{maximumSignificantDigits:7});
 const balance=(v:number)=>v.toLocaleString('ru-RU',{style:'currency',currency:'USD',minimumFractionDigits:2});
 const reason=(kind:string)=>({entry:'ВХОД',stop:'ВЫХОД · СТОП',target:'ВЫХОД · ТЕЙК',timeout:'ВЫХОД · 24 ЧАСА'}[kind]??kind);
@@ -24,6 +25,8 @@ export default function Strategy6Panel(){
   const [chartError,setChartError]=useState<string|null>(null);
   const [chartAt,setChartAt]=useState<number|null>(null);
   const [candleScope,setCandleScope]=useState('');
+  const [todayAt,setTodayAt]=useState(()=>Date.now());
+  useEffect(()=>{const timer=setInterval(()=>setTodayAt(Date.now()),60000);return()=>clearInterval(timer);},[]);
   useEffect(()=>{
     let cancelled=false;const controller=new AbortController();
     async function load(){try{
@@ -51,6 +54,8 @@ export default function Strategy6Panel(){
   const opened=state?.positions.filter(p=>p.status==='open')??[];
   const closed=(state?.positions.filter(p=>p.status==='closed')??[]).sort((a,b)=>(b.closed_at??0)-(a.closed_at??0));
   const stats=metrics(closed);
+  const today=dailySummary(state?.positions??[],todayAt);
+  const todayLabel=new Date(todayAt).toLocaleDateString('ru-RU',{timeZone:'Europe/Moscow',day:'numeric',month:'long'});
   const stale=opened.filter(p=>!p.marked_at||Date.now()-p.marked_at>1200000).length;
   return <section id="strategy6" className="rounded-xl border border-slate-800 bg-slate-900/60 overflow-hidden">
     <div className="p-4 border-b border-slate-800 flex flex-wrap justify-between gap-2">
@@ -64,6 +69,20 @@ export default function Strategy6Panel(){
       {error&&<p role="alert" className="text-rose-300">{error}. Старые значения не являются текущими.</p>}
       {!state&&!error&&<p className="text-slate-400">Загрузка №6…</p>}
       {state&&<>
+        <div className="rounded-lg border border-slate-700 bg-slate-950/70 p-4">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h3 className="font-semibold text-slate-100">Сегодня, {todayLabel} · МСК</h3>
+            <span className="text-xs text-slate-400">Закрыто {today.closed} · плюс {today.wins} / минус {today.losses}</span>
+          </div>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-3">
+            <div className="rounded border border-emerald-900/60 bg-emerald-950/20 p-3"><div className="text-xs text-slate-400">Прибыль сегодня</div><div className="font-mono text-lg text-emerald-300">{dayMoney(today.profit)}</div></div>
+            <div className="rounded border border-rose-900/60 bg-rose-950/20 p-3"><div className="text-xs text-slate-400">Убыток сегодня</div><div className="font-mono text-lg text-rose-300">{dayMoney(-today.loss)}</div></div>
+            <div className="rounded border border-slate-700 bg-slate-900/50 p-3"><div className="text-xs text-slate-400">Итог сегодня</div><div className={`font-mono text-lg ${today.net>=0?'text-emerald-300':'text-rose-300'}`}>{dayMoney(today.net)}</div></div>
+            <div className="rounded border border-slate-700 bg-slate-900/50 p-3"><div className="text-xs text-slate-400">Всего с начала · закрытые</div><div className={`font-mono text-lg ${state.closed_net>=0?'text-emerald-300':'text-rose-300'}`}>{money(state.closed_net)}</div></div>
+          </div>
+          <p className="text-xs text-slate-400 mt-3">По времени закрытия в Москве. Net после модельных расходов; открытые позиции не включены. Это сумма независимых симуляций, не баланс реального счёта.</p>
+          {(today.missing>0||today.undated>0)&&<p className="text-xs text-amber-300 mt-2">Дневная сумма может быть неполной: {today.missing} закрытий сегодня без net, {today.undated} закрытий без времени выхода.</p>}
+        </div>
         <div className="rounded-lg border border-cyan-800 bg-cyan-950/30 p-4">
           <h3 className="text-cyan-200 font-semibold">Условный депозит · старт $10 000</h3>
           <p className="font-mono text-lg mt-2">Было {balance(10000)} → баланс {balance(10000+state.closed_net)} → с открытыми {balance(10000+state.closed_net+state.open_net)}</p>

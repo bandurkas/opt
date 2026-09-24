@@ -1,4 +1,24 @@
 export type MetricPosition = {status:string; net:number|null; fees:number|null; funding:number|null; entered:number|null; closed_at:number|null; frame:string; sign:number};
+const moscowDay = new Intl.DateTimeFormat('ru-RU', {
+  timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit'
+});
+
+export function dailySummary(rows:MetricPosition[], now:number) {
+  const day=moscowDay.format(new Date(now));
+  let profit=0, loss=0, closed=0, wins=0, losses=0, flat=0, missing=0, undated=0;
+  for(const p of rows) {
+    if(p.status!=='closed')continue;
+    if(p.closed_at==null||!Number.isFinite(p.closed_at)) {undated++;continue;}
+    if(moscowDay.format(new Date(p.closed_at))!==day)continue;
+    closed++;
+    if(p.net==null||!Number.isFinite(p.net)) {missing++;continue;}
+    if(p.net>0) {profit+=p.net;wins++;}
+    else if(p.net<0) {loss-=p.net;losses++;}
+    else flat++;
+  }
+  return {day,profit,loss,net:profit-loss,closed,wins,losses,flat,missing,undated};
+}
+
 export function metrics(rows:MetricPosition[]) {
   const closed=rows.filter(p=>p.status==='closed'&&p.net!=null&&Number.isFinite(p.net));
   const sum=(xs:MetricPosition[])=>xs.reduce((s,p)=>s+(p.net??0),0);
