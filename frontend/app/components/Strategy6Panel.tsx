@@ -6,6 +6,7 @@ import N6InteractiveChart from "./N6InteractiveChart";
 type Position = { id:string; asset:string; bybit_symbol:string; frame:string; status:string; sign:number;
   avg:number|null; stop:number|null; t2:number|null; net:number|null; marked_at:number|null;
   entered:number|null; closed_at:number|null; bybit_last:number|null; fees:number|null; funding:number|null;
+  impulse?:{start_ts:number;end_ts:number;start:number;end:number};
   fills?:{kind:string;at:number;price:number;qty:number}[] };
 type State = { at:number; quote_at:number|null; quote_error:string|null; closed:number; open:number;
   wins:number; losses:number; skipped:number; pending:number; closed_net:number; open_net:number; positions:Position[] };
