@@ -8,7 +8,7 @@ import BubuChart from "./components/BubuChart";
 import BubuLadder from "./components/BubuLadder";
 import EquityChart from "./components/EquityChart";
 import BubuSummaryRail from "./components/BubuSummary";
-import KorovinPanel from "./components/KorovinPanel";
+import Link from "next/link";
 
 const REFRESH_MS = 15_000;
 
@@ -108,7 +108,12 @@ export default function Dashboard() {
       <div className="max-w-5xl mx-auto p-4 space-y-4">
         {bubuState && <BubuSummaryRail state={bubuState} recentCycles={bubuRecentCycles} />}
         <MissionControl />
-        <KorovinPanel />
+        <Link href="/strategies/korovin" className="block rounded-2xl border border-sky-800 bg-slate-900 p-5 transition-colors hover:border-sky-400 focus-visible:outline-2 focus-visible:outline-sky-400">
+          <div className="text-xs font-semibold uppercase tracking-wide text-sky-300">BTC · Виртуальная торговля</div>
+          <h2 className="mt-2 text-xl font-bold">Прикрытый интрадей</h2>
+          <p className="mt-2 text-sm text-slate-400">График, опционное прикрытие, открытые позиции, сделки и результат с комиссиями и funding.</p>
+          <div className="mt-4 font-semibold text-sky-300">Открыть стратегию →</div>
+        </Link>
 
         {/* ───────────────────── FUTURES: BUBU (separate service, own API :8300) ───────────────────── */}
         {/* Own category, deliberately separate from the options bots above —
