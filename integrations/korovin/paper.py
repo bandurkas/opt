@@ -360,6 +360,8 @@ class Engine:
     def view(self):
         with self.lock:
             d = json.loads(json.dumps(self.s))
+            from reporting import daily
+            d['daily'] = daily(self.db, self.s)
             d['server_time'] = int(time.time()*1000)
             d['stale'] = d['server_time']-d['updated_at'] > 45000
             d['events'] = [dict(ts=t, kind=k, **json.loads(b)) for t,k,b in self.db.execute(
