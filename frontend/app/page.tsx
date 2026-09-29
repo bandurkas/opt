@@ -8,7 +8,7 @@ import BubuChart from "./components/BubuChart";
 import BubuLadder from "./components/BubuLadder";
 import EquityChart from "./components/EquityChart";
 import BubuSummaryRail from "./components/BubuSummary";
-import Strategy6Panel from "./components/Strategy6Panel";
+import KorovinPanel from "./components/KorovinPanel";
 
 const REFRESH_MS = 15_000;
 
@@ -100,7 +100,7 @@ export default function Dashboard() {
         <div className="max-w-5xl mx-auto flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold">Options Fleet</h1>
-            <p className="text-xs text-slate-500">BUBU · №6 A — simulation</p>
+            <p className="text-xs text-slate-500">BUBU · Коровин BTC — simulation</p>
           </div>
         </div>
       </header>
@@ -108,7 +108,7 @@ export default function Dashboard() {
       <div className="max-w-5xl mx-auto p-4 space-y-4">
         {bubuState && <BubuSummaryRail state={bubuState} recentCycles={bubuRecentCycles} />}
         <MissionControl />
-        <Strategy6Panel />
+        <KorovinPanel />
 
         {/* ───────────────────── FUTURES: BUBU (separate service, own API :8300) ───────────────────── */}
         {/* Own category, deliberately separate from the options bots above —
