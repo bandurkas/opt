@@ -96,5 +96,39 @@ class Accounting(unittest.TestCase):
         self.assertEqual(s['option_qty'],.24)
 
 
+    def test_full_close_retires_parts_without_double_counting(self):
+        s=self.e.s
+        part=dict(side=1,n=1,entry=99500,exit=100000,qty=.01,
+                  active=True,cycles=2,gross=10.)
+        s.update(phase='closing',future_qty=-.11,future_avg=100000,
+                 option_qty=.24,option_entry=1000,option_symbol='test',
+                 parts=[part])
+        # An unavailable option close must leave both legs AND the slot intact.
+        self.e.close(quote(),quote(1000,.01),1000)
+        self.assertTrue(part['active'])
+        self.assertEqual(self.e.db.execute('select count(*) from events').fetchone()[0],0)
+        expected=self.e.metrics(quote(),quote(1000))['liquidation_net']
+        self.e.close(quote(),quote(1000),2000)
+        self.assertEqual(s['phase'],'closed')
+        self.assertFalse(part['active'])
+        self.assertEqual((part['cycles'],part['gross']),(2,10.))
+        self.assertEqual((part['closed_at'],part['close_reason']),(2000,'close_all'))
+        self.assertAlmostEqual(self.e.metrics(quote(),quote(1000))['net'],expected)
+        import json
+        rows=self.e.db.execute("select body from events where kind='parts_retired'").fetchall()
+        self.assertEqual(len(rows),1)
+        original=json.loads(rows[0][0])['parts'][0]
+        self.assertTrue(original['active'])
+        self.assertEqual(original['entry'],99500)
+        count=self.e.db.execute('select count(*) from events').fetchone()[0]
+        self.e.close(quote(),quote(1000),3000)
+        self.assertEqual(self.e.db.execute('select count(*) from events').fetchone()[0],count)
+        self.e.save()
+        self.e.db.close()
+        self.e=paper.Engine(self.path)
+        self.assertFalse(self.e.s['parts'][0]['active'])
+        self.assertEqual(self.e.s['parts'][0]['closed_at'],2000)
+
+
 if __name__=='__main__':
     unittest.main()

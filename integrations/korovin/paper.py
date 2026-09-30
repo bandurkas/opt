@@ -285,6 +285,14 @@ class Engine:
             self.event(ts, 'option_fill', symbol=s['option_symbol'], change=-oq, price=price,
                        fee=fee, reason='close_all')
             s['option_qty'] = 0.
+        # The net futures close already realizes P/L and fees above. Retire the
+        # analytical slots without inventing extra fills or completed grid cycles.
+        active_parts = [dict(part) for part in s['parts'] if part['active']]
+        if active_parts:
+            self.event(ts, 'parts_retired', reason='close_all', parts=active_parts)
+            for part in s['parts']:
+                if part['active']:
+                    part.update(active=False, closed_at=ts, close_reason='close_all')
         s.update(phase='closed', reason='Эксперимент закрыт; автоматического повторного входа нет')
 
     def step(self):
