@@ -1,3 +1,7 @@
+# 2026-09-30: deterministic Korovin paper agent
+
+Agent status and execution-health guards added to isolated korovin-paper. Existing strategy configuration and SQLite preserved; no real orders or other service changes. See integrations/korovin/AGENT.md.
+
 # 2026-09-29: Korovin BTC paper panel replaces Strategy6A display
 
 User authorized isolated forward paper experiment and migration of existing local SQLite. No real orders or account keys. Frozen rules unchanged. Service korovin-paper binds Docker bridge 172.18.0.1:8107. Authenticated frontend proxy serves existing interactive UI. Existing Strategy6 code/history retained; other trading processes unchanged. Local writer must remain stopped. Runtime ledger outside Git at /home/artur/korovin-paper/paper.sqlite. Missing market interval is not replayed. See integrations/korovin/SPEC.md.

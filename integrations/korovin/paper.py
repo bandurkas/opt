@@ -13,6 +13,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 VERSION = 'KOR-BTC-PAPER-001'
+AGENT_VERSION = 'KOR-PAPER-AGENT-002'
+MAX_DECISION_AGE_MS = 30000
 CONFIG = dict(capital=20000., option_qty=.24, part_qty=.01, width=.0045,
               offsets=[1, 2, 5, 12], perp_fee=.00055, option_fee=.0003,
               option_cap=.07, loss_floor=16000., min_days=21, max_days=35)
@@ -295,6 +297,15 @@ class Engine:
                     part.update(active=False, closed_at=ts, close_reason='close_all')
         s.update(phase='closed', reason='Эксперимент закрыт; автоматического повторного входа нет')
 
+    def decision(self, code, reason, ts):
+        previous = self.s.get('agent', {})
+        self.s['agent'] = dict(version=AGENT_VERSION, mode='deterministic_paper',
+                               decision=code, reason=reason, heartbeat_at=int(time.time()*1000),
+                               quote_at=ts)
+        if previous.get('version') != AGENT_VERSION:
+            self.event(ts, 'agent_version', previous=previous.get('version'), version=AGENT_VERSION,
+                       rules_hash=RULE_HASH)
+
     def step(self):
         s = self.s
         fd = api('tickers', category='linear', symbol='BTCUSDT')
@@ -302,6 +313,15 @@ class Engine:
         ts = int(fd['time'])
         if not valid_quote(f):
             raise ValueError('Invalid BTCUSDT quote')
+        gap = bool(s['updated_at'] and ts-s['updated_at'] > 60000)
+        if gap:
+            s['gap_count'] += 1
+            self.event(ts, 'data_gap', previous=s['updated_at'], seconds=(ts-s['updated_at'])/1000)
+        def fresh():
+            return abs(int(time.time()*1000)-ts) <= MAX_DECISION_AGE_MS
+        if not fresh() or (s['updated_at'] and ts <= s['updated_at']):
+            raise ValueError('Decision quote stale or non-increasing; trading frozen')
+        self.decision('observe', 'Проверка котировок и условий фиксированной стратегии', ts)
         q = {}
         if s['phase'] == 'waiting':
             ins = []
@@ -317,7 +337,13 @@ class Engine:
             fm = api('instruments-info', category='linear', symbol='BTCUSDT')['result']['list'][0]
             if abs(int(opts['time'])-ts) > 10000:
                 raise ValueError('Assembly quotes not synchronized')
-            self.assemble(f, quotes, ins, fm, ts)
+            if not fresh():
+                raise ValueError('Assembly decision quote expired; trading frozen')
+            if gap:
+                self.decision('gap_pause', 'Пропуск данных: сборка пропущена, ждём следующий свежий снимок', ts)
+            else:
+                self.assemble(f, quotes, ins, fm, ts)
+                self.decision('assemble' if s['started_at'] else 'wait_liquidity', s['reason'], ts)
             q = quotes.get(s.get('option_symbol'), {})
         elif s['option_qty']:
             od = api('tickers', category='option', symbol=s['option_symbol'])
@@ -332,22 +358,33 @@ class Engine:
         next_funding = int(f.get('nextFundingTime') or 0)
         if not s.get('expected_funding') or s['expected_funding'] in s['funding_done']:
             s['expected_funding'] = next_funding
+        if not fresh():
+            raise ValueError('Decision quote expired during data collection; trading frozen')
         if s['started_at']:
             m = self.metrics(f, q)
             if s['phase'] == 'running':
                 if m['equity'] <= CONFIG['loss_floor'] or ts >= s['option_expiry']-5*86400000:
                     s['phase'] = 'closing'
-                elif not s['funding_pending']:
+                elif gap:
+                    self.decision('gap_pause', 'Пропуск данных: сетка пропущена; история не доигрывается', ts)
+                elif s['funding_pending']:
+                    self.decision('funding_pause', 'Сетка ждёт сверки funding', ts)
+                else:
+                    before_fills = self.db.execute("select count(*) from events where kind='future_fill'").fetchone()[0]
                     self.grid(f, ts)
+                    after_fills = self.db.execute("select count(*) from events where kind='future_fill'").fetchone()[0]
+                    self.decision('grid_fills' if after_fills > before_fills else 'wait_levels',
+                                  'Виртуальных исполнений: '+str(after_fills-before_fills) if after_fills > before_fills
+                                  else 'Ждём заданный уровень и доступный объём bid/ask', ts)
             if s['phase'] == 'closing':
                 self.close(f, q, ts)
+                self.decision('closed' if s['phase'] == 'closed' else 'closing', s['reason'], ts)
+            elif s['phase'] == 'closed':
+                self.decision('closed', s['reason'], ts)
             m = self.metrics(f, q)
             s['metrics'] = m
             s['peak'] = max(s['peak'], m['equity'])
             s['drawdown'] = max(s['drawdown'], s['peak']-m['equity'])
-        if s['updated_at'] and ts-s['updated_at'] > 60000:
-            s['gap_count'] += 1
-            self.event(ts, 'data_gap', previous=s['updated_at'], seconds=(ts-s['updated_at'])/1000)
         s.update(updated_at=ts, last_error=None)
         self.db.execute('insert or replace into samples values(?,?)',
                         (ts, json.dumps(dict(future=f, option=q, metrics=s.get('metrics')))))
@@ -363,6 +400,7 @@ class Engine:
                 self.s = json.loads(before)
                 self.s['last_error'] = type(e).__name__+': '+str(e)
                 self.s['error_at'] = int(time.time()*1000)
+                self.decision('error_pause', 'Исполнения остановлены: '+self.s['last_error'], self.s.get('updated_at', 0))
                 self.save()
 
     def view(self):

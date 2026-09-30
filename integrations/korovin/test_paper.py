@@ -81,7 +81,7 @@ class Accounting(unittest.TestCase):
         with patch.object(self.e,'step',broken):
             self.e.tick()
         self.assertEqual(self.e.s['future_qty'],0)
-        self.assertEqual(self.e.db.execute('select count(*) from events').fetchone()[0],0)
+        self.assertEqual(self.e.db.execute("select count(*) from events where kind='future_fill'").fetchone()[0],0)
         self.assertIn('bad quote',self.e.s['last_error'])
 
     def test_no_private_endpoint(self):
@@ -128,6 +128,89 @@ class Accounting(unittest.TestCase):
         self.e=paper.Engine(self.path)
         self.assertFalse(self.e.s['parts'][0]['active'])
         self.assertEqual(self.e.s['parts'][0]['closed_at'],2000)
+
+
+    def agent_fixture(self, ts, previous):
+        self.e.s.update(phase='running', started_at=1000, updated_at=previous,
+                        option_qty=.24, option_entry=1000, option_symbol='test',
+                        option_expiry=ts+30*86400000, future_qty=-.12,
+                        future_avg=100000, base_hedge=.12, last_funding_poll=ts,
+                        parts=[dict(side=1,n=1,entry=99500,exit=100000,qty=.01,
+                                    active=False,cycles=0,gross=0)])
+        def fake(path, **kw):
+            return {'time':ts,'result':{'list':[quote(99000) if kw.get('category')=='linear' else quote(1000)]}}
+        return fake
+
+    def test_agent_gap_pauses_before_fill_and_resumes_next_snapshot(self):
+        ts=1000000
+        with patch.object(paper,'api',self.agent_fixture(ts,ts-70000)), patch.object(paper.time,'time',return_value=ts/1000):
+            self.e.tick()
+        self.assertEqual(self.e.s['agent']['decision'],'gap_pause')
+        self.assertFalse(self.e.s['parts'][0]['active'])
+        self.assertEqual(self.e.s['gap_count'],1)
+        def fresh(path, **kw):
+            return {'time':ts+10000,'result':{'list':[quote(99000) if kw.get('category')=='linear' else quote(1000)]}}
+        with patch.object(paper,'api',fresh), patch.object(paper.time,'time',return_value=(ts+10000)/1000):
+            self.e.tick()
+        self.assertTrue(self.e.s['parts'][0]['active'])
+        self.assertEqual(self.e.s['agent']['decision'],'grid_fills')
+        self.assertEqual(self.e.db.execute("select count(*) from events where kind='agent_version'").fetchone()[0],1)
+
+    def test_agent_stale_quote_no_fill_and_preserves_positions(self):
+        ts=1000000
+        with patch.object(paper,'api',self.agent_fixture(ts,ts-10000)), patch.object(paper.time,'time',return_value=(ts+31000)/1000):
+            self.e.tick()
+        self.assertEqual(self.e.s['agent']['decision'],'error_pause')
+        self.assertEqual(self.e.s['future_qty'],-.12)
+        self.assertFalse(self.e.s['parts'][0]['active'])
+        self.assertEqual(self.e.s['updated_at'],ts-10000)
+
+    def test_agent_gap_does_not_block_risk_close(self):
+        ts=1000000
+        fake=self.agent_fixture(ts,ts-70000)
+        self.e.s['option_expiry']=ts+86400000
+        with patch.object(paper,'api',fake), patch.object(paper.time,'time',return_value=ts/1000):
+            self.e.tick()
+        self.assertEqual(self.e.s['phase'],'closed')
+        self.assertEqual(self.e.s['agent']['decision'],'closed')
+        self.assertEqual(self.e.s['future_qty'],0)
+
+
+    def test_agent_nonincreasing_timestamp_preserves_ledger(self):
+        ts=1000000
+        for previous in (ts,ts+10000):
+            with self.subTest(previous=previous):
+                with patch.object(paper,'api',self.agent_fixture(ts,previous)), patch.object(paper.time,'time',return_value=ts/1000):
+                    self.e.tick()
+                self.assertEqual(self.e.s['agent']['decision'],'error_pause')
+                self.assertIn('non-increasing',self.e.s['last_error'])
+                self.assertEqual(self.e.s['future_qty'],-.12)
+                self.assertEqual(self.e.s['updated_at'],previous)
+                self.assertFalse(self.e.s['parts'][0]['active'])
+                self.assertEqual(self.e.db.execute("select count(*) from events where kind='future_fill'").fetchone()[0],0)
+
+    def test_agent_quote_expires_during_funding_rolls_back(self):
+        ts=1000000
+        fake=self.agent_fixture(ts,ts-10000)
+        self.e.s['last_funding_poll']=0
+        clock=[ts/1000]
+        def slow_funding(now):
+            self.e.s['funding']+=2.0
+            self.e.s['funding_done'].append(now)
+            self.e.event(now,'funding',cash=2.0)
+            clock[0]=(ts+31000)/1000
+        with patch.object(paper,'api',fake), patch.object(paper.time,'time',side_effect=lambda:clock[0]), patch.object(self.e,'funding',side_effect=slow_funding):
+            self.e.tick()
+        self.assertEqual(self.e.s['agent']['decision'],'error_pause')
+        self.assertIn('expired during data collection',self.e.s['last_error'])
+        self.assertEqual(self.e.s['future_qty'],-.12)
+        self.assertEqual(self.e.s['option_qty'],.24)
+        self.assertEqual(self.e.s['updated_at'],ts-10000)
+        self.assertEqual(self.e.s['funding'],0)
+        self.assertEqual(self.e.s['funding_done'],[])
+        self.assertEqual(self.e.s['last_funding_poll'],0)
+        self.assertFalse(self.e.s['parts'][0]['active'])
+        self.assertEqual(self.e.db.execute("select count(*) from events where kind in ('future_fill','funding')").fetchone()[0],0)
 
 
 if __name__=='__main__':

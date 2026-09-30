@@ -48,3 +48,16 @@ Margin shown as conservative research reserve (full perpetual notional + paid
 premium), NOT Bybit liquidation or portfolio-margin calculation. No leverage.
 Full account liquidation model and historical option backtest are NOT implemented.
 Any new rule version starts a separate ledger and must preserve this experiment.
+
+
+## Deterministic paper agent v002 (2026-09-30)
+Runs inside the existing Engine worker, not a second writer or LLM. Frozen CONFIG,
+RULE_HASH, positions and ledger are retained. agent_version events identify the
+execution-policy change separately. Each successful/error tick stores decision,
+reason, quote timestamp and heartbeat; dashboard shows them. Quotes must remain
+within 30 seconds of local time at decision (including after funding lookups).
+Non-increasing timestamps freeze execution. A >60 second sample gap skips the
+whole grid/assembly for one snapshot, then resumes on the next fresh snapshot.
+No missed fills are replayed; protective full close may still run on fresh quotes.
+Funding pending blocks grid as before. No new alpha, discretionary levels,
+unfreezing, volume growth, live orders or credentials are introduced.
