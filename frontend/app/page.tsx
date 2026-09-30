@@ -114,6 +114,12 @@ export default function Dashboard() {
           <p className="mt-2 text-sm text-slate-400">График, опционное прикрытие, открытые позиции, сделки и результат с комиссиями и funding.</p>
           <div className="mt-4 font-semibold text-sky-300">Открыть стратегию →</div>
         </Link>
+        <Link href="/strategies/fvg-dca" className="block rounded-2xl border border-cyan-900 bg-slate-900 p-5 transition-colors hover:border-cyan-400 focus-visible:outline-2 focus-visible:outline-cyan-400">
+          <div className="text-xs font-semibold uppercase tracking-wide text-cyan-300">OKX · виртуальная проверка</div>
+          <h2 className="mt-2 text-xl font-bold">FVG A · дневные и недельные</h2>
+          <p className="mt-2 text-sm text-slate-400">История касаний, два входа по $10, комиссии, funding и интерактивный график сделки.</p>
+          <div className="mt-4 font-semibold text-cyan-300">Открыть стратегию →</div>
+        </Link>
 
         {/* ───────────────────── FUTURES: BUBU (separate service, own API :8300) ───────────────────── */}
         {/* Own category, deliberately separate from the options bots above —
