@@ -138,7 +138,8 @@ export default function FvgDcaPanel(){
           {!chart&&!chartError&&<p className="text-slate-400 text-sm">Загрузка свечей OKX…</p>}
           {chart&&<>
             {!chart.origin_visible&&<p className="text-amber-300 text-xs">Свеча-источник A вне этого окна или не сохранена. Выберите 1D/1W для старого FVG; начало линии не подставляется к свече входа.</p>}
-            {(!chart.entry_visible||current.closed_at&&!chart.exit_visible||chart.clipped)&&
+            {((current.entered!=null&&!chart.entry_visible)||
+              (current.closed_at!=null&&!chart.candles.some(b=>b.time<=current.closed_at!-1&&current.closed_at!-1<b.time+({"1H":3600000,"4H":14400000,"1D":86400000,"1W":604800000}[interval])))||chart.clipped)&&
               <p className="text-amber-300 text-xs">Не все метки помещаются в окно {interval}. Выберите 4H, 1D или 1W; результаты сделки от масштаба не меняются.</p>}
             <FvgDcaChart key={`${current.id}:${interval}`} candles={chart.candles} position={current} interval={interval}/>
             <p className="text-xs text-slate-500">Свечи: OKX · обновлено {msk(chart.at)} МСК · <a className="text-cyan-300 hover:underline" href={`https://www.tradingview.com/chart/?symbol=${encodeURIComponent(`OKX:${current.asset}USDT.P`)}&interval=${interval}`} target="_blank" rel="noopener noreferrer">🔗 Открыть в TradingView</a></p>
