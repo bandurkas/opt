@@ -1,11 +1,11 @@
 "use client";
 import {useEffect,useRef,useState} from "react";
-import {createChart,CandlestickSeries,ColorType,CrosshairMode,LineStyle,createSeriesMarkers,
+import {createChart,BarSeries,LineSeries,ColorType,CrosshairMode,LineStyle,createSeriesMarkers,
   type IChartApi,type ISeriesApi,type IPriceLine,type SeriesMarker,type UTCTimestamp,type Time} from "lightweight-charts";
 
 export type FvgChartCandle={time:number;open:number;high:number;low:number;close:number;complete:boolean};
 export type FvgChartEvent={kind:string;at:number;price?:number;mark_price?:number};
-export type FvgChartPosition={side:"bullish"|"bearish";avg:number;level?:string;
+export type FvgChartPosition={side:"bullish"|"bearish";avg:number;level?:string;origin_ts?:number;
   fvg_low?:string;fvg_high?:string;entry_rule?:string;entry_low?:string;entry_high?:string;
   target_est?:number;liquidation_est?:number;
   status:string;events:FvgChartEvent[]};
@@ -18,7 +18,7 @@ export default function FvgDcaChart({candles,position,interval}:{candles:FvgChar
   position:FvgChartPosition;interval:"1H"|"4H"|"1D"|"1W"}){
   const host=useRef<HTMLDivElement>(null);
   const chart=useRef<IChartApi|null>(null);
-  const series=useRef<ISeriesApi<"Candlestick">|null>(null);
+  const series=useRef<ISeriesApi<"Bar">|null>(null);
   const lines=useRef<IPriceLine[]>([]);
   const fitted=useRef(false);
   const [hover,setHover]=useState("Наведите курсор на свечу: время, открытие, максимум, минимум, закрытие");
@@ -35,8 +35,7 @@ export default function FvgDcaChart({candles,position,interval}:{candles:FvgChar
       localization:{locale:"ru-RU",timeFormatter:(t:Time)=>typeof t==="number"?stamp(t*1000):String(t)},
       handleScroll:{mouseWheel:false,pressedMouseMove:true,horzTouchDrag:true,vertTouchDrag:false},
       handleScale:{mouseWheel:true,pinch:true,axisPressedMouseMove:true,axisDoubleClickReset:true}});
-    const s=c.addSeries(CandlestickSeries,{upColor:"#568d82",downColor:"#ac717e",
-      wickUpColor:"#568d82",wickDownColor:"#ac717e",borderVisible:false,
+    const s=c.addSeries(BarSeries,{upColor:"#568d82",downColor:"#ac717e",thinBars:false,
       priceFormat:{type:"price",precision:8,minMove:.00000001}});
     c.subscribeCrosshairMove(p=>{const v=p.seriesData.get(s);
       if(v&&"open" in v&&typeof p.time==="number")
@@ -53,8 +52,7 @@ export default function FvgDcaChart({candles,position,interval}:{candles:FvgChar
     for(const line of lines.current)s.removePriceLine(line);
     lines.current=[];
     for(const [label,raw,color] of [
-      ["A",position.level,"#f59e0b"],["FVG низ",position.fvg_low,"#8b5cf6"],
-      ["A + 1,5%",position.entry_rule==="A_UP_1_5"?position.entry_high:undefined,"#f59e0b"],
+      ["FVG низ",position.fvg_low,"#8b5cf6"],
       ["FVG верх",position.fvg_high,"#8b5cf6"],["Средняя",position.avg,"#22d3ee"],
       ["Цель",position.target_est,"#34d399"],["Ликв. оценка",position.liquidation_est,"#fb7185"]
     ] as const){
@@ -75,6 +73,20 @@ export default function FvgDcaChart({candles,position,interval}:{candles:FvgChar
         Math.floor(candleTimes[result]/1000) as UTCTimestamp;
     };
     const marks:SeriesMarker<UTCTimestamp>[]=[];
+    const a=Number(position.level),origin=position.origin_ts;
+    let aLine:ISeriesApi<"Line">|null=null;
+    if(origin!=null&&Number.isFinite(a)&&a>0){
+      const originTime=snap(origin,false);
+      const start=originTime??(origin<candleTimes[0]?Math.floor(candleTimes[0]/1000) as UTCTimestamp:null);
+      const end=Math.floor(candleTimes[candleTimes.length-1]/1000) as UTCTimestamp;
+      if(start!=null){
+        aLine=c.addSeries(LineSeries,{color:"#f59e0b",lineWidth:2,lineStyle:LineStyle.Dashed,
+          priceLineVisible:false,lastValueVisible:true,crosshairMarkerVisible:false,title:"A"});
+        aLine.setData(start===end?[{time:start,value:a}]:[{time:start,value:a},{time:end,value:a}]);
+      }
+      if(originTime!=null)marks.push({time:originTime,position:"atPriceMiddle",price:a,
+        shape:"circle",color:"#f59e0b",size:.8,text:"A · свеча-источник"});
+    }
     for(const e of position.events){
       if(!["entry","add","target","liquidation_estimate"].includes(e.kind))continue;
       const entry=e.kind==="entry"||e.kind==="add";
@@ -88,7 +100,7 @@ export default function FvgDcaChart({candles,position,interval}:{candles:FvgChar
         shape:"circle",color:entry?"#7eb9c5":"#d2b57a",size:.65});
     }
     const attached=createSeriesMarkers(s,marks.sort((a,b)=>a.time-b.time),{zOrder:"top"});
-    return()=>attached.detach();
+    return()=>{attached.detach();if(aLine&&chart.current===c)c.removeSeries(aLine);};
   },[candles,position,interval]);
   function zoom(factor:number){const t=chart.current?.timeScale(),r=t?.getVisibleLogicalRange();
     if(!t||!r)return;const mid=(r.from+r.to)/2,half=(r.to-r.from)*factor/2;
@@ -102,7 +114,7 @@ export default function FvgDcaChart({candles,position,interval}:{candles:FvgChar
     </div>
     <p className="text-xs font-mono px-3 py-2 text-slate-300 min-h-8">{hover}</p>
     <div ref={host} className="h-[480px] w-full" role="region" aria-label="Интерактивный график FVG и виртуальных входов"/>
-    <p className="p-2 text-[11px] text-slate-500">Свечи OKX. Пунктир: линия A, верх диапазона A + 1,5% для новых сигналов, границы FVG, средняя цена, текущие расчётные цель и ликвидация.
+    <p className="p-2 text-[11px] text-slate-500">Бары OKX. Жёлтая линия A — от тени первой свечи FVG вправо. Пунктир: границы FVG, средняя цена, текущие расчётные цель и ликвидация.
       Стрелки и точки: модельные входы и выход. Текущая свеча может быть незакрытой; она не меняет расчёт статистики задним числом.</p>
   </div>;
 }
