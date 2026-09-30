@@ -8,14 +8,15 @@ type Position = {id:string;asset:string;symbol:string;frame:"1D"|"1W";side:"bull
   status:string;sent_at:number;entered?:number;closed_at?:number;fills:number;avg:number;q:number;
   margin:number;fees:number;funding:number;net:number;last?:number;marked_at?:number;
   level?:string;origin_ts?:number;fvg_low?:string;fvg_high?:string;entry_rule?:string;entry_low?:string;entry_high?:string;
-  liquidation_est?:number;target_est?:number;target_net:number;ambiguous?:boolean;
+  liquidation_est?:number;target_est?:number;stop_est?:number;target_net:number;ambiguous?:boolean;exit_reason?:string;
   data_error?:string;events:Event[]};
 type Summary = {signals:number;closed:number;open:number;skipped:number;wins:number;losses:number;
   liquidations:number;closed_gross:number;closed_net:number;open_net:number;fees:number;funding:number;
   open_margin:number;open_notional:number;data_errors:number};
 type State = {entry_condition?:string;at:number;mode:string;source:string;leverage:number;margin_per_entry:number;
   total:Summary;daily:Summary;weekly:Summary;max_closed_drawdown:number;
-  worst_closed:number|null;positions:Position[];capital?:{initial:number;balance:number;reserved:number;available:number;open_paid_costs:number;estimated_equity:number}};
+  worst_closed:number|null;positions:Position[];capital?:{initial:number;balance:number;reserved:number;available:number;open_paid_costs:number;estimated_equity:number};
+  alternative?:State|null;alternative_error?:string;comparison?:{matched_entries:number;base_closed:number;base_closed_net:number;both_closed:number}};
 type ChartState={at:number;source:string;symbol:string;interval:"1H"|"4H"|"1D"|"1W";
   candles:FvgChartCandle[];entry_visible:boolean;exit_visible:boolean;origin_visible:boolean;clipped:boolean};
 
@@ -39,7 +40,10 @@ function SummaryCard({title,data}:{title:string;data:Summary}){
 }
 
 export default function FvgDcaPanel(){
-  const [state,setState]=useState<State|null>(null);
+  const [baseState,setState]=useState<State|null>(null);
+  const [scenario,setScenario]=useState<"base"|"alt">("base");
+  const alternative=scenario==="alt";
+  const state=alternative?baseState?.alternative??null:baseState;
   const [error,setError]=useState<string|null>(null);
   const [selected,setSelected]=useState("");
   const [interval,setIntervalValue]=useState<"1H"|"4H"|"1D"|"1W">("1H");
@@ -84,14 +88,27 @@ export default function FvgDcaPanel(){
       <span className="text-xs text-amber-200 border border-amber-900 rounded px-2 py-1 self-start">СИМУЛЯЦИЯ · без ордеров</span>
     </div>
     <div className="p-4 space-y-4">
-      <p className="text-sm text-slate-300">Первый вход: касание линии A, $10 маржи после Telegram по открытию следующей минуты. Ограничение диапазона убрано для новых сигналов; старые сделки не пересчитаны. При −$5 по первой части добавление ещё $10.
+      <div className="flex flex-wrap gap-2" role="group" aria-label="Сценарий FVG">
+        <button aria-pressed={!alternative} onClick={()=>{setScenario("base");setSelected("");}} className={`rounded px-3 py-2 text-sm ${!alternative?"bg-cyan-700 text-white":"bg-slate-800 text-slate-300"}`}>Основная · +$10 / +$20</button>
+        <button aria-pressed={alternative} onClick={()=>{setScenario("alt");setSelected("");}} className={`rounded px-3 py-2 text-sm ${alternative?"bg-violet-700 text-white":"bg-slate-800 text-slate-300"}`}>Альтернатива · +$5 / +$10</button>
+      </div>
+      {alternative?<div className="rounded border border-violet-800 p-3 space-y-2">
+        <h3 className="font-semibold text-violet-200">ALT-050 · тейк 50%, стоп 100% маржи</h3>
+        <p className="text-sm text-slate-300">Первый вход $10: тейк +$5 net. При −$5 добавление ещё $10; после докупки общая прибыль для закрытия +$10 net. Стоп −$10 / −$20 net; расчётная ликвидация проверяется раньше стопа и может наступить первой. Комиссии, funding и проскальзывание включены.</p>
+        <p className="text-xs text-amber-300">Ретроспективное «если бы» на тех же принятых первых входах. Докупка и выход независимы; основной счёт не меняется. Пропуски базы не превращаются в новые входы; исторический результат не подтверждает прибыльность.</p>
+        {baseState?.alternative_error&&<p role="alert" className="text-rose-300">{baseState.alternative_error}</p>}
+      </div>:<p className="text-sm text-slate-300">Первый вход: касание линии A, $10 маржи после Telegram по открытию следующей минуты. Ограничение диапазона убрано для новых сигналов; старые сделки не пересчитаны. При −$5 по первой части добавление ещё $10.
         Цель: +$10 net без добавления или +$20 net после него. Стопа нет; ликвидация расчётная.
-        Комиссия 0,05% и проскальзывание 0,02% на исполнение; funding по доступной истории OKX.</p>
+        Комиссия 0,05% и проскальзывание 0,02% на исполнение; funding по доступной истории OKX.</p>}
       <p className="text-xs text-amber-300">Ликвидация — оценка по mark price и публичному tier; она может отличаться от фактической на личном аккаунте.
         Открытые позиции и пропуски не включены в прибыль закрытых. Доходность не доказана.</p>
       {error&&<p role="alert" className="text-rose-300">{error}. Старые цифры не выдаю за текущие.</p>}
       {!state&&!error&&<p className="text-slate-400">Загрузка FVG…</p>}
       {state&&<>
+        {alternative&&state.comparison&&<div className="rounded border border-violet-900 p-3 text-sm text-slate-300">
+          Одинаковых первых входов: {state.comparison.matched_entries}. Основная: закрыто {state.comparison.base_closed}, net {usd(state.comparison.base_closed_net)}. Альтернатива: закрыто {state.total.closed}, net {usd(state.total.closed_net)}. Завершены в обоих сценариях: {state.comparison.both_closed}.
+          <p className="text-xs text-amber-300 mt-1">Раннее закрытие альтернативы не означает, что открытая основная сделка убыточна. Плавающий и закрытый PnL не сравниваются как окончательные исходы. Бюджет этого сценария отдельный, с основной не складывается.</p>
+        </div>}
         <p className="text-sm text-cyan-200">Условие новых входов: {state.entry_condition ?? "загрузка правила"}. Цена исполнения учитывает проскальзывание.</p>
         {state.capital&&<div className="rounded-lg border border-cyan-900 bg-cyan-950/20 p-3 space-y-1">
           <h3 className="font-semibold text-cyan-100">Виртуальный бюджет · было {amount(state.capital.initial)}</h3>
@@ -127,7 +144,7 @@ export default function FvgDcaPanel(){
             <p className="text-xs text-slate-500">Свечи: OKX · обновлено {msk(chart.at)} МСК · <a className="text-cyan-300 hover:underline" href={`https://www.tradingview.com/chart/?symbol=${encodeURIComponent(`OKX:${current.asset}USDT.P`)}&interval=${interval}`} target="_blank" rel="noopener noreferrer">🔗 Открыть в TradingView</a></p>
           </>}
           <div className="flex flex-wrap gap-3 text-xs text-slate-300">{current.events.map((e,i)=><span key={i} className="rounded bg-slate-800 px-2 py-1">
-            {e.kind==="entry"?"Вход 1":e.kind==="add"?"Вход 2":e.kind==="target"?"Тейк":e.kind==="liquidation_estimate"?"Расчётная ликвидация":e.kind} · {msk(e.at)} · {price(e.price??e.mark_price)}
+            {e.kind==="entry"?"Вход 1":e.kind==="add"?"Вход 2":e.kind==="target"?"Тейк":e.kind==="stop"?"Стоп":e.kind==="liquidation_estimate"?"Расчётная ликвидация":e.kind} · {msk(e.at)} · {price(e.price??e.mark_price)}
           </span>)}</div>
         </div>}
         {positions.length>0&&<div className="space-y-2">
@@ -147,12 +164,12 @@ export default function FvgDcaPanel(){
               <td className="p-2 whitespace-nowrap"><button onClick={()=>setSelected(p.id)} className="text-cyan-200 hover:underline font-semibold">{p.asset} · {p.frame}</button><br/>{direction}<br/>
                 <span className="text-slate-500">{p.entry_rule==="A_UP_1_5"?"Историческая версия":"Касание A"}</span><br/>
                 <a href={href} target="_blank" rel="noopener noreferrer" className="text-cyan-300 hover:underline">🔗 График</a></td>
-              <td className="p-2">{p.status==="liquidated"?"Ликвидация (оценка)":p.status==="closed"?"Цель":p.status==="open"?"Открыта":p.status==="pending"?"Ожидает входа":"Пропущена"}
+              <td className="p-2">{p.status==="liquidated"?"Ликвидация (оценка)":p.status==="closed"?(p.exit_reason==="stop"?"Стоп":"Цель"):p.status==="open"?"Открыта":p.status==="pending"?"Ожидает входа":"Пропущена"}
                 {p.data_error&&<div className="text-amber-300">Данные устарели</div>}
                 {p.status==="skipped"&&p.events.some(e=>e.reason?.startsWith("Price left"))&&<div className="text-slate-400">Цена вышла из диапазона до входа</div>}
                 {p.ambiguous&&<div className="text-amber-300">Неоднозначная минута</div>}</td>
               <td className="p-2 whitespace-nowrap">{details.length?details.map((e,i)=><div key={i}>{i+1}: {price(e.price)} · {msk(e.at)}</div>):"—"}</td>
-              <td className="p-2 whitespace-nowrap">{price(p.avg)}<br/>цель {price(p.target_est)}<br/>ликв. {price(p.liquidation_est)}</td>
+              <td className="p-2 whitespace-nowrap">{price(p.avg)}<br/>цель {price(p.target_est)}<br/>{alternative&&<>стоп {price(p.stop_est)}<br/></>}ликв. {price(p.liquidation_est)}</td>
               <td className={`p-2 font-mono ${p.net>=0?"text-emerald-300":"text-rose-300"}`}>{p.status==="skipped"?"—":usd(p.net)}<br/>
                 <span className="text-slate-500">ком. {amount(p.fees)} · фонд. {usd(p.funding)}</span></td>
               <td className="p-2 whitespace-nowrap">сигнал {msk(p.sent_at)}<br/>вход {msk(p.entered)}<br/>выход {msk(p.closed_at)}</td>

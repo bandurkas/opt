@@ -7,7 +7,7 @@ export type FvgChartCandle={time:number;open:number;high:number;low:number;close
 export type FvgChartEvent={kind:string;at:number;price?:number;mark_price?:number};
 export type FvgChartPosition={side:"bullish"|"bearish";avg:number;level?:string;origin_ts?:number;
   fvg_low?:string;fvg_high?:string;entry_rule?:string;entry_low?:string;entry_high?:string;
-  target_est?:number;liquidation_est?:number;
+  target_est?:number;liquidation_est?:number;stop_est?:number;
   status:string;events:FvgChartEvent[]};
 
 const fmt=(v:number)=>v.toLocaleString("ru-RU",{maximumSignificantDigits:8});
@@ -54,7 +54,7 @@ export default function FvgDcaChart({candles,position,interval}:{candles:FvgChar
     for(const [label,raw,color] of [
       ["FVG низ",position.fvg_low,"#8b5cf6"],
       ["FVG верх",position.fvg_high,"#8b5cf6"],["Средняя",position.avg,"#22d3ee"],
-      ["Цель",position.target_est,"#34d399"],["Ликв. оценка",position.liquidation_est,"#fb7185"]
+      ["Цель",position.target_est,"#34d399"],["Стоп −100%",position.stop_est,"#f97316"],["Ликв. оценка",position.liquidation_est,"#fb7185"]
     ] as const){
       const value=Number(raw);
       if(Number.isFinite(value)&&value>0)lines.current.push(s.createPriceLine({
@@ -88,14 +88,14 @@ export default function FvgDcaChart({candles,position,interval}:{candles:FvgChar
         shape:"circle",color:"#f59e0b",size:.8,text:"A · свеча-источник"});
     }
     for(const e of position.events){
-      if(!["entry","add","target","liquidation_estimate"].includes(e.kind))continue;
+      if(!["entry","add","target","stop","liquidation_estimate"].includes(e.kind))continue;
       const entry=e.kind==="entry"||e.kind==="add";
       const time=snap(e.at,e.kind!=="entry");if(time==null)continue;
       const up=entry?(position.side==="bullish"):(position.side==="bearish");
       const value=e.price??e.mark_price;
       marks.push({time,position:up?"belowBar":"aboveBar",shape:up?"arrowUp":"arrowDown",
         color:entry?"#22d3ee":e.kind==="target"?"#34d399":"#fb7185",
-        text:`${e.kind==="entry"?"ВХОД 1":e.kind==="add"?"ВХОД 2":e.kind==="target"?"ТЕЙК":"ЛИКВ."}${value?" "+fmt(value):""}`});
+        text:`${e.kind==="entry"?"ВХОД 1":e.kind==="add"?"ВХОД 2":e.kind==="target"?"ТЕЙК":e.kind==="stop"?"СТОП":"ЛИКВ."}${value?" "+fmt(value):""}`});
       if(value&&Number.isFinite(value))marks.push({time,position:"atPriceMiddle",price:value,
         shape:"circle",color:entry?"#7eb9c5":"#d2b57a",size:.65});
     }
