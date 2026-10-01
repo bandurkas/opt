@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import FvgDcaChart, {type FvgChartCandle} from "./FvgDcaChart";
-import {visiblePositions} from "./fvgDcaView";
+import {closedEconomics,closeReason,historyPositions,visiblePositions} from "./fvgDcaView";
 
 type Event = {kind:string;at:number;price?:number;mark_price?:number;qty?:number;fee?:number;net?:number;reason?:string};
 type Position = {id:string;asset:string;symbol:string;frame:"1D"|"1W";side:"bullish"|"bearish";
@@ -26,11 +26,17 @@ const price=(n:number|null|undefined)=>n==null?"—":n.toLocaleString("ru-RU",{m
 const msk=(n:number|null|undefined)=>n==null?"—":new Date(n).toLocaleString("ru-RU",{
   timeZone:"Europe/Moscow",day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
 
-function SummaryCard({title,data}:{title:string;data:Summary}){
+function SummaryCard({title,data,positions}:{title:string;data:Summary;positions:Position[]}){
+  const economics=closedEconomics(positions);
   return <div className="rounded-lg border border-slate-700 bg-slate-950/60 p-3 space-y-2">
     <h4 className="font-semibold text-slate-100">{title}</h4>
     <div className="text-sm text-slate-300">Сделки {data.signals-data.skipped} · закрыто {data.closed} · открыто {data.open}</div>
     <div className="text-sm text-slate-300">Плюс {data.wins} / минус {data.losses} · ликвидаций {data.liquidations}</div>
+    <div className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-sm">
+      <span className="text-emerald-300">Заработано: {amount(economics.earned)}</span>
+      <span className="text-rose-300">Потеряно: {amount(economics.lost)}</span>
+    </div>
+    {economics.missing>0&&<p className="text-xs text-amber-300">Не хватает net у {economics.missing} закрытых сделок; суммы неполные.</p>}
     <div className={`font-mono ${data.closed_net>=0?"text-emerald-300":"text-rose-300"}`}>Закрытые net: {usd(data.closed_net)}</div>
     <div className="text-xs text-slate-400">Закрытый gross {usd(data.closed_gross)} · открытые net {usd(data.open_net)}</div>
     <div className="text-xs text-slate-400">Комиссии {amount(data.fees)} · funding {usd(data.funding)} (по всем позициям)</div>
@@ -49,6 +55,7 @@ export default function FvgDcaPanel(){
   const [interval,setIntervalValue]=useState<"1H"|"4H"|"1D"|"1W">("1H");
   const [frameFilter,setFrameFilter]=useState("all");
   const [statusFilter,setStatusFilter]=useState("all");
+  const [historyOrder,setHistoryOrder]=useState("open_first");
   const [chart,setChart]=useState<ChartState|null>(null);
   const [chartError,setChartError]=useState<string|null>(null);
   useEffect(()=>{
@@ -79,8 +86,7 @@ export default function FvgDcaPanel(){
     void load();const timer=setInterval(load,60_000);
     return()=>{cancelled=true;controller.abort();clearInterval(timer);};
   },[current?.id,interval]);
-  const visible=positions.filter(p=>(frameFilter==="all"||p.frame===frameFilter)&&
-    (statusFilter==="all"||p.status===statusFilter));
+  const visible=historyPositions(positions,frameFilter,statusFilter,historyOrder);
   return <section id="fvg-dca" className="rounded-xl border border-slate-800 bg-slate-900/60 overflow-hidden">
     <div className="p-4 border-b border-slate-800 flex flex-wrap justify-between gap-3">
       <div><h2 className="font-bold text-cyan-200 text-lg">FVG A · дневные и недельные</h2>
@@ -115,9 +121,11 @@ export default function FvgDcaPanel(){
           <div className="text-sm text-slate-200">Баланс после закрытых сделок: {amount(state.capital.balance)} · занято маржи: {amount(state.capital.reserved)} · свободно: {amount(state.capital.available)}</div>
           <p className="text-xs text-slate-400">Свободно = баланс − занятая маржа − оплаченные расходы открытых позиций ({amount(state.capital.open_paid_costs)}). При закрытии средства возвращаются с net результатом. Плавающая прибыль не расходуется; нехватка средств блокирует новый вход или добавление.</p>
         </div>}
-        <div className="grid md:grid-cols-2 gap-3">
-          <SummaryCard title="Дневные FVG · 1D" data={state.daily}/>
-          <SummaryCard title="Недельные FVG · 1W" data={state.weekly}/>
+        <p className="text-xs text-slate-400">«Заработано» — сумма положительных net, «Потеряно» — сумма отрицательных net по закрытым сделкам, включая расчётные ликвидации. Расходы уже учтены. Итоги за всю историю выбранного сценария; фильтры таблицы их не меняют.</p>
+        <div className="grid lg:grid-cols-3 gap-3">
+          <SummaryCard title="Всего · 1D + 1W" data={state.total} positions={positions}/>
+          <SummaryCard title="Дневные FVG · 1D" data={state.daily} positions={positions.filter(p=>p.frame==="1D")}/>
+          <SummaryCard title="Недельные FVG · 1W" data={state.weekly} positions={positions.filter(p=>p.frame==="1W")}/>
         </div>
         <div className="rounded-lg border border-slate-700 bg-slate-950/60 p-3 text-sm text-slate-300">
           Вместе: закрытые <span className="font-mono">{usd(state.total.closed_net)}</span> ·
@@ -151,8 +159,10 @@ export default function FvgDcaPanel(){
         {positions.length>0&&<div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2"><h3 className="font-semibold text-slate-100 mr-auto">История сделок · {visible.length} из {positions.length}</h3>
             <select aria-label="Фильтр таймфрейма" className="bg-slate-800 rounded p-2 text-xs" value={frameFilter} onChange={e=>setFrameFilter(e.target.value)}><option value="all">1D + 1W</option><option value="1D">1D</option><option value="1W">1W</option></select>
-            <select aria-label="Фильтр статуса" className="bg-slate-800 rounded p-2 text-xs" value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}><option value="all">Все сделки</option><option value="open">Открытые</option><option value="closed">Тейк</option><option value="liquidated">Ликвидация</option></select>
+            <select aria-label="Фильтр статуса" className="bg-slate-800 rounded p-2 text-xs" value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}><option value="all">Все сделки</option><option value="open">Открытые</option><option value="pending">Ожидают входа</option><option value="target">Цель достигнута</option><option value="stop">Стоп</option><option value="liquidated">Ликвидация</option><option value="finished">Все завершённые</option></select>
+            <select aria-label="Порядок сделок" className="bg-slate-800 rounded p-2 text-xs" value={historyOrder} onChange={e=>setHistoryOrder(e.target.value)}><option value="open_first">Открытые сверху</option><option value="target_first">Цель достигнута сверху</option><option value="recent">Последние события сверху</option></select>
           </div>
+          {visible.length===0&&<p className="text-sm text-slate-400">По выбранным фильтрам сделок нет.</p>}
           <div className="max-h-[520px] overflow-auto">
           <table className="w-full text-xs text-left text-slate-300"><thead><tr className="border-b border-slate-700 text-slate-400">
             <th className="p-2">Актив / зона</th><th className="p-2">Статус</th><th className="p-2">Входы</th>
@@ -165,7 +175,7 @@ export default function FvgDcaPanel(){
               <td className="p-2 whitespace-nowrap"><button onClick={()=>setSelected(p.id)} className="text-cyan-200 hover:underline font-semibold">{p.asset} · {p.frame}</button><br/>{direction}<br/>
                 <span className="text-slate-500">{p.entry_rule==="A_UP_1_5"?"Историческая версия":"Касание A"}</span><br/>
                 <a href={href} target="_blank" rel="noopener noreferrer" className="text-cyan-300 hover:underline">🔗 График</a></td>
-              <td className="p-2">{p.status==="liquidated"?"Ликвидация (оценка)":p.status==="closed"?(p.exit_reason==="stop"?"Стоп":"Цель"):p.status==="open"?"Открыта":p.status==="pending"?"Ожидает входа":"Пропущена"}
+              <td className="p-2">{p.status==="liquidated"?"Ликвидация (оценка)":p.status==="closed"?(closeReason(p)==="stop"?"Стоп":closeReason(p)==="target"?"Цель":"Закрыта"):p.status==="open"?"Открыта":p.status==="pending"?"Ожидает входа":"Пропущена"}
                 {p.data_error&&<div className="text-amber-300">Данные устарели</div>}
                 {p.status==="skipped"&&p.events.some(e=>e.reason?.startsWith("Price left"))&&<div className="text-slate-400">Цена вышла из диапазона до входа</div>}
                 {p.ambiguous&&<div className="text-amber-300">Неоднозначная минута</div>}</td>
