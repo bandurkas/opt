@@ -18,6 +18,6 @@ export async function GET(request: Request) {
     const response=await fetch(target,{cache:"no-store",signal:AbortSignal.timeout(12000)});
     return Response.json(await response.json(),{status:response.status,headers:{"Cache-Control":"no-store"}});
   } catch {
-    return Response.json({error:"Часовая BOS-альтернатива недоступна"},{status:503});
+    return Response.json({error:"Часовая CHoCH-альтернатива недоступна"},{status:503});
   }
 }
