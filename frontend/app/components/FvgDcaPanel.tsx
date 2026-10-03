@@ -9,6 +9,7 @@ type Position = {id:string;version?:string;asset:string;symbol:string;frame:"1H"
   margin:number;fees:number;funding:number;net:number;last?:number;marked_at?:number;
   level?:string;origin_ts?:number;fvg_low?:string;fvg_high?:string;entry_rule?:string;entry_low?:string;entry_high?:string;
   bos_at?:number;bos_level?:string;swing_ts?:number;impulse_ts?:number;choch_at?:number;confirmed_at?:number;
+  a_received_at?:number;choch_level?:string;confirmation_received_at?:number;
   liquidation_est?:number;target_est?:number;stop_est?:number;target_net:number;ambiguous?:boolean;exit_reason?:string;
   data_error?:string;events:Event[]};
 type Summary = {signals:number;closed:number;open:number;skipped:number;wins:number;losses:number;
@@ -48,9 +49,10 @@ function SummaryCard({title,data,positions}:{title:string;data:Summary;positions
   </div>;
 }
 
-export default function FvgDcaPanel({hourly=false,bos:initialBos=false}:{hourly?:boolean;bos?:boolean}){
-  const [bos,setBos]=useState(initialBos);
-  const api=bos?"/api/fvg-hourly-bos":hourly?"/api/fvg-hourly":"/api/fvg-dca";
+export default function FvgDcaPanel({hourly=false,bos:initialBos=false,mtf:initialMtf=false}:{hourly?:boolean;bos?:boolean;mtf?:boolean}){
+  const [hourlyMode,setHourlyMode]=useState<"plain"|"choch"|"mtf">(initialMtf?"mtf":initialBos?"choch":"plain");
+  const bos=hourlyMode==="choch",mtf=hourlyMode==="mtf";
+  const api=mtf?"/api/fvg-mtf":bos?"/api/fvg-hourly-bos":hourly?"/api/fvg-hourly":"/api/fvg-dca";
   const [baseState,setState]=useState<State|null>(null);
   const [scenario,setScenario]=useState<"base"|"alt">("base");
   const alternative=hourly||scenario==="alt";
@@ -63,6 +65,10 @@ export default function FvgDcaPanel({hourly=false,bos:initialBos=false}:{hourly?
   const [historyOrder,setHistoryOrder]=useState("open_first");
   const [chart,setChart]=useState<ChartState|null>(null);
   const [chartError,setChartError]=useState<string|null>(null);
+  function changeHourly(next:typeof hourlyMode){
+    if(next===hourlyMode)return;
+    setHourlyMode(next);setState(null);setSelected("");setChart(null);setChartError(null);setError(null);
+  }
   useEffect(()=>{
     let cancelled=false;const controller=new AbortController();
     async function load(){try{
@@ -94,23 +100,25 @@ export default function FvgDcaPanel({hourly=false,bos:initialBos=false}:{hourly?
   const visible=historyPositions(positions,frameFilter,statusFilter,historyOrder);
   return <section id="fvg-dca" className="rounded-xl border border-slate-800 bg-slate-900/60 overflow-hidden">
     <div className="p-4 border-b border-slate-800 flex flex-wrap justify-between gap-3">
-      <div><h2 className="font-bold text-cyan-200 text-lg">{bos?"CHoCH → подтверждение → FVG → A · 1H":hourly?"FVG A · часовая альтернатива · 1H":"FVG A · дневные и недельные"}</h2>
+      <div><h2 className="font-bold text-cyan-200 text-lg">{mtf?"FVG 1H → A → CHoCH 5m":bos?"CHoCH → подтверждение → FVG → A · 1H":hourly?"FVG A · часовая альтернатива · 1H":"FVG A · дневные и недельные"}</h2>
         <p className="text-xs text-slate-400">Касание A · бюджет $1 000 · два входа по $10 · 10× · бары OKX</p></div>
       <span className="text-xs text-amber-200 border border-amber-900 rounded px-2 py-1 self-start">СИМУЛЯЦИЯ · без ордеров</span>
     </div>
     <div className="p-4 space-y-4">
       <div className="flex flex-wrap gap-2" role="group" aria-label="Сценарий FVG">
-        {hourly&&<><button aria-pressed={!bos} onClick={()=>{if(bos){setBos(false);setState(null);setSelected("");setChart(null);setError(null);}}} className={`rounded px-3 py-2 text-sm ${!bos?"bg-cyan-700 text-white":"bg-slate-800 text-slate-300"}`}>Часовая · без BOS</button>
-        <button aria-pressed={bos} onClick={()=>{if(!bos){setBos(true);setState(null);setSelected("");setChart(null);setError(null);}}} className={`rounded px-3 py-2 text-sm ${bos?"bg-violet-700 text-white":"bg-slate-800 text-slate-300"}`}>Альтернатива · CHoCH + FVG</button></>}
+        {hourly&&<><button aria-pressed={hourlyMode==="plain"} onClick={()=>changeHourly("plain")} className={`rounded px-3 py-2 text-sm ${hourlyMode==="plain"?"bg-cyan-700 text-white":"bg-slate-800 text-slate-300"}`}>Часовая · без BOS</button>
+        <button aria-pressed={bos} onClick={()=>changeHourly("choch")} className={`rounded px-3 py-2 text-sm ${bos?"bg-violet-700 text-white":"bg-slate-800 text-slate-300"}`}>Альтернатива · CHoCH + FVG</button>
+        <button aria-pressed={mtf} onClick={()=>changeHourly("mtf")} className={`rounded px-3 py-2 text-sm ${mtf?"bg-emerald-700 text-white":"bg-slate-800 text-slate-300"}`}>FVG 1H + CHoCH 5m · 60 монет</button></>}
         {!hourly&&<><button aria-pressed={!alternative} onClick={()=>{setScenario("base");setSelected("");}} className={`rounded px-3 py-2 text-sm ${!alternative?"bg-cyan-700 text-white":"bg-slate-800 text-slate-300"}`}>Основная · +$10 / +$20</button>
         <button aria-pressed={alternative} onClick={()=>{setScenario("alt");setSelected("");}} className={`rounded px-3 py-2 text-sm ${alternative?"bg-violet-700 text-white":"bg-slate-800 text-slate-300"}`}>Альтернатива · +$5 / +$10</button></>}
         <a href={hourly?"/strategies/fvg-dca":"/strategies/fvg-hourly"} className="rounded px-3 py-2 text-sm bg-slate-800 text-cyan-200">{hourly?"← Дневные / недельные":"Часовая альтернатива · 1H →"}</a>
         {!hourly&&<a href="/strategies/fvg-hourly-bos" className="rounded px-3 py-2 text-sm bg-slate-800 text-violet-200">CHoCH + FVG · 1H →</a>}
+        {!hourly&&<a href="/strategies/fvg-mtf" className="rounded px-3 py-2 text-sm bg-slate-800 text-emerald-200">FVG 1H + CHoCH 5m →</a>}
       </div>
       {alternative?<div className="rounded border border-violet-800 p-3 space-y-2">
-        <h3 className="font-semibold text-violet-200">{bos?"H1-CHOCH-ALT050 · прежний счёт $1000, новая версия":hourly?"H1-ALT050 · отдельный forward-счёт":"ALT-050 · тейк 50%, стоп 100% маржи"}</h3>
+        <h3 className="font-semibold text-violet-200">{mtf?"H1-A-CHOCH5M-ALT050 · отдельный forward-счёт $1000":bos?"H1-CHOCH-ALT050 · прежний счёт $1000, новая версия":hourly?"H1-ALT050 · отдельный forward-счёт":"ALT-050 · тейк 50%, стоп 100% маржи"}</h3>
         <p className="text-sm text-slate-300">Первый вход $10: тейк +$5 net. При −$5 добавление ещё $10; после докупки общая прибыль для закрытия +$10 net. Стоп −$10 / −$20 net; расчётная ликвидация проверяется раньше стопа и может наступить первой. Комиссии, funding и проскальзывание включены.</p>
-        <p className="text-xs text-amber-300">{bos?"CHoCH против подтверждённого тренда: два последних свинга high и low понижаются для LONG или повышаются для SHORT; свинги 2+2 известны до пробоя. Первое закрытие 1H за уровнем и следующее закрытие строго за ним. Тень, равенство или возврат вторым закрытием — не входить. Последний FVG импульса фиксируется на CHoCH; касание A до подтверждения — пропуск. Затем только новый откат к A после записи ожидания. Ранее возникшие CHoCH — baseline. Старые BOS-сделки и общий бюджет сохранены, их статистика отдельная; объёмного фильтра и правила 20% нет. Фильтр не исключает все будущие ложные пробои.":hourly?"Часовые FVG из трёх закрытых свечей. Только новые возвраты к A после запуска; прежние касания — baseline, без выдуманных исторических входов. Исполнение по следующему 1m open после обнаружения, без новой рассылки Telegram. Собственные $1000 и история; QNT equity исключена, объёмный фильтр не добавлен.":"Ретроспективное «если бы» на тех же принятых первых входах. Докупка и выход независимы; основной счёт не меняется. Пропуски базы не превращаются в новые входы; исторический результат не подтверждает прибыльность."}</p>
+        <p className="text-xs text-amber-300">{mtf?"60 криптомонет: прежние 59 + SAND, список заморожен. После нового касания A часового FVG ждём до 60 минут: CHoCH 5m против тренда по двум известным high и low (свинги 2+2), первое закрытие за уровнем и следующее строго за ним. Тень, равенство или возврат вторым закрытием отменяют этот сигнал. Пробой должен начаться после обнаружения A. Вход по следующему 1m open после получения подтверждения, не по A. Проверка раз в 15 минут, поэтому есть задержка. Telegram — только результат закрытия в отдельной рассылке. Объёмного фильтра и правила 20% нет; исторический пилот не доказал преимущество.":bos?"CHoCH против подтверждённого тренда: два последних свинга high и low понижаются для LONG или повышаются для SHORT; свинги 2+2 известны до пробоя. Первое закрытие 1H за уровнем и следующее закрытие строго за ним. Тень, равенство или возврат вторым закрытием — не входить. Последний FVG импульса фиксируется на CHoCH; касание A до подтверждения — пропуск. Затем только новый откат к A после записи ожидания. Ранее возникшие CHoCH — baseline. Старые BOS-сделки и общий бюджет сохранены, их статистика отдельная; объёмного фильтра и правила 20% нет. Фильтр не исключает все будущие ложные пробои.":hourly?"Часовые FVG из трёх закрытых свечей. Только новые возвраты к A после запуска; прежние касания — baseline, без выдуманных исторических входов. Исполнение по следующему 1m open после обнаружения, без новой рассылки Telegram. Собственные $1000 и история; QNT equity исключена, объёмный фильтр не добавлен.":"Ретроспективное «если бы» на тех же принятых первых входах. Докупка и выход независимы; основной счёт не меняется. Пропуски базы не превращаются в новые входы; исторический результат не подтверждает прибыльность."}</p>
         {baseState?.alternative_error&&<p role="alert" className="text-rose-300">{baseState.alternative_error}</p>}
       </div>:<p className="text-sm text-slate-300">Первый вход: касание линии A, $10 маржи после Telegram по открытию следующей минуты. Ограничение диапазона убрано для новых сигналов; старые сделки не пересчитаны. При −$5 по первой части добавление ещё $10.
         Цель: +$10 net без добавления или +$20 net после него. Стопа нет; ликвидация расчётная.
@@ -121,9 +129,10 @@ export default function FvgDcaPanel({hourly=false,bos:initialBos=false}:{hourly?
       {!state&&!error&&<p className="text-slate-400">Загрузка FVG…</p>}
       {state&&<>
         {hourly&&<div className="rounded border border-violet-900 p-3 text-sm text-slate-300">
-          Запущено {msk(state.activated_at)} МСК. Последний сбор {msk(state.last_scan?.at)} МСК; проверено {state.last_scan?.checked??0}/{state.last_scan?.universe??59}. Проверка каждые 15 минут.
+          Запущено {msk(state.activated_at)} МСК. Последний сбор {msk(state.last_scan?.at)} МСК; проверено {state.last_scan?.checked??0}/{state.last_scan?.universe??(mtf?60:59)}. Проверка каждые 15 минут.
           <p className="text-xs text-slate-400">Baseline зон {state.zones?.baseline??0} · ожидают касания {state.zones?.watch??0}. Больше сигналов на 1H не означает больше прибыли.</p>
           {bos&&<p className="text-xs text-slate-400">Ждут второго закрытия: {state.zones?.confirmation??0} · отклонены: {state.zones?.rejected??0} · отменены новым CHoCH: {state.zones?.superseded??0} · разрыв истории: {state.zones?.gapped??0}. Это не закрытые убытки.</p>}
+          {mtf&&<p className="text-xs text-slate-400">После A ждут CHoCH 5m: {state.zones?.await_choch??0} · отклонены: {state.zones?.rejected??0} · истекли: {state.zones?.expired??0}. Ожидания и отказы — не закрытые убытки.</p>}
           {(!state.last_scan||state.at-state.last_scan.at>20*60_000)&&<p role="alert" className="text-amber-300">Сбор часовых данных ещё не завершён или устарел; не считайте эти цифры свежими.</p>}
           {state.last_scan&&Object.keys(state.last_scan.errors).length>0&&<p role="alert" className="text-amber-300">Ошибки сбора: {Object.entries(state.last_scan.errors).map(([s,e])=>`${s}: ${e}`).join("; ")}</p>}
           {(state.last_scan?.excluded.length??0)>0&&<p className="text-amber-300">Недоступны как криптоконтракты: {state.last_scan?.excluded.join(", ")}</p>}
@@ -142,7 +151,7 @@ export default function FvgDcaPanel({hourly=false,bos:initialBos=false}:{hourly?
         {bos&&state.cohorts?<div className="grid lg:grid-cols-2 gap-3">
           <SummaryCard title="Новая версия · CHoCH + FVG" data={state.cohorts["FVG-H1-CHOCH-ALT050-v1"]} positions={positions.filter(p=>p.version==="FVG-H1-CHOCH-ALT050-v1")}/>
           <SummaryCard title="Историческая версия · BOS + FVG" data={state.cohorts["FVG-H1-BOS-ALT050-v1"]} positions={positions.filter(p=>p.version==="FVG-H1-BOS-ALT050-v1")}/>
-        </div>:hourly?<SummaryCard title="Часовые FVG · 1H" data={state.total} positions={positions}/>:<div className="grid lg:grid-cols-3 gap-3">
+        </div>:hourly?<SummaryCard title={mtf?"FVG 1H + CHoCH 5m":"Часовые FVG · 1H"} data={state.total} positions={positions}/>:<div className="grid lg:grid-cols-3 gap-3">
           <SummaryCard title="Всего · 1D + 1W" data={state.total} positions={positions}/>
           <SummaryCard title="Дневные FVG · 1D" data={state.daily} positions={positions.filter(p=>p.frame==="1D")}/>
           <SummaryCard title="Недельные FVG · 1W" data={state.weekly} positions={positions.filter(p=>p.frame==="1W")}/>
@@ -163,6 +172,7 @@ export default function FvgDcaPanel({hourly=false,bos:initialBos=false}:{hourly?
           </div>
           <p className="text-xs text-amber-200">Линия A: {price(Number(current.level))} · свеча-источник {msk(current.origin_ts)} МСК. {current.entry_rule==="A_UP_1_5"?"Историческая версия: её исходные правила сохранены.":"Сигнал по касанию A; цена исполнения может отличаться от A."}</p>
           {current.bos_at!=null&&<p className="text-xs text-violet-200">{current.choch_at!=null?"CHoCH":"Исторический BOS"} {msk(current.bos_at)} МСК · пробитый уровень {price(Number(current.bos_level))} · свинг {msk(current.swing_ts)} · начало импульса {msk(current.impulse_ts)}.{current.confirmed_at!=null&&<> Второе закрытие {msk(current.confirmed_at)} МСК.</>} Исполнение — следующий 1m open с проскальзыванием.</p>}
+          {mtf&&current.a_received_at!=null&&<p className="text-xs text-emerald-200">A обнаружено {msk(current.a_received_at)} МСК · CHoCH 5m {msk(current.choch_at)} · уровень {price(Number(current.choch_level))} · второе закрытие {msk(current.confirmed_at)} · получено {msk(current.confirmation_received_at)}. Исполнение — следующий 1m open с проскальзыванием.</p>}
           {chartError&&<p role="alert" className="text-rose-300 text-sm">{chartError}</p>}
           {!chart&&!chartError&&<p className="text-slate-400 text-sm">Загрузка свечей OKX…</p>}
           {chart&&<>
