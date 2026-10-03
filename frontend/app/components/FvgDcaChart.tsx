@@ -8,6 +8,7 @@ export type FvgChartEvent={kind:string;at:number;price?:number;mark_price?:numbe
 export type FvgChartPosition={side:"bullish"|"bearish";avg:number;level?:string;origin_ts?:number;
   fvg_low?:string;fvg_high?:string;entry_rule?:string;entry_low?:string;entry_high?:string;
   target_est?:number;liquidation_est?:number;stop_est?:number;
+  choch_at?:number;choch_level?:string;confirmed_at?:number;a_received_at?:number;
   status:string;events:FvgChartEvent[]};
 
 const fmt=(v:number)=>v.toLocaleString("ru-RU",{maximumSignificantDigits:8});
@@ -15,7 +16,7 @@ const stamp=(ms:number)=>new Date(ms).toLocaleString("ru-RU",{
   timeZone:"Europe/Moscow",day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
 
 export default function FvgDcaChart({candles,position,interval}:{candles:FvgChartCandle[];
-  position:FvgChartPosition;interval:"1H"|"4H"|"1D"|"1W"}){
+  position:FvgChartPosition;interval:"5m"|"1H"|"4H"|"1D"|"1W"}){
   const host=useRef<HTMLDivElement>(null);
   const chart=useRef<IChartApi|null>(null);
   const series=useRef<ISeriesApi<"Bar">|null>(null);
@@ -31,6 +32,7 @@ export default function FvgDcaChart({candles,position,interval}:{candles:FvgChar
       rightPriceScale:{borderColor:"#334155",scaleMargins:{top:.12,bottom:.12}},
       timeScale:{timeVisible:true,secondsVisible:false,borderColor:"#334155",barSpacing:11,
         minBarSpacing:3,rightOffset:5,tickMarkFormatter:(t:Time)=>typeof t==="number"?
+          interval==="5m"?new Date(t*1000).toLocaleTimeString("ru-RU",{timeZone:"Europe/Moscow",hour:"2-digit",minute:"2-digit"}):
           new Date(t*1000).toLocaleDateString("ru-RU",{timeZone:"Europe/Moscow",day:"2-digit",month:"2-digit"}):""},
       localization:{locale:"ru-RU",timeFormatter:(t:Time)=>typeof t==="number"?stamp(t*1000):String(t)},
       handleScroll:{mouseWheel:false,pressedMouseMove:true,horzTouchDrag:true,vertTouchDrag:false},
@@ -54,6 +56,7 @@ export default function FvgDcaChart({candles,position,interval}:{candles:FvgChar
     for(const [label,raw,color] of [
       ["FVG низ",position.fvg_low,"#8b5cf6"],
       ["FVG верх",position.fvg_high,"#8b5cf6"],["Средняя",position.avg,"#22d3ee"],
+      ["CHoCH 5m",interval==="5m"&&position.a_received_at!=null?position.choch_level:undefined,"#e879f9"],
       ["Цель",position.target_est,"#34d399"],["Стоп −100%",position.stop_est,"#f97316"],["Ликв. оценка",position.liquidation_est,"#fb7185"]
     ] as const){
       const value=Number(raw);
@@ -63,7 +66,7 @@ export default function FvgDcaChart({candles,position,interval}:{candles:FvgChar
     if(!fitted.current){c.timeScale().fitContent();fitted.current=true;}
     else if(prior)c.timeScale().setVisibleLogicalRange(prior);
     const candleTimes=candles.map(b=>b.time);
-    const step={"1H":3600000,"4H":14400000,"1D":86400000,"1W":604800000}[interval];
+    const step={"5m":300000,"1H":3600000,"4H":14400000,"1D":86400000,"1W":604800000}[interval];
     const snap=(at:number,isExit:boolean)=>{
       const target=at-(isExit?1:0);
       let left=0,right=candleTimes.length-1,result=-1;
@@ -86,6 +89,13 @@ export default function FvgDcaChart({candles,position,interval}:{candles:FvgChar
       }
       if(originTime!=null)marks.push({time:originTime,position:"atPriceMiddle",price:a,
         shape:"circle",color:"#f59e0b",size:.8,text:"A · свеча-источник"});
+    }
+    if(interval==="5m"&&position.a_received_at!=null){
+      for(const [at,label] of [[position.choch_at,"CHoCH · 1-е закрытие"],[position.confirmed_at,"2-е закрытие · подтверждение"]] as const){
+        if(at==null)continue;
+        const time=snap(at,true);if(time==null)continue;
+        marks.push({time,position:"aboveBar",shape:"circle",color:"#e879f9",text:label});
+      }
     }
     for(const e of position.events){
       if(!["entry","add","target","stop","liquidation_estimate"].includes(e.kind))continue;

@@ -12,7 +12,7 @@ export async function GET(request: Request) {
     const target=new URL(kind==="chart"?"/chart":"/state","http://172.18.0.1:8112");
     if (kind==="chart") {
       const position=query.get("position")||"",interval=query.get("interval")||"1H";
-      if (!position||!["1H","4H","1D","1W"].includes(interval)) return Response.json({error:"Invalid chart request"},{status:400});
+      if (!position||!["5m","1H","4H","1D","1W"].includes(interval)) return Response.json({error:"Invalid chart request"},{status:400});
       target.searchParams.set("position",position);target.searchParams.set("interval",interval);
     }
     const response=await fetch(target,{cache:"no-store",signal:AbortSignal.timeout(12000)});

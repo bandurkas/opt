@@ -21,7 +21,7 @@ type State = {entry_condition?:string;at:number;mode:string;source:string;levera
   activated_at?:number;last_scan?:{at:number;checked:number;universe:number;excluded:string[];errors:Record<string,string>}|null;
   zones?:Record<string,number>;cohorts?:Record<string,Summary>;
   alternative?:State|null;alternative_error?:string;comparison?:{matched_entries:number;base_closed:number;base_closed_net:number;both_closed:number}};
-type ChartState={at:number;source:string;symbol:string;interval:"1H"|"4H"|"1D"|"1W";
+type ChartState={at:number;source:string;symbol:string;interval:"5m"|"1H"|"4H"|"1D"|"1W";
   candles:FvgChartCandle[];entry_visible:boolean;exit_visible:boolean;origin_visible:boolean;clipped:boolean};
 
 const usd=(n:number|null|undefined)=>n==null?"—":`${n<0?"−":"+"}$${Math.abs(n).toFixed(2)}`;
@@ -59,7 +59,7 @@ export default function FvgDcaPanel({hourly=false,bos:initialBos=false,mtf:initi
   const state=!hourly&&alternative?baseState?.alternative??null:baseState;
   const [error,setError]=useState<string|null>(null);
   const [selected,setSelected]=useState("");
-  const [interval,setIntervalValue]=useState<"1H"|"4H"|"1D"|"1W">("1H");
+  const [interval,setIntervalValue]=useState<"5m"|"1H"|"4H"|"1D"|"1W">("1H");
   const [frameFilter,setFrameFilter]=useState("all");
   const [statusFilter,setStatusFilter]=useState("all");
   const [historyOrder,setHistoryOrder]=useState("open_first");
@@ -167,8 +167,8 @@ export default function FvgDcaPanel({hourly=false,bos:initialBos=false,mtf:initi
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div><h3 className="font-semibold text-slate-100">График · {current.asset} · {current.frame} · {current.side==="bullish"?"🟢 ЛОНГ":"🔴 ШОРТ"}</h3>
               <p className="text-xs text-slate-400">Сигнал {msk(current.sent_at)} МСК · входы {current.fills} · {current.status}</p></div>
-            <div className="flex gap-1">{(["1H","4H","1D","1W"] as const).map(x=><button key={x}
-              onClick={()=>setIntervalValue(x)} className={`rounded px-3 py-2 text-xs ${interval===x?"bg-cyan-800 text-white":"bg-slate-800 text-slate-300"}`}>{x}</button>)}</div>
+            <div className="flex flex-wrap gap-1" aria-label="Таймфрейм графика">{(["5m","1H","4H","1D","1W"] as const).map(x=><button key={x}
+              aria-pressed={interval===x} onClick={()=>setIntervalValue(x)} className={`rounded px-3 py-2 text-xs ${interval===x?"bg-cyan-800 text-white":"bg-slate-800 text-slate-300"}`}>{x}</button>)}</div>
           </div>
           <p className="text-xs text-amber-200">Линия A: {price(Number(current.level))} · свеча-источник {msk(current.origin_ts)} МСК. {current.entry_rule==="A_UP_1_5"?"Историческая версия: её исходные правила сохранены.":"Сигнал по касанию A; цена исполнения может отличаться от A."}</p>
           {current.bos_at!=null&&<p className="text-xs text-violet-200">{current.choch_at!=null?"CHoCH":"Исторический BOS"} {msk(current.bos_at)} МСК · пробитый уровень {price(Number(current.bos_level))} · свинг {msk(current.swing_ts)} · начало импульса {msk(current.impulse_ts)}.{current.confirmed_at!=null&&<> Второе закрытие {msk(current.confirmed_at)} МСК.</>} Исполнение — следующий 1m open с проскальзыванием.</p>}
@@ -178,10 +178,10 @@ export default function FvgDcaPanel({hourly=false,bos:initialBos=false,mtf:initi
           {chart&&<>
             {!chart.origin_visible&&<p className="text-amber-300 text-xs">Свеча-источник A вне этого окна или не сохранена. Выберите 1D/1W для старого FVG; начало линии не подставляется к свече входа.</p>}
             {((current.entered!=null&&!chart.entry_visible)||
-              (current.closed_at!=null&&!chart.candles.some(b=>b.time<=current.closed_at!-1&&current.closed_at!-1<b.time+({"1H":3600000,"4H":14400000,"1D":86400000,"1W":604800000}[interval])))||chart.clipped)&&
+              (current.closed_at!=null&&!chart.candles.some(b=>b.time<=current.closed_at!-1&&current.closed_at!-1<b.time+({"5m":300000,"1H":3600000,"4H":14400000,"1D":86400000,"1W":604800000}[interval])))||chart.clipped)&&
               <p className="text-amber-300 text-xs">Не все метки помещаются в окно {interval}. Выберите 4H, 1D или 1W; результаты сделки от масштаба не меняются.</p>}
             <FvgDcaChart key={`${current.id}:${interval}`} candles={chart.candles} position={current} interval={interval}/>
-            <p className="text-xs text-slate-500">Свечи: OKX · обновлено {msk(chart.at)} МСК · <a className="text-cyan-300 hover:underline" href={`https://www.tradingview.com/chart/?symbol=${encodeURIComponent(`OKX:${current.asset}USDT.P`)}&interval=${interval==="1H"?"60":interval==="4H"?"240":interval}`} target="_blank" rel="noopener noreferrer">🔗 Открыть в TradingView</a></p>
+            <p className="text-xs text-slate-500">Свечи: OKX · обновлено {msk(chart.at)} МСК · <a className="text-cyan-300 hover:underline" href={`https://www.tradingview.com/chart/?symbol=${encodeURIComponent(`OKX:${current.asset}USDT.P`)}&interval=${interval==="5m"?"5":interval==="1H"?"60":interval==="4H"?"240":interval}`} target="_blank" rel="noopener noreferrer">🔗 Открыть в TradingView</a></p>
           </>}
           <div className="flex flex-wrap gap-3 text-xs text-slate-300">{current.events.map((e,i)=><span key={i} className="rounded bg-slate-800 px-2 py-1">
             {e.kind==="entry"?"Вход 1":e.kind==="add"?"Вход 2":e.kind==="target"?"Тейк":e.kind==="stop"?"Стоп":e.kind==="liquidation_estimate"?"Расчётная ликвидация":e.kind} · {msk(e.at)} · {price(e.price??e.mark_price)}
