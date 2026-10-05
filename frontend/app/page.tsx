@@ -100,7 +100,7 @@ export default function Dashboard() {
         <div className="max-w-5xl mx-auto flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold">Options Fleet</h1>
-            <p className="text-xs text-slate-500">BUBU · Коровин BTC — simulation</p>
+            <p className="text-xs text-slate-500">BUBU · FVG — simulation</p>
           </div>
         </div>
       </header>
@@ -108,16 +108,10 @@ export default function Dashboard() {
       <div className="max-w-5xl mx-auto p-4 space-y-4">
         {bubuState && <BubuSummaryRail state={bubuState} recentCycles={bubuRecentCycles} />}
         <MissionControl />
-        <Link href="/strategies/korovin" className="block rounded-2xl border border-sky-800 bg-slate-900 p-5 transition-colors hover:border-sky-400 focus-visible:outline-2 focus-visible:outline-sky-400">
-          <div className="text-xs font-semibold uppercase tracking-wide text-sky-300">BTC · Виртуальная торговля</div>
-          <h2 className="mt-2 text-xl font-bold">Прикрытый интрадей</h2>
-          <p className="mt-2 text-sm text-slate-400">График, опционное прикрытие, открытые позиции, сделки и результат с комиссиями и funding.</p>
-          <div className="mt-4 font-semibold text-sky-300">Открыть стратегию →</div>
-        </Link>
-        <Link href="/strategies/fvg-dca" className="block rounded-2xl border border-cyan-900 bg-slate-900 p-5 transition-colors hover:border-cyan-400 focus-visible:outline-2 focus-visible:outline-cyan-400">
+        <Link href="/strategies/fvg-hourly" className="block rounded-2xl border border-cyan-900 bg-slate-900 p-5 transition-colors hover:border-cyan-400 focus-visible:outline-2 focus-visible:outline-cyan-400">
           <div className="text-xs font-semibold uppercase tracking-wide text-cyan-300">OKX · виртуальная проверка</div>
-          <h2 className="mt-2 text-xl font-bold">FVG A · дневные и недельные</h2>
-          <p className="mt-2 text-sm text-slate-400">История касаний, два входа по $10, комиссии, funding и интерактивный график сделки.</p>
+          <h2 className="mt-2 text-xl font-bold">FVG A · часовые стратегии</h2>
+          <p className="mt-2 text-sm text-slate-400">Часовая FVG, подтверждение CHoCH 5m и отдельный эксперимент: $10, стоп за свечой A, тейк 1:2.</p>
           <div className="mt-4 font-semibold text-cyan-300">Открыть стратегию →</div>
         </Link>
 

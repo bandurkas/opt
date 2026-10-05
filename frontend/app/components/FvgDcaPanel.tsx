@@ -49,12 +49,12 @@ function SummaryCard({title,data,positions}:{title:string;data:Summary;positions
   </div>;
 }
 
-export default function FvgDcaPanel({hourly=false,bos:initialBos=false,mtf:initialMtf=false}:{hourly?:boolean;bos?:boolean;mtf?:boolean}){
-  const [hourlyMode,setHourlyMode]=useState<"plain"|"choch"|"mtf">(initialMtf?"mtf":initialBos?"choch":"plain");
-  const bos=hourlyMode==="choch",mtf=hourlyMode==="mtf";
-  const api=mtf?"/api/fvg-mtf":bos?"/api/fvg-hourly-bos":hourly?"/api/fvg-hourly":"/api/fvg-dca";
+export default function FvgDcaPanel({hourly=false,bos:initialBos=false,mtf:initialMtf=false,rr:initialRr=false}:{hourly?:boolean;bos?:boolean;mtf?:boolean;rr?:boolean}){
+  const [hourlyMode,setHourlyMode]=useState<"plain"|"choch"|"mtf"|"rr">(initialRr?"rr":initialMtf?"mtf":initialBos?"choch":"plain");
+  const bos=hourlyMode==="choch",mtf=hourlyMode==="mtf",rr=hourlyMode==="rr";
+  const api=rr?"/api/fvg-hourly-rr":mtf?"/api/fvg-mtf":bos?"/api/fvg-hourly-bos":hourly?"/api/fvg-hourly":"/api/fvg-dca";
   const [baseState,setState]=useState<State|null>(null);
-  const [scenario,setScenario]=useState<"base"|"alt">("base");
+  const [scenario,setScenario]=useState<"base"|"alt">("alt");
   const alternative=hourly||scenario==="alt";
   const state=!hourly&&alternative?baseState?.alternative??null:baseState;
   const [error,setError]=useState<string|null>(null);
@@ -100,22 +100,26 @@ export default function FvgDcaPanel({hourly=false,bos:initialBos=false,mtf:initi
   const visible=historyPositions(positions,frameFilter,statusFilter,historyOrder);
   return <section id="fvg-dca" className="rounded-xl border border-slate-800 bg-slate-900/60 overflow-hidden">
     <div className="p-4 border-b border-slate-800 flex flex-wrap justify-between gap-3">
-      <div><h2 className="font-bold text-cyan-200 text-lg">{mtf?"FVG 1H → A → CHoCH 5m":bos?"CHoCH → подтверждение → FVG → A · 1H":hourly?"FVG A · часовая альтернатива · 1H":"FVG A · дневные и недельные"}</h2>
-        <p className="text-xs text-slate-400">Касание A · бюджет $1 000 · два входа по $10 · 10× · бары OKX</p></div>
+      <div><h2 className="font-bold text-cyan-200 text-lg">{rr?"FVG 1H · A · стоп за бар · 1:2":mtf?"FVG 1H → A → CHoCH 5m":bos?"CHoCH → подтверждение → FVG → A · 1H":hourly?"FVG A · часовая альтернатива · 1H":"FVG A · дневные и недельные"}</h2>
+        <p className="text-xs text-slate-400">{rr?"Касание A · бюджет $1 000 · один вход $10 · 10× · без докупки":"Касание A · бюджет $1 000 · два входа по $10 · 10× · бары OKX"}</p></div>
       <span className="text-xs text-amber-200 border border-amber-900 rounded px-2 py-1 self-start">СИМУЛЯЦИЯ · без ордеров</span>
     </div>
     <div className="p-4 space-y-4">
       <div className="flex flex-wrap gap-2" role="group" aria-label="Сценарий FVG">
         {hourly&&<><button aria-pressed={hourlyMode==="plain"} onClick={()=>changeHourly("plain")} className={`rounded px-3 py-2 text-sm ${hourlyMode==="plain"?"bg-cyan-700 text-white":"bg-slate-800 text-slate-300"}`}>Часовая · без BOS</button>
-        <button aria-pressed={bos} onClick={()=>changeHourly("choch")} className={`rounded px-3 py-2 text-sm ${bos?"bg-violet-700 text-white":"bg-slate-800 text-slate-300"}`}>Альтернатива · CHoCH + FVG</button>
+        <button aria-pressed={rr} onClick={()=>changeHourly("rr")} className={`rounded px-3 py-2 text-sm ${rr?"bg-amber-700 text-white":"bg-slate-800 text-slate-300"}`}>Часовая · стоп за бар · 1:2</button>
         <button aria-pressed={mtf} onClick={()=>changeHourly("mtf")} className={`rounded px-3 py-2 text-sm ${mtf?"bg-emerald-700 text-white":"bg-slate-800 text-slate-300"}`}>FVG 1H + CHoCH 5m · 60 монет</button></>}
-        {!hourly&&<><button aria-pressed={!alternative} onClick={()=>{setScenario("base");setSelected("");}} className={`rounded px-3 py-2 text-sm ${!alternative?"bg-cyan-700 text-white":"bg-slate-800 text-slate-300"}`}>Основная · +$10 / +$20</button>
+        {!hourly&&<>
         <button aria-pressed={alternative} onClick={()=>{setScenario("alt");setSelected("");}} className={`rounded px-3 py-2 text-sm ${alternative?"bg-violet-700 text-white":"bg-slate-800 text-slate-300"}`}>Альтернатива · +$5 / +$10</button></>}
         <a href={hourly?"/strategies/fvg-dca":"/strategies/fvg-hourly"} className="rounded px-3 py-2 text-sm bg-slate-800 text-cyan-200">{hourly?"← Дневные / недельные":"Часовая альтернатива · 1H →"}</a>
-        {!hourly&&<a href="/strategies/fvg-hourly-bos" className="rounded px-3 py-2 text-sm bg-slate-800 text-violet-200">CHoCH + FVG · 1H →</a>}
+        {!hourly&&<a href="/strategies/fvg-hourly-rr" className="rounded px-3 py-2 text-sm bg-slate-800 text-amber-200">Часовая · стоп за бар · 1:2 →</a>}
         {!hourly&&<a href="/strategies/fvg-mtf" className="rounded px-3 py-2 text-sm bg-slate-800 text-emerald-200">FVG 1H + CHoCH 5m →</a>}
       </div>
-      {alternative?<div className="rounded border border-violet-800 p-3 space-y-2">
+      {rr?<div className="rounded border border-amber-800 p-3 space-y-2">
+        <h3 className="font-semibold text-amber-200">H1-A-CANDLE-RR2 · отдельный forward-эксперимент · $1000</h3>
+        <p className="text-sm text-slate-300">Один вход $10 маржи, 10×, без докупки. Long: стоп ниже low первой свечи FVG на 1 тик; short: выше её high на 1 тик. Тейк вдвое дальше стопа от фактического входа — 1:2 по цене. Уровни фиксируются при входе; комиссии, funding и проскальзывание уменьшают чистое соотношение.</p>
+        <p className="text-xs text-amber-300">$10 — маржа, не фиксированный риск. Сигнал при новом касании A, исполнение по следующему 1m open, не искусственно по A. Стоп за расчётной ликвидацией — пропуск. Собственная история начинается с запуска, старые сделки не переносятся. Прежний исторический пилот дал net −$41,95: преимущество не доказано.</p>
+      </div>:alternative?<div className="rounded border border-violet-800 p-3 space-y-2">
         <h3 className="font-semibold text-violet-200">{mtf?"H1-A-CHOCH5M-ALT050 · отдельный forward-счёт $1000":bos?"H1-CHOCH-ALT050 · прежний счёт $1000, новая версия":hourly?"H1-ALT050 · отдельный forward-счёт":"ALT-050 · тейк 50%, стоп 100% маржи"}</h3>
         <p className="text-sm text-slate-300">Первый вход $10: тейк +$5 net. При −$5 добавление ещё $10; после докупки общая прибыль для закрытия +$10 net. Стоп −$10 / −$20 net; расчётная ликвидация проверяется раньше стопа и может наступить первой. Комиссии, funding и проскальзывание включены.</p>
         <p className="text-xs text-amber-300">{mtf?"60 криптомонет: прежние 59 + SAND, список заморожен. После нового касания A часового FVG ждём до 60 минут: CHoCH 5m против тренда по двум известным high и low (свинги 2+2), первое закрытие за уровнем и следующее строго за ним. Тень, равенство или возврат вторым закрытием отменяют этот сигнал. Пробой должен начаться после обнаружения A. Вход по следующему 1m open после получения подтверждения, не по A. Проверка раз в 15 минут, поэтому есть задержка. Telegram — только результат закрытия в отдельной рассылке. Объёмного фильтра и правила 20% нет; исторический пилот не доказал преимущество.":bos?"CHoCH против подтверждённого тренда: два последних свинга high и low понижаются для LONG или повышаются для SHORT; свинги 2+2 известны до пробоя. Первое закрытие 1H за уровнем и следующее закрытие строго за ним. Тень, равенство или возврат вторым закрытием — не входить. Последний FVG импульса фиксируется на CHoCH; касание A до подтверждения — пропуск. Затем только новый откат к A после записи ожидания. Ранее возникшие CHoCH — baseline. Старые BOS-сделки и общий бюджет сохранены, их статистика отдельная; объёмного фильтра и правила 20% нет. Фильтр не исключает все будущие ложные пробои.":hourly?"Часовые FVG из трёх закрытых свечей. Только новые возвраты к A после запуска; прежние касания — baseline, без выдуманных исторических входов. Исполнение по следующему 1m open после обнаружения, без новой рассылки Telegram. Собственные $1000 и история; QNT equity исключена, объёмный фильтр не добавлен.":"Ретроспективное «если бы» на тех же принятых первых входах. Докупка и выход независимы; основной счёт не меняется. Пропуски базы не превращаются в новые входы; исторический результат не подтверждает прибыльность."}</p>
