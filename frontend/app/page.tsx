@@ -115,6 +115,13 @@ export default function Dashboard() {
           <div className="mt-4 font-semibold text-cyan-300">Открыть стратегию →</div>
         </Link>
 
+        <nav className="flex flex-wrap gap-2" aria-label="Отдельные FVG эксперименты">
+          <Link href="/strategies/fvg-hourly-c03" className="rounded px-3 py-2 text-sm bg-slate-800 text-violet-200">C03 · BTC 4H + докупка</Link>
+          <Link href="/strategies/fvg-hourly-c10" className="rounded px-3 py-2 text-sm bg-slate-800 text-violet-200">C10 · без докупки</Link>
+          <Link href="/strategies/fvg-hourly-c21p15" className="rounded px-3 py-2 text-sm bg-slate-800 text-violet-200">C21P15 · BTC + объём + 24ч</Link>
+          <p className="w-full text-xs text-slate-500">Три самостоятельных виртуальных счёта по $1000; не общий портфель и не доказанная доходность.</p>
+        </nav>
+
         {/* ───────────────────── FUTURES: BUBU (separate service, own API :8300) ───────────────────── */}
         {/* Own category, deliberately separate from the options bots above —
             long-only spot/perp grid, not a short-premium seller: no strike,
@@ -258,4 +265,3 @@ function StatCard({ label, value, sub, accent }: { label: string; value: React.R
     </div>
   );
 }
-
