@@ -111,7 +111,7 @@ export default function Dashboard() {
         <Link href="/strategies/fvg-hourly" className="block rounded-2xl border border-cyan-900 bg-slate-900 p-5 transition-colors hover:border-cyan-400 focus-visible:outline-2 focus-visible:outline-cyan-400">
           <div className="text-xs font-semibold uppercase tracking-wide text-cyan-300">OKX · виртуальная проверка</div>
           <h2 className="mt-2 text-xl font-bold">FVG A · часовые стратегии</h2>
-          <p className="mt-2 text-sm text-slate-400">Часовая FVG, подтверждение CHoCH 5m и отдельный эксперимент: $10, стоп за свечой A, тейк 1:2.</p>
+          <p className="mt-2 text-sm text-slate-400">Часовая FVG, подтверждение CHoCH 5m и отдельные эксперименты C03, C10 и C21P15.</p>
           <div className="mt-4 font-semibold text-cyan-300">Открыть стратегию →</div>
         </Link>
 

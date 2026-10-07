@@ -124,15 +124,12 @@ export default function FvgDcaPanel({hourly=false,bos:initialBos=false,mtf:initi
     <div className="p-4 space-y-4">
       <div className="flex flex-wrap gap-2" role="group" aria-label="Сценарий FVG">
         {hourly&&!experiment&&<><button aria-pressed={hourlyMode==="plain"} onClick={()=>changeHourly("plain")} className={`rounded px-3 py-2 text-sm ${hourlyMode==="plain"?"bg-cyan-700 text-white":"bg-slate-800 text-slate-300"}`}>Часовая · без BOS</button>
-        <button aria-pressed={rr} onClick={()=>changeHourly("rr")} className={`rounded px-3 py-2 text-sm ${rr?"bg-amber-700 text-white":"bg-slate-800 text-slate-300"}`}>Часовая · стоп за бар · 1:2</button>
         <button aria-pressed={mtf} onClick={()=>changeHourly("mtf")} className={`rounded px-3 py-2 text-sm ${mtf?"bg-emerald-700 text-white":"bg-slate-800 text-slate-300"}`}>FVG 1H + CHoCH 5m · 60 монет</button></>}
         {!hourly&&<>
         <button aria-pressed={alternative} onClick={()=>{setScenario("alt");setSelected("");}} className={`rounded px-3 py-2 text-sm ${alternative?"bg-violet-700 text-white":"bg-slate-800 text-slate-300"}`}>Альтернатива · +$5 / +$10</button></>}
         <a href={hourly?"/strategies/fvg-dca":"/strategies/fvg-hourly"} className="rounded px-3 py-2 text-sm bg-slate-800 text-cyan-200">{hourly?"← Дневные / недельные":"Часовая альтернатива · 1H →"}</a>
-        {!hourly&&<a href="/strategies/fvg-hourly-rr" className="rounded px-3 py-2 text-sm bg-slate-800 text-amber-200">Часовая · стоп за бар · 1:2 →</a>}
         {!hourly&&<a href="/strategies/fvg-mtf" className="rounded px-3 py-2 text-sm bg-slate-800 text-emerald-200">FVG 1H + CHoCH 5m →</a>}
         {hourly&&experiment&&<><a href="/strategies/fvg-hourly" className="rounded px-3 py-2 text-sm bg-slate-800 text-cyan-200">Часовая · без BOS</a>
-          <a href="/strategies/fvg-hourly-rr" className="rounded px-3 py-2 text-sm bg-slate-800 text-amber-200">Часовая · стоп за бар · 1:2</a>
           <a href="/strategies/fvg-mtf" className="rounded px-3 py-2 text-sm bg-slate-800 text-emerald-200">FVG 1H + CHoCH 5m</a></>}
         {hourly&&EXPERIMENT_IDS.map(id=><a key={id} href={EXPERIMENTS[id].path} aria-current={experiment===id?"page":undefined}
           className={`rounded px-3 py-2 text-sm ${experiment===id?"bg-violet-700 text-white":"bg-slate-800 text-violet-200"}`}>{EXPERIMENTS[id].label}</a>)}
